@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { FARM_DECORATION_CATALOG, decorationById, isDecorationSaleOpen } from "./catalog.js";
+import { FARM_DECORATION_CATALOG, WITCH_PUMPKIN_DECORATION_ID, decorationById, farmDecorationPrice, farmDecorationSaleDescription, isDecorationSaleOpen } from "./catalog.js";
 import { decorationGrid } from "./layout.js";
 import { bumpDaily } from "../../daily.js";
 import { houseState, housePurchaseError, HOUSE_STYLES, houseStyleItem } from "./house.js";
@@ -28,15 +28,28 @@ export function decorationState(farm) {
   }
   return result;
 }
-export function decorationRevision(farm) {
-  const state = decorationState(farm);
-  return `farm-decoration-v1:${createHash("sha256").update(JSON.stringify({ coins: farm.coins, state, plots: (farm.plots ?? []).map(plot => plot.id), catalog: FARM_DECORATION_CATALOG, saved_layouts:farm.farmDecorationLayouts })).digest("hex")}`;
+function decorationCatalogFor(owned, now, saleStartAt) {
+  return FARM_DECORATION_CATALOG
+    .filter(item => item.item_id !== WITCH_PUMPKIN_DECORATION_ID || isDecorationSaleOpen(item, now, saleStartAt) || owned[item.item_id] > 0)
+    .map(item => {
+      const saleDescription = farmDecorationSaleDescription(item, now, saleStartAt);
+      return {
+        ...item,
+        price_farm_coins: farmDecorationPrice(item, now, saleStartAt),
+        ...(saleDescription ? { sale_description: saleDescription } : {}),
+      };
+    });
 }
-export function decorationResource(farm) {
+export function decorationRevision(farm, now = Date.now(), saleStartAt) {
+  const state = decorationState(farm);
+  const catalog = decorationCatalogFor(state.owned, now, saleStartAt);
+  return `farm-decoration-v1:${createHash("sha256").update(JSON.stringify({ coins: farm.coins, state, plots: (farm.plots ?? []).map(plot => plot.id), catalog, saved_layouts:farm.farmDecorationLayouts })).digest("hex")}`;
+}
+export function decorationResource(farm, now = Date.now(), saleStartAt) {
   const state = decorationState(farm);
   if (!Number.isSafeInteger(farm.coins) || farm.coins < 0) throw new Error("Invalid farm coin balance");
   return {
-    catalog: FARM_DECORATION_CATALOG,
+    catalog: decorationCatalogFor(state.owned, now, saleStartAt),
     house: houseState(state.owned, state.layout.house),
     inventory: FARM_DECORATION_CATALOG.filter(item => item.layer !== "house").map(item => {
       const owned_quantity = state.owned[item.item_id] ?? 0;
@@ -49,12 +62,12 @@ export function decorationResource(farm) {
 
 // Runs only inside the existing authorized farm.buy / buy-item execution.
 // Human layout routes never call this coin writer.
-export function buyFarmDecoration(farm, itemId, quantity, now = Date.now()) {
+export function buyFarmDecoration(farm, itemId, quantity, now = Date.now(), saleStartAt) {
   if (!itemId.startsWith("farm_decor:")) return { handled: false };
   const reject = error => ({ handled: true, ok: false, error });
   const item = decorationById.get(itemId);
   if (!item) return reject("农场装饰不存在。");
-  if (!isDecorationSaleOpen(item, now)) return reject("农场装饰不存在。");
+  if (!isDecorationSaleOpen(item, now, saleStartAt)) return reject("农场装饰不存在。");
   if (!Number.isSafeInteger(quantity) || quantity < 1 || (item.purchase_mode === "unlock" && quantity !== 1)) return reject("装饰购买数量无效；永久解锁物品每款购买一次。");
   let state;
   try { state = decorationState(farm); } catch { return reject("农场装饰持有状态无效。"); }
@@ -62,7 +75,7 @@ export function buyFarmDecoration(farm, itemId, quantity, now = Date.now()) {
   if (item.purchase_mode === "unlock" && owned) return reject("这款装饰已经永久解锁。");
   const houseError = housePurchaseError(state, itemId, farm.plots ?? []);
   if (houseError) return reject(houseError);
-  const cost = item.price_farm_coins * quantity, left = owned + quantity;
+  const cost = farmDecorationPrice(item, now, saleStartAt) * quantity, left = owned + quantity;
   if (!Number.isSafeInteger(cost) || !Number.isSafeInteger(left)) return reject("装饰购买数量无效。");
   if (!Number.isSafeInteger(farm.coins) || farm.coins < cost) return reject(`金币不足，需要 ${cost} 金。`);
   state.owned[itemId] = left;

@@ -4,9 +4,9 @@ import { rectangle, boundsRectangle, intersects } from "./placement-geometry.js"
 import { houseExtensionRect, houseExtensionRects, canPlaceHouse } from "./house-geometry.js";
 import { createPlacementTerrain } from "./placement-terrain.js";
 const TWO = "farm_decor:house_level_two", THREE = "farm_decor:house_level_three", CANOPY = "farm_decor:floral_canopy";
-export const HOUSE_STYLES = Object.freeze(['classic','pumpkin','stump','mushroom','rose_cottage']);
+export const HOUSE_STYLES = Object.freeze(['classic','pumpkin','stump','mushroom','rose_cottage','witch_pumpkin']);
 export const houseStyleItem = style => style==='classic'?null:`farm_decor:house_${style}`;
-export const houseStyleName = style => ({classic:'普通房屋',pumpkin:'南瓜屋',stump:'树桩屋',mushroom:'蘑菇屋',rose_cottage:'藤花小筑'}[style]);
+export const houseStyleName = style => ({classic:'普通房屋',pumpkin:'南瓜屋',stump:'树桩屋',mushroom:'蘑菇屋',rose_cottage:'藤花小筑',witch_pumpkin:'南瓜女巫屋'}[style]);
 export function houseState(owned, position) {
   const classic_level=owned[THREE]>0?3:owned[TWO]>0?2:1;
   const style=position?.style??'classic';

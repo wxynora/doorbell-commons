@@ -66,6 +66,7 @@ const rows = [
   ["house_stump", "树桩屋", 1, 1, 400000, "unlock", "house"],
   ["house_mushroom", "蘑菇屋", 1, 1, 400000, "unlock", "house"],
   ["house_rose_cottage", "藤花小筑", 1, 1, 500000, "unlock", "house"],
+  ["house_witch_pumpkin", "南瓜女巫屋", 1, 1, 450000, "unlock", "house"],
 ];
 export const FARM_DECORATION_CATALOG = Object.freeze(rows.map(([model_id, name, w, d, price_farm_coins, purchase_mode = "unit", layer = "furniture"]) => Object.freeze({
   item_id: `farm_decor:${model_id}`, model_id, name, cells: Object.freeze([w, d]),
@@ -87,12 +88,63 @@ const HALLOWEEN_DECORATION_IDS = new Set([
   "farm_decor:red_roses", "farm_decor:web_tiles", "farm_decor:witch_cauldron",
   "farm_decor:cat_pumpkin", "farm_decor:ghost_lamp", "farm_decor:pumpkin_lamppost",
   "farm_decor:ghost_rocker", "farm_decor:bat_arch", "farm_decor:candy_cart",
+  "farm_decor:house_witch_pumpkin",
   "farm_decor:haunted_lantern",
 ]);
 export const HALLOWEEN_DECORATION_SALE_UNTIL = Date.parse("2026-11-01T00:00:00+08:00");
-export function isDecorationSaleOpen(item, now = Date.now()) {
+// Set this once to the exact time the formal listing is activated; never derive it from process startup.
+export const WITCH_PUMPKIN_SALE_START_AT = "2026-10-25T22:40:00+08:00";
+export const WITCH_PUMPKIN_SALE_DURATION_MS = 48 * 60 * 60 * 1000;
+export const WITCH_PUMPKIN_DECORATION_ID = "farm_decor:house_witch_pumpkin";
+
+function timestamp(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+export function witchPumpkinSaleWindow(startAt = WITCH_PUMPKIN_SALE_START_AT) {
+  const startsAt = timestamp(startAt);
+  if (startsAt === null) return null;
+  return {
+    startsAt,
+    endsAt: Math.min(startsAt + WITCH_PUMPKIN_SALE_DURATION_MS, HALLOWEEN_DECORATION_SALE_UNTIL),
+  };
+}
+
+export function farmDecorationPrice(item, now = Date.now(), saleStartAt = WITCH_PUMPKIN_SALE_START_AT) {
+  if (item?.item_id !== WITCH_PUMPKIN_DECORATION_ID) return item?.price_farm_coins;
+  const window = witchPumpkinSaleWindow(saleStartAt);
+  const currentTime = Number(now);
+  if (window && Number.isFinite(currentTime) && currentTime >= window.startsAt && currentTime < window.endsAt) return 100000;
+  return item.price_farm_coins;
+}
+
+export function farmDecorationSaleDescription(item, now = Date.now(), saleStartAt = WITCH_PUMPKIN_SALE_START_AT) {
+  if (item?.item_id !== WITCH_PUMPKIN_DECORATION_ID) return undefined;
+  const window = witchPumpkinSaleWindow(saleStartAt);
+  const currentTime = Number(now);
+  if (!window || !Number.isFinite(currentTime) || currentTime < window.startsAt || currentTime >= window.endsAt) return undefined;
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai", year: "numeric", month: "numeric", day: "numeric",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(window.endsAt));
+  const part = type => parts.find(item => item.type === type)?.value ?? "";
+  const deadline = `${part("year")}年${part("month")}月${part("day")}日${part("hour")}:${part("minute")}（北京时间）`;
+  return `万圣节限时特价：100000金币（原价450000金币），优惠截至${deadline}；2026年11月1日00:00下架，已购买款式永久保留。`;
+}
+
+export function isDecorationSaleOpen(item, now = Date.now(), saleStartAt = WITCH_PUMPKIN_SALE_START_AT) {
   const id = typeof item === "string" ? item : item?.item_id;
   if (["farm_decor:snow_fort", "farm_decor:small_snow_fort"].includes(id)) return false; // Activity reward only; also excluded from gacha.
+  if (id === WITCH_PUMPKIN_DECORATION_ID) {
+    const window = witchPumpkinSaleWindow(saleStartAt);
+    const currentTime = Number(now);
+    return !!window && Number.isFinite(currentTime) && currentTime >= window.startsAt && currentTime < HALLOWEEN_DECORATION_SALE_UNTIL;
+  }
   return !HALLOWEEN_DECORATION_IDS.has(id) || Number(now) < HALLOWEEN_DECORATION_SALE_UNTIL;
 }
 export function isDecorationGachaEligible(item, now = Date.now()) {

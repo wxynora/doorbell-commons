@@ -57,7 +57,7 @@ function inputText(i,name){
   if(i.code==='diagonal_range')return `facing=${i.value}是斜向；from/to范围铺设只支持N、E、S、W。单件at仍支持八方向。`;
   if(i.code==='instance_not_found')return `实例“${i.instance}”不在这份布局中；该事项未应用，其他事项仍保留在草稿。`;
   if(i.code==='invalid_change'){
-    if(i.field==='style')return `style填了“${i.value}”，可用classic、pumpkin、stump、mushroom、rose_cottage。`;
+    if(i.field==='style')return `style填了“${i.value}”，可用classic、pumpkin、stump、mushroom、rose_cottage、witch_pumpkin。`;
     if(i.field==='fixture')return `fixture填了“${i.value}”，可用${i.allowed.join('、')}。`;
     if(!i.required_fields)return '这一项没有item、instance、remove或fixture，无法判断要做哪种调整。';
     return [i.missing_fields.length?`这一项缺少字段${i.missing_fields.join('、')}。`:'',i.unexpected_fields.length?`这一项多了字段${i.unexpected_fields.join('、')}。`:'',

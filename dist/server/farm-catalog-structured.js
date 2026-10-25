@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { midAutumnSeedShopRows, MID_AUTUMN_DAILY_SEED_LIMIT } from "../domain/field/mid-autumn-shop.js";
 import { isMidAutumnSeedCropId } from "../mid-autumn-seeds.js";
-import { FARM_DECORATION_CATALOG, isDecorationSaleOpen } from "../domain/farm-decoration/catalog.js";
+import { FARM_DECORATION_CATALOG, farmDecorationPrice, farmDecorationSaleDescription, isDecorationSaleOpen } from "../domain/farm-decoration/catalog.js";
 import { decorationState } from "../domain/farm-decoration/state.js";
 import { housePurchaseError } from "../domain/farm-decoration/house.js";
 import {
@@ -125,6 +125,7 @@ function projectShopItem({
   dailyLimit = null,
   purchasedToday = null,
   condition = null,
+  saleDescription = null,
   source,
   identityState = "known",
 }) {
@@ -141,6 +142,7 @@ function projectShopItem({
     daily_limit: dailyLimit === null ? null : nullableInt(dailyLimit),
     purchased_today: purchasedToday === null ? null : nullableInt(purchasedToday),
     condition: nullableText(condition),
+    ...(saleDescription ? { sale_description: saleDescription } : {}),
     source,
   };
 }
@@ -274,7 +276,8 @@ function projectShop(farm, now) {
     const blocked = !!housePurchaseError(decoration, item.item_id);
     items.push(projectShopItem({
       kind: "decoration", itemId: item.item_id, name: item.name,
-      price: item.price_farm_coins, currency: "gold", source: "permanent",
+      price: farmDecorationPrice(item, now), currency: "gold", source: "permanent",
+      saleDescription: farmDecorationSaleDescription(item, now),
       availableQuantity: item.purchase_mode === "unlock" ? (unlocked || blocked ? 0 : 1) : null,
       condition: unlocked ? "already_owned" : null,
     }));
@@ -287,6 +290,7 @@ function projectShop(farm, now) {
       potion_buy: farm.potionBuy ?? null,
       mid_autumn_seeds: midAutumnSeeds,
       decoration_shop: FARM_DECORATION_CATALOG.filter(item => isDecorationSaleOpen(item, now)).map(item => item.item_id),
+      decoration_prices: FARM_DECORATION_CATALOG.filter(item => isDecorationSaleOpen(item, now)).map(item => [item.item_id, farmDecorationPrice(item, now), farmDecorationSaleDescription(item, now)]),
       decorations: { catalog: FARM_DECORATION_CATALOG, owned: decorationOwned, layout: decoration.layout },
     }),
     refreshed_at: refreshedAt,
