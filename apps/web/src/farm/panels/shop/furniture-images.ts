@@ -38,6 +38,7 @@ const farmFurnitureImages: Readonly<Record<string, string>> = Object.fromEntries
 
 export const furnitureProductImages: Readonly<Record<string, string>> = {
   ...farmFurnitureImages,
+  "farm_decor:house_rose_cottage": "/lounge/assets/farm-furniture/house_rose_cottage-light.webp",
   "farm_decor:house_pumpkin": pumpkinHouseImage,
   "farm_decor:house_stump": stumpHouseImage,
   "farm_decor:house_mushroom": mushroomHouseImage,

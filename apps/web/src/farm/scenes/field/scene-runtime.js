@@ -130,7 +130,7 @@ export function createFieldRuntime(host, options) {
       world.house=style==='classic'?createHouseStudy(world.root,palette(),data.house?.classic_level??Math.min(data.house?.level??1,3)):createFairytaleHouse(world.root,style);
       world.house.position.set(previous.position.x,previous.position.y,previous.position.z);world.house.position.style=style;
       world.house.traverse(o=>{o.userData.house=true;});world.glow=world.house.getObjectByName('cottage-exterior-light');
-      disposeDecoration(previous);setHouseSeason=createSeasonController(world.house);setHouseSeason(season);setNightLighting(light);
+      disposeDecoration(previous);setHouseSeason=createSeasonController(world.house);setHouseSeason(season);setNightLighting(light,nature.night);
       setRoofColor(world.house,roof);setStudyCanopy(world.house,canopy==='floral');
     }
     setFieldLayout(layout.field);
@@ -404,7 +404,7 @@ export function createFieldRuntime(host, options) {
     hemi.color.set("#eef5ff").lerp(nightSky,light);
     hemi.groundColor.set("#b7af9c").lerp(nightGround,light);hemi.intensity=T.MathUtils.lerp(.94,.32,light);
     renderer.toneMappingExposure=T.MathUtils.lerp(.99,.93,light);
-    setNightLighting(light);updateDecorationLights(world.decorations,light);updateDecorationMotion(world.decorations,time);
+    setNightLighting(light,nature.night);updateDecorationLights(world.decorations,light);updateDecorationMotion(world.decorations,time);
     world.update(time,light);natureEffects.update(time);environment.update(time,light,scene,camera);limitFarmView(camera,controls);controls.update();
     if(modelOutline)modelOutline.render(scene,camera);else renderer.render(scene,camera);
     frame=requestAnimationFrame(animate);

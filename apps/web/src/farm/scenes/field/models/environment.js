@@ -50,11 +50,11 @@ export function createNightLighting(world) {
   });
   const setLight = (light, intensity) => { light.intensity = intensity; light.visible = intensity !== 0; };
   let lastAmount,lastHouse;
-  return (amount) => {
-    if (amount === lastAmount&&world.house===lastHouse) return;
+  return (amount,nightTarget=amount) => {
+    if (amount === lastAmount&&world.house===lastHouse&&world.house.userData.nightTarget===nightTarget) return;
     if(world.house!==lastHouse){windows.clear();world.house.traverse(o=>{if(o.material?.userData.windowGlow)windows.add(o.material);});interior=world.house.getObjectByName('interior-lamp');lastHouse=world.house;}
-    lastAmount = amount;
-    if(world.house.userData.houseKind==='rose_cottage')setRoseTreehouseNight(world.house,amount>0);
+    lastAmount = amount;world.house.userData.nightTarget=nightTarget;
+    if(world.house.userData.houseKind==='rose_cottage')setRoseTreehouseNight(world.house,nightTarget>0);
     else if(world.house.userData.houseKind)setHouseNight(world.house,amount>0);
     stars.forEach((m) => (m.emissiveIntensity = amount * 3.5));
     windows.forEach((m) => (m.emissiveIntensity = amount * 1.2));

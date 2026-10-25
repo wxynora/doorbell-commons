@@ -1,19 +1,34 @@
 import * as T from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {group,mesh,box,tube,random,mat} from './fairytale-model-kit.mjs';
+import {group,mesh,box,random,mat} from './fairytale-model-kit.mjs';
 import {snowSurface} from './fairytale-snow-cover.mjs';
 
 // Front +Z. Low house floor 1.72, offset ridge 5.68. All details share world coordinates.
-const C={wood:'#72513f',edge:'#a58060',cream:'#d6c3a6',pink:'#bd8c96',leaf:'#758348',gold:'#b58c4f'};
+const C={wood:'#a77750',edge:'#cfab7e',cream:'#fff0ce',pink:'#f0b8c8',leaf:'#85a453',gold:'#d2ae68'};
 const pixels=new Uint8Array(32*32*4);
 for(let y=0;y<32;y++)for(let x=0;x<32;x++){const d=Math.min(1,Math.hypot((x-15.5)/22,(y-17)/26)),i=(y*32+x)*4;pixels[i]=255;pixels[i+1]=Math.round(218-d*64);pixels[i+2]=Math.round(137-d*86);pixels[i+3]=255;}
 const windowTexture=new T.DataTexture(pixels,32,32,T.RGBAFormat);windowTexture.colorSpace=T.SRGBColorSpace;windowTexture.needsUpdate=true;windowTexture.magFilter=T.LinearFilter;
 const lampGlow=new T.MeshStandardMaterial({color:'#dec796',roughness:.6,emissive:'#ffb45c',emissiveMap:windowTexture,emissiveIntensity:0});
-const glass=new T.MeshPhysicalMaterial({color:'#e1e5d8',roughness:.14,metalness:0,transmission:.84,thickness:.07,ior:1.46,clearcoat:.35,clearcoatRoughness:.12});
+const glass=new T.MeshBasicMaterial({color:'#dfe5da',transparent:true,opacity:.16,depthWrite:false});
 const roomFloor=new T.MeshStandardMaterial({color:'#a88c66',roughness:1});
 const petals=['#e8bfca','#eed9c6','#dca3b3'];
-// Petals and leaves are tiny on the farm: smooth silhouette without high-density spheres.
-function ball(g,color,pos,size){return mesh(g,new T.SphereGeometry(1,8,6),color,pos,size);}
+// Tiny petals and leaves read as soft ellipsoids at farm scale with only eight faces.
+const ballGeometry=new Map();
+function ball(g,color,pos,size){
+ const largest=Math.max(...size),detail=largest<=.32?'micro':largest<=.8?'low':'full';
+ const segments=detail==='micro'?[4,2]:detail==='low'?[6,4]:[8,6],key=segments.join('x');
+ if(!ballGeometry.has(key))ballGeometry.set(key,new T.SphereGeometry(1,...segments));
+ return mesh(g,ballGeometry.get(key),color,pos,size);
+}
+function tube(g,color,points,radius=.04,requested=24){
+ const vectors=points.map(p=>new T.Vector3(...p));let bend=0;
+ for(let i=1;i<vectors.length-1;i++){
+  const a=vectors[i].clone().sub(vectors[i-1]).normalize(),b=vectors[i+1].clone().sub(vectors[i]).normalize();
+  bend+=Math.acos(T.MathUtils.clamp(a.dot(b),-1,1));
+ }
+ const segments=Math.max(1,Math.min(requested,points.length-1,Math.ceil(bend*2)));
+ return mesh(g,new T.TubeGeometry(new T.CatmullRomCurve3(vectors),segments,radius,3,false),color);
+}
 function glow(g,geometry,pos){const m=mesh(g,geometry,lampGlow,pos);m.userData.windowGlow=true;m.castShadow=false;return m;}
 function pane(g,geometry,pos){const m=mesh(g,geometry,glass,pos);m.userData.glassPane=true;m.castShadow=false;return m;}
 function archShape(x,y,w,h){const r=w/2,s=new T.Shape();s.moveTo(x-r,y);s.lineTo(x+r,y);s.lineTo(x+r,y+h-r);s.absarc(x,y+h-r,r,0,Math.PI,false);s.closePath();return s;}
@@ -23,15 +38,16 @@ function railing(g,anchors){
  for(let i=1;i<anchors.length;i++)tube(g,C.wood,[anchors[i-1].map((v,j)=>v+(j===1?.42:0)),anchors[i].map((v,j)=>v+(j===1?.42:0))],.027,1);
 }
 export function setRoseTreehouseNight(h,night){
- h.traverse(o=>{if(o.userData.lanternSpill)o.userData.lanternSpill.value=night?1:0;if(o.userData.interiorLight){o.visible=night;if(night)o.shadow.needsUpdate=true;}if(o.userData.windowGlow)o.material.emissiveIntensity=night?1.8:0;});
+ h.traverse(o=>{if(o.userData.lanternSpill)o.userData.lanternSpill.value=night?1:0;if(o.userData.interiorLight)o.visible=night;if(o.userData.windowGlow)o.material.emissiveIntensity=night?1.8:0;});
 }
 function prism(g,points,depth,color,z){const s=new T.Shape();points.forEach(([x,y],i)=>i?s.lineTo(x,y):s.moveTo(x,y));s.closePath();return mesh(g,new T.ExtrudeGeometry(s,{depth,bevelEnabled:false}),color,[0,0,z]);}
 function blossom(g,pos,size=.12,color=petals[0],facing=[0,0,0]){
  const f=group(g,'blossom',pos);f.rotation.set(...facing);
- for(let k=0;k<5;k++){const a=k*Math.PI*2/5;const p=ball(f,color,[Math.cos(a)*size*.56,Math.sin(a)*size*.56,0],[size*.49,size*.30,size*.18]);p.rotation.z=a;}
- ball(f,'#d7ad56',[0,0,.025],[size*.25,size*.25,size*.18]);return f;
+ for(let k=0;k<5;k++){const a=k*Math.PI*2/5,p=petal(f,color,[Math.cos(a)*size*.56,Math.sin(a)*size*.56,0],[size*.49,size*.30,size*.18]);p.rotation.z=a;}
+ const center=mesh(f,new T.CircleGeometry(size*.25,5),'#d7ad56',[0,0,.025]);center.material.side=T.DoubleSide;return f;
 }
-function leaf(g,p,s,angle=0,color=C.leaf){const l=ball(g,color,p,[s*.45,s,s*.15]);l.rotation.set(-.25,0,angle);return l;}
+function petal(g,color,p,size){const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute([-1,0,0,0,-1,.18,1,0,0,0,1,.18],3));geo.setIndex([0,1,2,0,2,3]);geo.computeVertexNormals();const m=mesh(g,geo,color,p,size);m.material.side=T.DoubleSide;return m;}
+function leaf(g,p,s,angle=0,color=C.leaf){const l=petal(g,color,p,[s*.45,s,s*.15]);l.rotation.set(-.25,0,angle);return l;}
 function foliage(g,points,seed,density=10){
  const curve=new T.CatmullRomCurve3(points.map(p=>new T.Vector3(...p))),rng=random(seed);
  tube(g,'#71804b',points,.018,Math.max(10,points.length*5));const count=Math.ceil(curve.getLength()*density*1.3);
@@ -48,8 +64,8 @@ function bush(g,p,r,seed,flowers=12){
  for(let i=0;i<flowers;i++){const a=rng()*Math.PI*2,d=Math.sqrt(rng())*r*.85;blossom(g,[p[0]+Math.cos(a)*d,p[1]+.16+rng()*.15,p[2]+Math.sin(a)*d],.07+rng()*.045,petals[i%3],[-.5,0,rng()]);}
 }
 function branch(g,points,r0,r1,color=C.wood){
- const curve=new T.CatmullRomCurve3(points.map(p=>new T.Vector3(...p))),geo=new T.TubeGeometry(curve,20,1,9,false),p=geo.attributes.position;
- for(let i=0;i<=20;i++){const c=curve.getPointAt(i/20),r=r0+(r1-r0)*i/20;for(let j=0;j<=9;j++){const n=i*10+j;p.setXYZ(n,c.x+(p.getX(n)-c.x)*r,c.y+(p.getY(n)-c.y)*r,c.z+(p.getZ(n)-c.z)*r);}}
+ const segments=Math.max(8,(points.length-1)*2),radial=5,curve=new T.CatmullRomCurve3(points.map(p=>new T.Vector3(...p))),geo=new T.TubeGeometry(curve,segments,1,radial,false),p=geo.attributes.position;
+ for(let i=0;i<=segments;i++){const c=curve.getPointAt(i/segments),r=r0+(r1-r0)*i/segments;for(let j=0;j<=radial;j++){const n=i*(radial+1)+j;p.setXYZ(n,c.x+(p.getX(n)-c.x)*r,c.y+(p.getY(n)-c.y)*r,c.z+(p.getZ(n)-c.z)*r);}}
  geo.computeVertexNormals();return mesh(g,geo,color);
 }
 function stairSlab(g,pos,width,depth,color,seed){
@@ -161,8 +177,8 @@ function roofGarden(g){
  const veinMaterial=new T.MeshStandardMaterial({color:'#93a273',roughness:1});veinMaterial.name='roof-ivy-vein';
  const surface=(x,z,h=.13)=>new T.Vector3(x,houseRoofY(x,z)+h,z);
  const normalAt=(x,z)=>new T.Vector3(-(houseRoofY(x+.01,z)-houseRoofY(x-.01,z))/.02,1,-(houseRoofY(x,z+.01)-houseRoofY(x,z-.01))/.02).normalize();
- const stem=(points,r=.012)=>mesh(garden,new T.TubeGeometry(new T.CatmullRomCurve3(points),Math.max(2,points.length-1),r,3,false),stemMaterial);
- const vein=(points,width)=>{
+ const stem=(points,r=.012)=>vein(points,r*2,stemMaterial);
+ const vein=(points,width,material=veinMaterial)=>{
   const vertices=[],indices=[];
   for(let i=0;i<points.length;i++){
    const p=points[i],direction=points[Math.min(i+1,points.length-1)].clone().sub(points[Math.max(0,i-1)]);
@@ -170,11 +186,9 @@ function roofGarden(g){
    vertices.push(...p.clone().add(side).toArray(),...p.clone().sub(side).toArray());
    if(i){const a=(i-1)*2;indices.push(a,a+2,a+1,a+1,a+2,a+3);}
   }
-  const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(vertices,3));geo.setIndex(indices);geo.computeVertexNormals();mesh(garden,geo,veinMaterial);
+  const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(vertices,3));geo.setIndex(indices);geo.computeVertexNormals();mesh(garden,geo,material);
  };
  // A cupped, three-lobed ivy leaf: the raised midrib is actual geometry, not a flat stamp.
- const outline=new T.SplineCurve([[0,0],[.08,.29],[.19,.43],[.33,.46],[.48,.28],[.62,.30],[.82,.15],[1,0]].map(p=>new T.Vector2(...p)));
- const rows=outline.getPoints(14).map(p=>[p.x,Math.max(0,p.y)]);
  const leafAt=(x,z,size,angle,height=.14,tone=1)=>{
   const n=normalAt(x,z),forward=new T.Vector3(Math.sin(angle),0,Math.cos(angle));
   forward.y=-(n.x*forward.x+n.z*forward.z)/n.y;forward.normalize();
@@ -185,22 +199,16 @@ function roofGarden(g){
    return surface(xx,zz,height+size*fold);
   };
   const positions=[],indices=[];
-  for(const [v,w] of rows)for(const u of [-w,0,w])positions.push(...point(u,v).toArray());
-  for(let r=0;r<rows.length-1;r++)for(let k=0;k<2;k++){const a=r*3+k,b=a+3;indices.push(a,a+1,b,a+1,b+1,b);}
+  const rim=[[0,0],[-.29,.20],[-.46,.48],[-.22,.74],[0,1],[.22,.74],[.46,.48],[.29,.20]];
+  for(const [u,v] of [...rim,[0,.50]])positions.push(...point(u,v).toArray());
+  for(let i=0;i<rim.length;i++)indices.push(i,(i+1)%rim.length,rim.length);
   const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(positions,3));geo.setIndex(indices);geo.computeVertexNormals();
   mesh(garden,geo,colors[Math.min(3,Math.max(0,tone))]);
   stem([surface(x,z,.12),point(0,.02)],.006);
-  if(size>.23){
-   const rib=[.03,.27,.53,.78,.94].map(v=>{const p=point(0,v);p.y+=.004;return p;});
-   vein(rib,.002);
-   for(const sign of [-1,1])for(const [v,w] of [[.27,.39],[.52,.22]]){
-    const branch=[point(0,v-.12),point(sign*w*.5,v-.01),point(sign*w,v+.06)];branch.forEach(p=>p.y+=.003);vein(branch,.0012);
-   }
-  }
  };
  const vine=(path,size=.17,density=7)=>{
   const curve=new T.CatmullRomCurve3(path.map(([x,z])=>new T.Vector3(x,0,z))),length=curve.getLength(),points=[];
-  for(let i=0,count=Math.ceil(length*28);i<=count;i++){const p=curve.getPoint(i/count);points.push(surface(p.x,p.z));}stem(points);
+  for(let i=0,count=Math.ceil(length*4);i<=count;i++){const p=curve.getPoint(i/count);points.push(surface(p.x,p.z));}stem(points);
   for(let d=.05;d<length;d+=.10+rng()*.12){
    const t=d/length,p=curve.getPointAt(t),direction=curve.getTangentAt(t),angle=Math.atan2(direction.x,direction.z);
    for(let k=0,count=rng()<density/10?2:1;k<count;k++){
@@ -278,23 +286,21 @@ function crossedRoof(g){
   const owns=(x,z)=>kind==='main'?mainRoofY(x,z)-frontRoofY(x,z):frontRoofY(x,z)-mainRoofY(x,z);
   const point=(u,v)=>kind==='main'?[-2.35+v*4.85,-.40+sign*u*1.76]:[.38+sign*u*2.28,-.40+v*1.98];
   const coords=[];
-  for(let u=0;u<32;u++)for(let v=0;v<24;v++){
-   const corners=[[u/32,v/24],[(u+1)/32,v/24],[(u+1)/32,(v+1)/24],[u/32,(v+1)/24]].map(([a,b])=>{const [x,z]=point(a,b);return [x,height(x,z),z];});
+  for(let u=0;u<8;u++)for(let v=0;v<6;v++){
+   const corners=[[u/8,v/6],[(u+1)/8,v/6],[(u+1)/8,(v+1)/6],[u/8,(v+1)/6]].map(([a,b])=>{const [x,z]=point(a,b);return [x,height(x,z),z];});
    for(const k of [0,1,2,0,2,3])coords.push(...corners[k]);
   }
   mesh(g,clipRoof(triangles(coords),owns),backing);
   const rows=kind==='main'?7:10,cols=kind==='main'?19:8;
   for(let row=rows-1;row>=0;row--)for(let col=0;col<cols;col++){
    const s=new T.Shape();s.moveTo(0,0);s.lineTo(.83,0);s.quadraticCurveTo(1,0,1,.20);s.lineTo(1,.8);s.quadraticCurveTo(1,1,.83,1);s.lineTo(0,1);s.closePath();
-   const geo=new T.ExtrudeGeometry(s,{depth:.032,bevelEnabled:false,curveSegments:4}),p=geo.attributes.position;
+   const geo=new T.ShapeGeometry(s,2),p=geo.attributes.position;
    for(let i=0;i<p.count;i++){
     const a=p.getX(i),b=p.getY(i),t=p.getZ(i),u=Math.min(1,(row+a*1.16)/rows),v=Math.min(1,(col+b*.98+(row%2)*.12)/cols),[x,z]=point(u,v);
     p.setXYZ(i,x,height(x,z)+.047+(rows-row)*.002+t+Math.sin(b*Math.PI)*.014,z);
    }
    const color=['#bf8f89','#c4958f','#c89b94','#bd8c88'][Math.floor(rng()*4)],material=mat(color);material.side=T.DoubleSide;
    const clipped=clipRoof(geo,owns);if(clipped.attributes.position.count)mesh(g,clipped,material);else clipped.dispose();
-   const lip=[];for(let j=0;j<=6;j++){const v=(col+(j/6)*.98+(row%2)*.12)/cols,u=Math.min(1,(row+1.16-.10*Math.pow((j-3)/3,4))/rows),[x,z]=point(u,Math.min(1,v));if(owns(x,z)>=.005)lip.push([x,height(x,z)+.081+(rows-row)*.002,z]);}
-   if(lip.length>1)tube(g,'#a97a73',lip,.009,6);
   }
  }
  // Continuous eave boards follow the actual roof, rather than overlapping gables.
@@ -344,10 +350,11 @@ function furnishInterior(g){
  for(const [x,y,z,ceiling,power] of [[.42,2.80,.61,3.395,7],[.37,4.14,.70,houseRoofY(.37,.70)-.07,8]]){
   tube(g,wood,[[x,ceiling,z],[x,y+.12,z]],.012,1);mesh(g,new T.ConeGeometry(.16,.14,16,1,true),wood,[x,y+.13,z]);
   glow(g,new T.SphereGeometry(.055,12,8),[x,y,z]);
-  const light=new T.PointLight('#ffd39a',power,4,2);light.position.set(x,y,z);light.castShadow=true;light.shadow.mapSize.set(256,256);light.shadow.camera.near=.08;light.shadow.bias=-.0002;light.shadow.normalBias=0;light.shadow.autoUpdate=false;light.visible=false;light.userData.interiorLight=true;g.add(light);
+  const light=new T.PointLight('#ffd39a',power,4,2);light.position.set(x,y,z);light.castShadow=false;light.visible=false;light.userData.interiorLight=true;g.add(light);
  }
 }
 function rabbit(g,pos){
+ const ball=(parent,color,position,size)=>mesh(parent,new T.SphereGeometry(1,8,6),color,position,size);
  const r=group(g,'little-ceramic-rabbit',pos);ball(r,'#e6dfcf',[0,.2,0],[.15,.22,.13]);ball(r,'#e6dfcf',[0,.45,.02],[.16,.16,.14]);
  for(const s of [-1,1]){const e=ball(r,'#e6dfcf',[s*.075,.66,.01],[.048,.20,.045]);e.rotation.z=-s*.16;const pink=ball(r,'#d5b4b5',[s*.075,.67,.05],[.022,.12,.012]);pink.rotation.z=-s*.16;ball(r,'#544337',[s*.07,.46,.145],[.014,.017,.01]);ball(r,'#e6dfcf',[s*.09,.035,.09],[.09,.04,.10]);}
  ball(r,'#bb9695',[0,.41,.16],[.02,.015,.013]);
@@ -359,51 +366,13 @@ function clock(g,pos){
  for(let i=0;i<10;i++){const loop=mesh(q,new T.TorusGeometry(.035,.009,4,8),C.gold,[.15,-.22-i*.055,0]);loop.rotation.y=i%2*Math.PI/2;}
 }
 function finishSurfaces(root){
- // Candidate-local materials: do not mutate the shared farm palette or model kit.
- const texture=(kind)=>{
-  const size=256,data=new Uint8Array(size*size*4),rng=random(kind==='wood'?912:913);
-  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
-   const u=x/size,v=y/size,noise=rng(),wave=Math.sin(v*Math.PI*2);
-   const rings=.5+.5*Math.sin(u*Math.PI*42+wave*1.8+Math.sin(v*Math.PI*6+u*7)*.42);
-   const grain=Math.pow(rings,12),fine=Math.sin(u*Math.PI*132+wave*3)*.014;
-   const clay=Math.sin(u*Math.PI*8)*Math.cos(v*Math.PI*6)*.022;
-   const value=kind==='wood'?.96-grain*.12+fine-(noise*.026):.94+clay-(noise*.065);
-   const i=(y*size+x)*4,c=Math.round(Math.min(1,value)*255);data[i]=c;data[i+1]=c;data[i+2]=c;data[i+3]=255;
-  }
-  const t=new T.DataTexture(data,size,size,T.RGBAFormat);t.colorSpace=T.SRGBColorSpace;t.wrapS=t.wrapT=T.RepeatWrapping;t.magFilter=T.LinearFilter;t.minFilter=T.LinearMipmapLinearFilter;t.generateMipmaps=true;t.anisotropy=4;t.needsUpdate=true;return t;
- };
- const timber=texture('wood'),mineral=texture('clay'),cache=new Map();
- const woodColors=new Set(['72513f','a58060','604330','60432f','9b7957','aa8967','8d6a4e','ad8a62','a3825c','a7825c','b18d66','97764f','b79672','c5a285','c3ac90','baa58b','b78b7d','c19788','805b3f','a27f56','a88c66','bd8c96','a87581','aa9271','c1a078']);
- const clayColors=new Set(['916a58','bf8f89','c4958f','c89b94','bd8c88','a97a73']);
- const stoneColors=new Set(['b2a388','a99d82','b0a58c']);
+ const cache=new Map(),clay=new Set(['916a58','bf8f89','c4958f','c89b94','bd8c88','a97a73']);
+ const palette={'916a58':'bc8773','bf8f89':'f0b7bd','c4958f':'edb4bd','c89b94':'f4c5ca','bd8c88':'e9a9b5','a97a73':'d7919d','d6c3a6':'fff0ce','c3ac90':'ead5ac','baa58b':'e3c797','a88c66':'d4b17c','805b3f':'b3895c','ad8a62':'d6b782','a3825c':'cba571','a7825c':'d3ad78','b18d66':'dec18c','97764f':'c49c64'};
  root.traverse(o=>{
-  if(!o.isMesh||o.userData.windowGlow||o.userData.glassPane)return;
-  const source=o.material,color=source.color?.getHexString();if(!color)return;
-  const round=o.geometry.type==='SphereGeometry',paintedWall=color==='d6c3a6'&&!round&&o.geometry.type==='ExtrudeGeometry';
-  const kind=clayColors.has(color)?'clay':stoneColors.has(color)?'stone':!round&&(woodColors.has(color)||paintedWall)?'wood':color==='b58c4f'?'brass':'plain';
-  if(!source.isMeshToonMaterial&&kind==='plain')return;
-  const key=`${color}:${kind}:${source.side}`;
-  if(!cache.has(key)){
-   const m=new T.MeshStandardMaterial({color:source.color,side:source.side,roughness:kind==='brass'?.37:kind==='wood'?.82:kind==='clay'?.94:.88,metalness:kind==='brass'?.62:0});
-   m.name=`treehouse-${kind}-${color}`;
-   if(kind==='wood'||kind==='clay'||kind==='stone'){
-    m.map=kind==='wood'?timber:mineral;m.bumpMap=m.map;m.bumpScale=kind==='wood'?.009:kind==='clay'?.012:.022;
-    if(kind==='wood')m.color.offsetHSL(0,-.025,paintedWall?.025:.055);
-   }
-   cache.set(key,m);
-  }
+  if(!o.isMesh||o.userData.windowGlow||o.userData.glassPane||!o.material.color)return;
+  const source=o.material,color=source.color.getHexString(),key=color+':'+source.side;
+  if(!cache.has(key)){const tint=new T.Color(palette[color]?'#'+palette[color]:source.color);const m=new T.MeshLambertMaterial({color:tint,side:source.side});m.name='treehouse-'+(clay.has(color)?'clay':'plain')+'-'+color;cache.set(key,m);}
   o.material=cache.get(key);
-  if(!o.material.map)return;
-  // Give every face real-scale UVs before batching, including roof faces clipped at valleys.
-  const geo=o.geometry,p=geo.attributes.position,n=geo.attributes.normal;geo.computeBoundingBox();
-  const bounds=geo.boundingBox.getSize(new T.Vector3()).toArray(),uv=[];
-  for(let i=0;i<p.count;i++){
-   const point=[p.getX(i),p.getY(i),p.getZ(i)],normal=[Math.abs(n.getX(i)),Math.abs(n.getY(i)),Math.abs(n.getZ(i))];
-   const omit=normal.indexOf(Math.max(...normal)),axes=[0,1,2].filter(a=>a!==omit);
-   const along=bounds[axes[0]]>=bounds[axes[1]]?axes[0]:axes[1],across=axes.find(a=>a!==along);
-   uv.push(point[across]*(kind==='wood'?2.4:3.2),point[along]*(kind==='wood'?.55:3.2));
-  }
-  geo.setAttribute('uv',new T.Float32BufferAttribute(uv,2));
  });
 }
 function bakeLanternSpill(root){
@@ -441,9 +410,9 @@ function bakeLanternSpill(root){
 }
 function batch(root){
  root.updateMatrixWorld(true);const inverse=new T.Matrix4().copy(root.matrixWorld).invert(),pools=new Map(),remove=[];
- root.traverse(o=>{if(!o.isMesh)return;const geo=o.geometry.clone().applyMatrix4(new T.Matrix4().multiplyMatrices(inverse,o.matrixWorld));const key=o.material.uuid+Boolean(o.userData.windowGlow);if(!pools.has(key))pools.set(key,{m:o.material,glow:Boolean(o.userData.windowGlow),glass:Boolean(o.userData.glassPane),geos:[]});pools.get(key).geos.push(geo);remove.push(o);});
+ root.traverse(o=>{if(!o.isMesh)return;const geo=o.geometry.clone().applyMatrix4(new T.Matrix4().multiplyMatrices(inverse,o.matrixWorld));const interior=Boolean(o.userData.interior),key=o.material.uuid+Boolean(o.userData.windowGlow)+interior;if(!pools.has(key))pools.set(key,{m:o.material,glow:Boolean(o.userData.windowGlow),glass:Boolean(o.userData.glassPane),interior,geos:[]});pools.get(key).geos.push(geo);remove.push(o);});
  for(const o of remove){o.removeFromParent();o.geometry.dispose();}
- for(const {m,glow,glass,geos} of pools.values()){const parts=geos.map(g=>{const n=g.index?g.toNonIndexed():g;if(n!==g)g.dispose();if(!m.map&&!m.emissiveMap)n.deleteAttribute('uv');return n;});const geo=mergeGeometries(parts);parts.forEach(g=>g.dispose());const o=mesh(root,geo,m);o.userData.windowGlow=glow;o.userData.glassPane=glass;o.castShadow=!glow&&!glass;o.receiveShadow=!glow;}
+ for(const {m,glow,glass,interior,geos} of pools.values()){const parts=geos.map(g=>{const n=g.index?g.toNonIndexed():g;if(n!==g)g.dispose();if(!m.map&&!m.emissiveMap)n.deleteAttribute('uv');return n;});const geo=mergeGeometries(parts);parts.forEach(g=>g.dispose());const o=mesh(root,geo,m);o.userData.windowGlow=glow;o.userData.glassPane=glass;o.userData.interior=interior;o.castShadow=!glow&&!glass&&!interior;o.receiveShadow=!glow&&!interior;}
 }
 export function createRoseTreehouse(parent){
  const h=group(parent,'rose-treehouse');
@@ -494,7 +463,7 @@ export function createRoseTreehouse(parent){
  // The windows open into two real rooms; nothing is attached to the glass as a glowing backdrop.
  box(h,roomFloor,[0,1.81,0],[3.42,.06,2.22]);
  box(h,roomFloor,[0,3.43,0],[3.65,.07,2.22]);
- furnishInterior(h);
+ const interior=group(h,'simple-interior');furnishInterior(interior);interior.traverse(o=>{o.userData.interior=true;});
  for(let i=0;i<9;i++){
   const y=1.95+i*.19,exclusions=[];if(y<3.17)exclusions.push([-1.73,-.99]);if(y>2.12&&y<3.06)exclusions.push([-.69,1.55]);
   let start=-1.79;for(const [a,b] of [...exclusions,[1.79,1.79]]){if(a>start)box(h,'#c3ac90',[(start+a)/2,y,1.141],[a-start,.015,.018]);start=b;}
@@ -559,8 +528,6 @@ export function createRoseTreehouse(parent){
  for(const [x,y,z,angle] of [[.30,.76,.53,.35],[-.28,1.25,.38,-.5]]){const knot=mesh(h,new T.TorusGeometry(.085,.012,5,20),'#60432f',[x,y,z],[.72,1.5,1]);knot.rotation.z=angle;}
  for(let i=0;i<3;i++){const stone=mesh(h,new T.CylinderGeometry(.30,.32,.09,7),'#b0a58c',[-.43+i*.27,.055,3.28-i*.05],[1,1,.75]);stone.rotation.y=i*.6;}
  for(const [x,y,z] of [[1.87,.55,1.72],[.69,.60,1.63],[-.25,2.17,1.56]])blossom(h,[x,y,z],.20,'#eae0ce',[-.15,0,.2]);
- const butterfly=group(h,'butterfly',[2.05,2.03,1.5]);butterfly.rotation.z=-.3;
- for(const sign of [-1,1]){const wing=ball(butterfly,'#a7b7b3',[sign*.13,.11,0],[.15,.24,.025]);wing.rotation.z=-sign*.4;const lower=ball(butterfly,'#c2c6bb',[sign*.1,-.12,0],[.11,.14,.025]);lower.rotation.z=sign*.4;}box(butterfly,C.wood,[0,0,.02],[.027,.32,.027]);
  houseTrinkets(h);
- h.userData.houseKind='rose_treehouse';h.userData.appearanceOnly=true;finishSurfaces(h);bakeLanternSpill(h);batch(h);h.traverse(o=>{if(o.isMesh&&o.material?.name?.startsWith('treehouse-clay-'))snowSurface(o,.075);});return h;
+ h.userData.houseKind='rose_treehouse';h.userData.appearanceOnly=true;finishSurfaces(h);bakeLanternSpill(h);batch(h);h.traverse(o=>{if(o.isMesh&&o.material?.name==='treehouse-clay-916a58')snowSurface(o,.14);});return h;
 }
