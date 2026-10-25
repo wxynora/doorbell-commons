@@ -117,6 +117,7 @@ export function setHouseNight(house, night) {
   house.traverse(o => {
     if (o.userData.windowGlow) { o.material.color.set(night ? '#efce90' : '#a9c7bd'); o.material.emissive.set(night ? '#f5bd69' : '#000000'); o.material.emissiveIntensity = night ? .65 : 0; }
     if (o.userData.mushroomGlow) {o.material.emissive.set(night?'#ffc77b':'#000000');o.material.emissiveIntensity=night?.85:0;}
+    if (o.material?.userData.witchNightGlow) o.material.emissiveIntensity = night ? o.material.userData.nightEmissiveIntensity : 0;
   });
 }
 export function finish(house, kind) {

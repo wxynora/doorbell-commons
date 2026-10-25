@@ -53,6 +53,7 @@ export const farmCatalogShopItemSchema = z
     name: z.string().min(1).nullable(),
     rarity: farmCatalogRaritySchema.nullable(),
     price: z.number().int().nonnegative().nullable(),
+    sale_description: z.string().optional(),
     currency: farmCatalogCurrencySchema.nullable(),
     quantity: z.number().int().nonnegative().nullable(),
     available_quantity: z.number().int().nonnegative().nullable(),

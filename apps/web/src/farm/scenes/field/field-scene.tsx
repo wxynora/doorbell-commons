@@ -161,7 +161,7 @@ export function FieldScene({
   useEffect(()=>{if(edit.editing){setHouseMenu(false);}else{setCanopyEditor(false);setBoundaryEditor(false);}},[edit.editing]);
   const classicLevel=decorationData?.house?.classic_level??Math.min(houseLevel,3);
   const houseStyle=decorationData?.layout.house?.style??"classic";
-  const fairyProducts=(decorationData?.catalog??[]).filter(item=>["house_pumpkin","house_stump","house_mushroom","house_rose_cottage"].includes(item.model_id));
+  const fairyProducts=(decorationData?.catalog??[]).filter(item=>["house_pumpkin","house_stump","house_mushroom","house_rose_cottage","house_witch_pumpkin"].includes(item.model_id));
   const upgradeId=classicLevel===1?"farm_decor:house_level_two":"farm_decor:house_level_three";
   const upgrade=decorationData?.catalog.find(item=>item.item_id===upgradeId);
   const canopyProduct=decorationData?.catalog.find(item=>item.item_id==="farm_decor:floral_canopy");
@@ -242,7 +242,7 @@ export function FieldScene({
           {decorationData.house?.unlocked_styles?.filter(style=>style!=="classic").length ? <button type="button" disabled={!onSaveLayout} onClick={()=>runtime.current?.changeHouseStyle("classic")}>换回普通房屋 · 免费</button> : null}
           {fairyProducts.map(item=>{
             const style=item.model_id.slice("house_".length),owned=decorationData.house?.unlocked_styles?.includes(style);
-            return owned?<button key={item.item_id} type="button" disabled={houseStyle===style||!onSaveLayout} onClick={()=>runtime.current?.changeHouseStyle(style)}>{houseStyle===style?"正在使用":"换成"}{item.name} · 免费</button>:<button key={item.item_id} type="button" disabled={classicLevel<3||!onRequestHousePurchase||purchaseBusy} onClick={()=>requestHouse(item.item_id)}>喊 TA 买{item.name} · {item.price_farm_coins.toLocaleString()}金币{classicLevel<3?"（需三级）":""}</button>;
+            return <div key={item.item_id}>{owned?<button type="button" disabled={houseStyle===style||!onSaveLayout} onClick={()=>runtime.current?.changeHouseStyle(style)}>{houseStyle===style?"正在使用":"换成"}{item.name} · 免费</button>:<button type="button" disabled={classicLevel<3||!onRequestHousePurchase||purchaseBusy} onClick={()=>requestHouse(item.item_id)}>喊 TA 买{item.name} · {item.price_farm_coins.toLocaleString()}金币{classicLevel<3?"（需三级）":""}</button>}{!owned&&item.sale_description?<small>{item.sale_description}</small>:null}</div>;
           })}
         </div>
         {requestedHouseItem ? <p role="status">{purchaseBusy?"正在发送购买请求…":housePurchaseFeedback?.stage==="success"?"已喊 TA 来买，实际购买后房屋才会更新。":housePurchaseFeedback?.message??""}</p> : null}

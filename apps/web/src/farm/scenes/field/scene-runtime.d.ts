@@ -41,7 +41,7 @@ export function createFieldRuntime(host: HTMLElement, options: {
   active?: boolean;
   plots: readonly FarmPlot[];
   houseLevel?: 1 | 2 | 3 | 4;
-  houseStyle?: "classic"|"pumpkin"|"stump"|"mushroom"|"rose_cottage";
+  houseStyle?: "classic"|"pumpkin"|"stump"|"mushroom"|"rose_cottage"|"witch_pumpkin";
   classicHouseLevel?: 1|2|3;
   onSelectHouse?(): void;
   environment: SceneEnvironment;

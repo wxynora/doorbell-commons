@@ -7,7 +7,7 @@ export interface SceneDecorationLayout {
   watering_can?: SceneDecorationPose | undefined;
   trees?: [{x:number;z:number},{x:number;z:number}] | undefined;
   field?: { x: number; z: number; columns: number; rows?: number | undefined; groups?:SceneFieldGroup[]|undefined } | undefined;
-  house?: { x: number; z: number; style?: "classic"|"pumpkin"|"stump"|"mushroom"|"rose_cottage" | undefined } | undefined;
+  house?: { x: number; z: number; style?: "classic"|"pumpkin"|"stump"|"mushroom"|"rose_cottage"|"witch_pumpkin" | undefined } | undefined;
   roof: string;
   canopy: "plain" | "floral";
   stall: SceneDecorationPose;
@@ -16,8 +16,8 @@ export interface SceneDecorationLayout {
 }
 export interface SceneDecorationData {
   saved_layouts?: readonly {slot:1|2|3;name?:string|undefined;decoration_count:number}[] | undefined;
-  house?: {level: 1 | 2 | 3 | 4; classic_level?: 1|2|3|undefined; style?: "classic"|"pumpkin"|"stump"|"mushroom"|"rose_cottage"|undefined; unlocked_styles?: readonly string[]|undefined; canopy_unlocked: boolean; blocked_rects: readonly (readonly number[])[]};
-  catalog: readonly { item_id: string; model_id: string; name: string; cells: readonly number[]; layer: string; purchase_mode: string; price_farm_coins: number }[];
+  house?: {level: 1 | 2 | 3 | 4; classic_level?: 1|2|3|undefined; style?: "classic"|"pumpkin"|"stump"|"mushroom"|"rose_cottage"|"witch_pumpkin"|undefined; unlocked_styles?: readonly string[]|undefined; canopy_unlocked: boolean; blocked_rects: readonly (readonly number[])[]};
+  catalog: readonly { item_id: string; model_id: string; name: string; cells: readonly number[]; layer: string; purchase_mode: string; price_farm_coins: number; sale_description?: string|undefined }[];
   inventory: readonly { item_id: string; owned_quantity: number; placed_quantity: number; available_quantity: number | null; unlocked: boolean }[];
   layout: SceneDecorationLayout;
   grid: { cell_size: number; z_origin: number; land_cells: readonly (readonly number[])[]; river_cells: readonly (readonly number[])[] };

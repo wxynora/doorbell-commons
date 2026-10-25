@@ -44,6 +44,7 @@ export interface FarmShopPreviewItem {
   iconKey?: FarmAssetKey | undefined;
   name: string;
   note: string;
+  owned?: boolean | undefined;
   price?: number;
   availableQuantity?: number | null | undefined;
 }
@@ -338,11 +339,13 @@ export function getLiveFarmShopItems(
         iconKey: getFarmShopIconKey(item.kind, item.item_id),
         name: item.name,
         note:
-          item.condition === "already_owned"
+          item.sale_description ??
+          (item.condition === "already_owned"
             ? "已拥有"
             : availableQuantity === null
               ? "常备"
-              : `剩余 ${availableQuantity}`,
+              : `剩余 ${availableQuantity}`),
+        owned: item.condition === "already_owned",
         price: item.price,
         availableQuantity,
       },
@@ -540,7 +543,7 @@ export function getShopCartItemDefinition(
       : Object.values(FARM_FIELD_SHOP_PREVIEW_ITEMS)
           .flat()
           .find((candidate) => candidate.id === itemId);
-    if (!item || item.price === undefined || item.note === "已拥有") {
+    if (!item || item.price === undefined || item.owned === true) {
       return null;
     }
     return {

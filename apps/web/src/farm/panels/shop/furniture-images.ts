@@ -2,6 +2,7 @@ import missingImage0 from "../../assets/furniture/house_level_two.webp";
 import pumpkinHouseImage from "../../assets/furniture/house_pumpkin.webp";
 import stumpHouseImage from "../../assets/furniture/house_stump.webp";
 import mushroomHouseImage from "../../assets/furniture/house_mushroom.webp";
+import witchPumpkinHouseImage from "../../assets/furniture/house_witch_pumpkin.png";
 import missingImage1 from "../../assets/furniture/house_level_three.webp";
 import missingImage2 from "../../assets/furniture/floral_canopy.webp";
 import missingImage3 from "../../assets/furniture/paving_sandstone.webp";
@@ -40,6 +41,7 @@ export const furnitureProductImages: Readonly<Record<string, string>> = {
   "farm_decor:house_pumpkin": pumpkinHouseImage,
   "farm_decor:house_stump": stumpHouseImage,
   "farm_decor:house_mushroom": mushroomHouseImage,
+  "farm_decor:house_witch_pumpkin": witchPumpkinHouseImage,
   "farm_decor:flowerbed": image0,
   "farm_decor:flowerbed_hydrangea": image1,
   "farm_decor:flowerbed_sunflower": image2,
