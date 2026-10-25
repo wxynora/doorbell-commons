@@ -1,7 +1,7 @@
 import * as T from 'three';
 
 const snow = new T.MeshToonMaterial({color:'#edf3ed'});
-export function snowSurface(surface, thickness = .11) {
+export function snowSurface(surface, thickness = .11, minUpNormal = .35) {
   const cover = new T.Group(); cover.name = 'winter-snow-cover'; cover.userData.seasonOnly = 'winter'; cover.visible = false; surface.add(cover);
   const geometry = surface.geometry, pos = geometry.attributes.position, norm = geometry.attributes.normal, index = geometry.index;
   const points = [], triangles = [], edgeCounts = new Map();
@@ -10,7 +10,7 @@ export function snowSurface(surface, thickness = .11) {
   const key = i => [pos.getX(i),pos.getY(i),pos.getZ(i)].map(v=>v.toFixed(5)).join(',');
   for (let i = 0; i < count; i += 3) {
     const ids = [read(i),read(i+1),read(i+2)];
-    if (ids.reduce((n,id)=>n+norm.getY(id),0)/3 < .35) continue;
+    if (ids.reduce((n,id)=>n+norm.getY(id),0)/3 < minUpNormal) continue;
     const start = points.length / 3;
     for (const id of ids) points.push(pos.getX(id) + norm.getX(id)*thickness*.35,pos.getY(id)+thickness,pos.getZ(id)+norm.getZ(id)*thickness*.35);
     triangles.push(start,start+1,start+2);

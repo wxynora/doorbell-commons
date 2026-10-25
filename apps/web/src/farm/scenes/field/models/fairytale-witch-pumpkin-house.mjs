@@ -156,7 +156,14 @@ export function createWitchPumpkinHouse(parent) {
   const body=pumpkinBody(house,[0,1.76,0],[1.65,1.63,1.42],'ribbed-pumpkin-house-body');
   body.userData.windowWall=true;snowSurface(body,.09);
   const roof=group(house,'witch-hat-roof',[0,-.30,0]);
-  const hat=mesh(roof,hatGeometry(),'#493958');hat.name='closed-hat-skin';snowSurface(hat,.08);
+  const hat=mesh(roof,hatGeometry(),'#493958');hat.name='closed-hat-skin';
+  // The inner lining faces inward; snow must use outward normals above the shingles.
+  const snowGeometry=hat.geometry.clone(),snowIndex=snowGeometry.index;
+  for(let i=0;i<snowIndex.count;i+=3){const b=snowIndex.getX(i+1);snowIndex.setX(i+1,snowIndex.getX(i+2));snowIndex.setX(i+2,b);}
+  snowGeometry.computeVertexNormals();
+  const snowSource=new T.Mesh(snowGeometry);
+  hat.add(snowSurface(snowSource,.22,.02));
+  snowGeometry.dispose();
   const slates=group(roof,'layered-purple-slates');
   for(let row=0;row<30;row++){
     const t0=row/31,t1=Math.min(.986,t0+.044),count=Math.max(5,Math.ceil(radiusAt(t0)*Math.PI*2/.37));
