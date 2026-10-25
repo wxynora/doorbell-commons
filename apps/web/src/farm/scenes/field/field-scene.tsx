@@ -161,7 +161,7 @@ export function FieldScene({
   useEffect(()=>{if(edit.editing){setHouseMenu(false);}else{setCanopyEditor(false);setBoundaryEditor(false);}},[edit.editing]);
   const classicLevel=decorationData?.house?.classic_level??Math.min(houseLevel,3);
   const houseStyle=decorationData?.layout.house?.style??"classic";
-  const fairyProducts=(decorationData?.catalog??[]).filter(item=>["house_pumpkin","house_stump","house_mushroom"].includes(item.model_id));
+  const fairyProducts=(decorationData?.catalog??[]).filter(item=>["house_pumpkin","house_stump","house_mushroom","house_rose_cottage"].includes(item.model_id));
   const upgradeId=classicLevel===1?"farm_decor:house_level_two":"farm_decor:house_level_three";
   const upgrade=decorationData?.catalog.find(item=>item.item_id===upgradeId);
   const canopyProduct=decorationData?.catalog.find(item=>item.item_id==="farm_decor:floral_canopy");

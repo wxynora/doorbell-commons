@@ -29,7 +29,7 @@ import image17 from "../../assets/furniture/floral_arch.webp";
 import image18 from "../../assets/furniture/garden_mailbox.webp";
 
 const farmFurnitureImages: Readonly<Record<string, string>> = Object.fromEntries([
-  "white_fence", "timber_fence", "stone_wall", "hedge", "ghost_fence", "lavender", "daisies", "ferns", "ornamental_grass",
+  "white_fence", "timber_fence", "stone_wall", "hedge", "ghost_fence", "lavender", "daisies", "ferns", "ornamental_grass", "house_rose_cottage",
   "log_steps", "moss_path", "checker_tiles", "garden_bench", "stone_fountain", "bird_bath", "flower_stand", "pumpkin_path",
   "black_roses", "red_roses", "web_tiles", "witch_cauldron", "cat_pumpkin", "ghost_lamp", "pumpkin_lamppost", "ghost_rocker",
   "bat_arch", "candy_cart", "haunted_lantern", "cherry_tree", "maple_tree", "ginkgo_tree", "birch_tree", "pine_tree", "osmanthus_tree",

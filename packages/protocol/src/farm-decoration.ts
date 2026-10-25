@@ -10,7 +10,7 @@ export const farmDecorationLayoutSchema = z.object({
   watering_can: z.object(point).strict().optional(),
   trees: z.tuple([z.object({x:z.number(),z:z.number()}).strict(),z.object({x:z.number(),z:z.number()}).strict()]).optional(),
   field: z.object({ x: z.number(), z: z.number(), columns: z.number().int().positive(), rows: z.number().int().positive().optional(), groups:z.array(fieldGroup).min(1).optional() }).strict().optional(),
-  house: z.object({ x: z.number(), z: z.number(), style: z.enum(["classic","pumpkin","stump","mushroom"]).optional() }).strict().optional(),
+  house: z.object({ x: z.number(), z: z.number(), style: z.enum(["classic","pumpkin","stump","mushroom","rose_cottage"]).optional() }).strict().optional(),
   roof: z.string(),
   canopy: z.enum(["plain", "floral"]),
   stall: z.object(point).strict(),
@@ -19,7 +19,7 @@ export const farmDecorationLayoutSchema = z.object({
 }).strict();
 export const farmDecorationsDataSchema = z.object({
   saved_layouts: z.array(z.object({slot:layoutSlot,name:z.string().optional(),decoration_count:z.number().int().nonnegative()}).strict()).max(3).refine(slots=>new Set(slots.map(s=>s.slot)).size===slots.length).optional(),
-  house: z.object({ level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), classic_level: z.union([z.literal(1),z.literal(2),z.literal(3)]).optional(), style: z.enum(["classic","pumpkin","stump","mushroom"]).optional(), unlocked_styles: z.array(z.enum(["classic","pumpkin","stump","mushroom"])).optional(), canopy_unlocked: z.boolean(), blocked_rects: z.array(z.tuple([z.number(), z.number(), z.number(), z.number()])) }).strict(),
+  house: z.object({ level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), classic_level: z.union([z.literal(1),z.literal(2),z.literal(3)]).optional(), style: z.enum(["classic","pumpkin","stump","mushroom","rose_cottage"]).optional(), unlocked_styles: z.array(z.enum(["classic","pumpkin","stump","mushroom","rose_cottage"])).optional(), canopy_unlocked: z.boolean(), blocked_rects: z.array(z.tuple([z.number(), z.number(), z.number(), z.number()])) }).strict(),
   catalog: z.array(z.object({
     item_id: itemId, model_id: z.string(), name: z.string(),
     cells: z.tuple([z.number().int().positive(), z.number().int().positive()]),

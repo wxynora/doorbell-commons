@@ -2,9 +2,10 @@ import * as T from 'three';
 import {createPumpkinHouse} from './fairytale-pumpkin-house.mjs';
 import {createStumpHouse} from './fairytale-stump-house.mjs';
 import {createMushroomHouse} from './fairytale-mushroom-house.mjs';
+import {createRoseTreehouse} from './rose-treehouse.mjs';
 export function createFairytaleHouse(parent,style){
   const house=new T.Group();parent.add(house);
-  const build={pumpkin:createPumpkinHouse,stump:createStumpHouse,mushroom:createMushroomHouse}[style];
+  const build={pumpkin:createPumpkinHouse,stump:createStumpHouse,mushroom:createMushroomHouse,rose_cottage:createRoseTreehouse}[style];
   if(!build)throw Error('Unknown house style');
   build(house);house.userData.houseKind=style;
   // Keep existing lighting handles without adding shadow/light passes to the approved emissive-only model.
