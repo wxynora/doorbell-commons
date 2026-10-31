@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { ranchCollect } from "../engine.js";
 import { playerFarms, replaceFarm } from "../store.js";
 import { projectHumanRanch } from "./ranch-structured.js";
+import { halloweenHumanOperationBlock } from "../halloween/action-effects.mjs";
 import {
   createMinimalHumanActionReceipt,
   replayMinimalHumanActionReceipt,
@@ -79,9 +80,11 @@ function fingerprint(body) {
     .digest("hex");
 }
 
-function errorResponse(code, message, currentRevision) {
+function errorResponse(code, message, currentRevision, details) {
   const error = { code, message };
   if (currentRevision) error.current_revision = currentRevision;
+  if (details?.operation) error.operation = details.operation;
+  if (Number.isSafeInteger(details?.expires_at)) error.expires_at = details.expires_at;
   return { status: 409, json: { error } };
 }
 
@@ -282,6 +285,15 @@ export function handleHumanRanchCollection(farm, body, now = Date.now()) {
     return errorResponse("state_conflict", "The ranch has changed", current.revision);
   }
 
+  const pendingCount = (current.data.collectable.total_pending_count ?? 0) +
+    (current.data.collectable.total_pending_meat_count ?? 0);
+  if (current.data.collectable.status === "available" && pendingCount > 0) {
+    const blocked = halloweenHumanOperationBlock({ farmId: farm.id, operation: "ranch_collect", now });
+    if (blocked)
+      return errorResponse(blocked.code, "万圣节糖果效果生效中，暂时不能收取牧场产物。",
+        current.revision, blocked);
+  }
+
   try {
     const working = structuredClone(farm);
     const beforeProductIds = new Set(
@@ -291,6 +303,9 @@ export function handleHumanRanchCollection(farm, body, now = Date.now()) {
     );
     const authorityResult = ranchCollect(working, farmsForCollection(farm, working), now);
     if (!authorityResult?.ok) {
+      if (authorityResult?.code === "human_effect_blocked")
+        return errorResponse(authorityResult.code, authorityResult.error || "The ranch collection was rejected",
+          current.revision, authorityResult);
       const code = current.data.collectable.status === "available" &&
         (current.data.collectable.total_pending_count ?? 0) +
           (current.data.collectable.total_pending_meat_count ?? 0) === 0

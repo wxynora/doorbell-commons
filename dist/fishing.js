@@ -10,6 +10,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { glimmerBuffMultiplier } from "./glimmer.js";
 import { qixi2026FishText, submitQixi2026Fish } from "./qixi-2026.js";
 import { submitMidAutumnSeedFish, midAutumnSeedCompletionText } from './mid-autumn-seeds.js';
+import { halloweenFishingJunkProbability } from "./halloween/action-effects.mjs";
 import {
     beginFishingEncounter, answerFishingEncounter, fishingEncounterStatus, fishingEncounterOptionsText,
     LOST_ROD_BLOCKED,
@@ -417,7 +418,10 @@ function castStep(farm, state, rng, bait, now) {
     if (rng.next() < fishing.eventChance)
         return { consumed: true, ...resolveFishingEvent(farm, state, rng, now) };
     const junkChance = fishing.junkChance * (bait.effects?.junk_chance_mult ?? 1) * glimmerBuffMultiplier("fishingJunk", now);
-    if (rng.next() < junkChance) {
+    const adjustedJunkChance = halloweenFishingJunkProbability({
+        farmId: farm.id, castIndex: state.stats.totalCasts, now, baseProbability: junkChance,
+    });
+    if (rng.next() < adjustedJunkChance) {
         const junk = fishing.junk[rng.int(0, fishing.junk.length - 1)];
         return { consumed: true, kind: "junk", text: `🪣 钓上来${junk}。空军一竿。` };
     }

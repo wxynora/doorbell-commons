@@ -7,6 +7,7 @@ import { handleHumanKitchenCookAction } from "../kitchen-cook-action.js";
 import { handleHumanKitchenInventoryAction } from "../kitchen-inventory-action.js";
 import { handleHumanKitchenShopRefresh } from "../kitchen-shop-refresh-action.js";
 import { handleHumanKitchenShopOpen } from "../kitchen-shop-open-action.js";
+import { withHalloweenFarmAction } from "../../halloween/action-effects.mjs";
 import {
     FARM_DOORPLATE_RE,
     humanFieldError,
@@ -87,7 +88,7 @@ export async function handleDoorbellHumanKitchenPurchase(req, res, method, caree
     }
 }
 
-export async function handleDoorbellHumanKitchenCook(req, res, method, careerBenefitsForFarm) {
+export async function handleDoorbellHumanKitchenCook(req, res, method, careerBenefitsForFarm, halloweenService) {
     if (!requireDoorbellHumanFieldService(req, res, method))
         return;
     try {
@@ -97,7 +98,12 @@ export async function handleDoorbellHumanKitchenCook(req, res, method, careerBen
         const binding = validateFarmBinding(body);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
-        const out = handleHumanKitchenCookAction(binding.farm, body, Date.now(), careerBenefitsForFarm?.(binding.farm));
+        const now = Date.now();
+        const perform = () => handleHumanKitchenCookAction(binding.farm, body, now, careerBenefitsForFarm?.(binding.farm));
+        const out = halloweenService && typeof body.idempotency_key === "string" && body.idempotency_key.trim()
+            ? withHalloweenFarmAction(halloweenService, { actorFarmId: binding.farm.id, side: "human",
+                operationId: body.idempotency_key, now }, perform)
+            : perform();
         return jsonOut(res, out.status, out.json);
     }
     catch (error) {

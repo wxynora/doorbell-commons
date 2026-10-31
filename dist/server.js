@@ -68,9 +68,13 @@ import { configureTogetherSeason3Authority, isTogetherSeason3, runStoredTogether
     storedTogetherSeason3Notices } from "./together-season3/service.js";
 import { TOGETHER_STORY_ENV, readTogetherSeason3StartupSelection, applyTogetherSeason3StartupSelection } from "./together-season3/activation.js";
 import { buyAndPersistLingyeNpcSeed, recordPendingLingyeNpcFarmBusiness } from "./npc/farm-business.js";
+import { createHalloweenFarmIntegration } from "./halloween/integration.mjs";
+import { isHalloweenMutationOption, isHalloweenOption } from "./halloween/together-activity.mjs";
+import { withHalloweenFarmAction, currentHalloweenFarmAction } from "./halloween/action-effects.mjs";
 let activeLingyeWorldDatabase = null;
 let activeLingyeWorldBackend = null;
 let activeMysteryMerchantRuntime = null;
+let activeHalloweenFarmRuntime = null;
 configureTogetherSeason3Authority({getDatabase:()=>activeLingyeWorldDatabase,getBackend:()=>activeLingyeWorldBackend});
 function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     const detention = activeDetentionForFarm(farm, now);
@@ -78,6 +82,9 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
         return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: detentionBlockedFarmActionText(detention) } };
     if (action === 'decorate') return handleFarmDecorationAction(farm, params);
     if (isNpcMotionChoice(action, params)) return npcMotionChoiceReceipt(farm, params.option, now, {save, view: farmView, detail});
+    if (action === "together" && isHalloweenOption(params.option)) {
+        return activeHalloweenFarmRuntime.activity.execute({ farmId: farm.id, option: params.option, now });
+    }
     if (action === 'together' && isMidAutumnOption(params.option)) {
         return runMidAutumnTogether(activeLingyeWorldDatabase, farm.id, params.option, now, null, (database, options) => createMidAutumnRuntime(database, {...options, backend: activeLingyeWorldBackend}));
     }
@@ -117,7 +124,29 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     const injected = social
         ? { ...body, by: farm.id, token: farm.token, targetRef: String(resolved.number) }
         : { ...body, ...(mysteryMerchantBuy ? { by: farm.id } : {}), token: farm.token };
-    const result = runFarm(target, action, injected, social ? farm.id : body.id, now, { detail, careerBenefits });
+    const suppressTogetherNotices = ["bag", "status", "visit"].includes(action) &&
+        activeHalloweenFarmRuntime?.service.phase(now) === "open";
+    const result = runFarm(target, action, injected, social ? farm.id : body.id, now,
+        { detail, careerBenefits, suppressTogetherNotices });
+    if ((action === "bag" || action === "status") && result.status === 200 &&
+        result.json?.ok === true && typeof result.json.text === "string") {
+        const entries = action === "bag"
+            ? [activeHalloweenFarmRuntime?.activity.bagEntry({ farmId: farm.id, now })]
+            : [
+                activeHalloweenFarmRuntime?.activity.statusEntry({ farmId: farm.id, now }),
+                activeHalloweenFarmRuntime?.activity.receivedEntry({ farmId: farm.id, now }),
+            ];
+        const entry = entries.filter(Boolean).join("\n\n");
+        if (entry) result.json.text = `${result.json.text}\n\n${entry}`;
+    }
+    if (action === "visit" && resolved && resolved.farm.id !== farm.id &&
+        result.status === 200 && result.json?.ok === true && typeof result.json.text === "string") {
+        const doorstepEntry = activeHalloweenFarmRuntime?.activity.visitEntry({
+            farmId: farm.id, targetDoorplate: resolved.farm.id, now,
+        });
+        if (doorstepEntry)
+            result.json.text = `${result.json.text}\n\n${doorstepEntry}`;
+    }
     if (action === 'together' && body.option === undefined && result.json?.ok === true) {
         const entry = midAutumnEntryText(now, farm);
         if (entry) result.json.text = `${result.json.text}\n\n${entry}`;
@@ -130,17 +159,30 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     return result;
 }
 function executeDoorbellFarmAction(farm, action, params, detail, now, sourceOp) {
-    try {
-        return withWorldCommitContext({ balanceAuthority: "farm", actor: "agent" }, () => {
-            const out = executeDoorbellFarmActionCore(farm, action, params, detail, now);
-            return appendNpcMotionReceipt(farm, out, isNpcMotionChoice(action, params) ? undefined : sourceOp, now,
-                { motions: glimmerContentEditor.motions, save, restore: restoreCommittedWorldInMemory, getFarm, view: farmView, context:{args:params,residentId:farm.doorbellMcpMigration?.residentId ?? farm.id} });
-        });
-    }
-    catch (error) {
-        restoreCommittedWorldInMemory();
-        throw error;
-    }
+    const halloweenActivityChoice = action === "together" && isHalloweenOption(params.option);
+    const halloweenActivityView = action === "together" &&
+        params.option === undefined && params.view !== "history" &&
+        activeHalloweenFarmRuntime?.service.phase(now) === "open";
+    const halloweenActivityRequest = halloweenActivityChoice || halloweenActivityView;
+    const execute = () => {
+        try {
+            return withWorldCommitContext({ balanceAuthority: "farm", actor: "agent" }, () => {
+                const out = halloweenActivityView
+                    ? activeHalloweenFarmRuntime.activity.execute({ farmId: farm.id, option: "万圣节", now })
+                    : executeDoorbellFarmActionCore(farm, action, params, detail, now);
+                return halloweenActivityRequest ? out : appendNpcMotionReceipt(farm, out,
+                    isNpcMotionChoice(action, params) ? undefined : sourceOp, now,
+                    { motions: glimmerContentEditor.motions, save, restore: restoreCommittedWorldInMemory, getFarm, view: farmView, context:{args:params,residentId:farm.doorbellMcpMigration?.residentId ?? farm.id} });
+            });
+        } catch (error) { restoreCommittedWorldInMemory(); throw error; }
+    };
+    if (!activeHalloweenFarmRuntime || currentHalloweenFarmAction()) return execute();
+    const out = withHalloweenFarmAction(activeHalloweenFarmRuntime.service, {
+        actorFarmId: farm.id, side: "ai", operationId: randomUUID(), now,
+    }, execute);
+    if (action === "together" && isHalloweenMutationOption(params.option))
+        activeHalloweenFarmRuntime.scheduleFarm(farm.id);
+    return out;
 }
 function executeLegacyMcpAction(me, action, params, now) {
     const detention = activeDetentionForFarm(me, now);
@@ -672,6 +714,14 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         if (r.ok) {
             try {
                 securityResult = catchNpcCropTheft(f, byId, now);
+            if (securityResult?.violation?.caughtBy === "npc_patrol") {
+                const trail = (f.trail ?? []).find(entry => entry?.kind === "stolen" &&
+                    entry.actorFarmId === byId && entry.t === now && typeof entry.eventId === "string");
+                if (trail) activeHalloweenFarmRuntime?.effectHooks.recordNpcPatrolCapture({
+                    actorFarmId: byId, sourceId: `p3:security:trail:${trail.eventId}`,
+                    occurredAt: trail.t, now, world: { farms: allFarms() },
+                });
+            }
             }
             catch {
                 console.error("[security] one successful crop theft could not be recorded");
@@ -705,6 +755,14 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         let securityResult = null;
         try {
             securityResult = catchNpcCropTheft(f, byId, now);
+            if (securityResult?.violation?.caughtBy === "npc_patrol") {
+                const trail = (f.trail ?? []).find(entry => entry?.kind === "stolen" &&
+                    entry.actorFarmId === byId && entry.t === now && typeof entry.eventId === "string");
+                if (trail) activeHalloweenFarmRuntime?.effectHooks.recordNpcPatrolCapture({
+                    actorFarmId: byId, sourceId: `p3:security:trail:${trail.eventId}`,
+                    occurredAt: trail.t, now, world: { farms: allFarms() },
+                });
+            }
         }
         catch {
             console.error("[security] one successful crop theft could not be recorded");
@@ -863,14 +921,18 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
     const publicFarmBefore = season3 ? null : new Map(publicFarms.map((farm) => [farm.id, JSON.stringify(farm)]));
     const extras = [];
     if (season3) {
-        const notices = storedTogetherSeason3Notices(viewer, now, { includeTasks: !action || action === "status" });
-        if (notices) extras.push(notices);
+        if (!options.suppressTogetherNotices) {
+            const notices = storedTogetherSeason3Notices(viewer, now, { includeTasks: !action || action === "status" });
+            if (notices) extras.push(notices);
+        }
     } else {
         advancePublicExpedition(world, publicFarms, now);
-        const notices = takePublicAiNotices(world, viewer, now);
-        if (notices.length) extras.push(notices.join("\n\n"));
-        if (!action || action === "status")
-            extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now, false)}。下一步：doorbell({"op":"farm.together.view","args":{}})`);
+        if (!options.suppressTogetherNotices) {
+            const notices = takePublicAiNotices(world, viewer, now);
+            if (notices.length) extras.push(notices.join("\n\n"));
+            if (!action || action === "status")
+                extras.push(`🧭 铃野共行：${publicExpeditionStatusLine(world, now, false)}。下一步：doorbell({"op":"farm.together.view","args":{}})`);
+        }
     }
     const qixiAiLampReleased = Boolean(viewer.qixiLantern2026?.lamps?.ai?.releasedAt);
     if (isQixiLantern2026Active(now) && !qixiAiLampReleased && (!action || action === "status")) {
@@ -889,13 +951,18 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
 }
 
 function runFarmWithRollback(farmId, action, body = {}, encArg, now, options = {}) {
-    try {
-        return runFarm(farmId, action, body, encArg, now, options);
-    }
-    catch (error) {
-        restoreCommittedWorldInMemory();
-        throw error;
-    }
+    const execute = () => {
+        try { return runFarm(farmId, action, body, encArg, now, options); }
+        catch (error) { restoreCommittedWorldInMemory(); throw error; }
+    };
+    if (!activeHalloweenFarmRuntime || currentHalloweenFarmAction()) return execute();
+    const isGuardBribe = action === "kitchen" && body?.op === "use" && body?.target === "guard-dog" && !!body?.by;
+    const isByAction = action === "steal" || action === "buy" || action === "message" || isGuardBribe ||
+        (action === "water" && !!body?.by) || (action === "delete-message" && !!body?.by) ||
+        (action === "buy-potion-set" && !!body?.by);
+    return withHalloweenFarmAction(activeHalloweenFarmRuntime.service, {
+        actorFarmId: String(isByAction && body?.by ? body.by : farmId), side: "ai", operationId: randomUUID(), now,
+    }, execute);
 }
 // ——————————— Agent 控制页（HTML，给只能点链接的 AI）———————————
 function resolveAgent(playKey) {
@@ -989,6 +1056,12 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         onReporterPublication: () => rescheduleReporterEvaluation(),
     });
     activeLingyeWorldBackend = lingyeWorldBackend;
+    const halloweenRuntime = createHalloweenFarmIntegration({
+        database: lingyeWorldDatabase,
+        backend: lingyeWorldBackend,
+        onNpcError: detail => console.error("[halloween-npc] delivery recovery pending", detail?.farmId, detail?.day, detail?.code),
+    });
+    activeHalloweenFarmRuntime = halloweenRuntime;
     const gachaRuntime = createDoorbellGachaRuntime({
         database: lingyeWorldDatabase,
         backend: lingyeWorldBackend,
@@ -1002,10 +1075,11 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         },
     });
     const balanceCoordinator = createLingyeFarmBalanceCoordinator(lingyeWorldDatabase, lingyeWorldBackend, {
-        beforeWorldWrite: (input) => {
-            recordPendingLingyeNpcFarmBusiness(lingyeWorldDatabase, input);
-            captureCommittedPlayerPatrolThefts(lingyeWorldDatabase, lingyeWorldBackend, input.world);
+        beforeFarmBalanceProjection: ({ world, now }) => {
+            const capturedPlayerThefts = captureCommittedPlayerPatrolThefts(lingyeWorldDatabase, lingyeWorldBackend, world);
+            halloweenRuntime.effectHooks.beforeFarmBalanceProjection({ world, now, capturedPlayerThefts });
         },
+        beforeWorldWrite: input => recordPendingLingyeNpcFarmBusiness(lingyeWorldDatabase, input),
     });
     setWorldCommitCoordinator((world, ...args) => {
         const result = balanceCoordinator(world, ...args);
@@ -1226,8 +1300,8 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             syncTogetherBalances: () => withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, syncLedgerProjection),
         },
         gachaRuntime,
-    );
-    const stopP3Scheduler = startRegisteredP3Scheduler(lingyeWorldDatabase);
+        halloweenRuntime,
+    );    const stopP3Scheduler = startRegisteredP3Scheduler(lingyeWorldDatabase);
     const stopNatureScheduler = startNatureRuntimeScheduler();
     const stopConstableInterviewScheduler = startConstableInterviewScheduler(lingyeWorldDatabase, lingyeWorldBackend);
     ranchRaidScheduler = startRanchRaidScheduler();
@@ -1272,11 +1346,18 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             if (parts[0] === "ui") {
                 const restoreOnFailure = method === "POST";
                 try {
-                    return await handleLegacyHumanRoute({
+                    const humanFarm = parts[1] ? allFarms().find((entry) => entry.humanKey === parts[1]) : null;
+                    const runHumanRoute = () => handleLegacyHumanRoute({
                         req, res, url, parts, sp, method, now,
                         ensureAgentKey, farmByNumber, farmLabel,
                         careerBenefitsForFarm,
                     });
+                    if (restoreOnFailure && humanFarm && activeHalloweenFarmRuntime && !currentHalloweenFarmAction()) {
+                        return await withHalloweenFarmAction(activeHalloweenFarmRuntime.service, {
+                            actorFarmId: humanFarm.id, side: "human", operationId: randomUUID(), now,
+                        }, runHumanRoute);
+                    }
+                    return await runHumanRoute();
                 }
                 catch (error) {
                     if (restoreOnFailure)
@@ -1456,7 +1537,10 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         }
     });
     setInterval(() => { const t = Date.now(); sweepGuard(t); sweepNonces(t); legacyAgent.sweepFlashes(t); }, 60_000).unref(); // 周期清理限流表 + 过期 nonce/flash
+    halloweenRuntime.startNpcDelivery();
     server.once("close", () => {
+        halloweenRuntime.stopNpcDelivery();
+        if (activeHalloweenFarmRuntime === halloweenRuntime) activeHalloweenFarmRuntime = null;
         stopP3Scheduler();
         stopNatureScheduler();
         stopConstableInterviewScheduler();

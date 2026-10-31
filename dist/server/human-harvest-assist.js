@@ -6,6 +6,7 @@ import { replaceFarm } from "../store.js";
 import { getCrop } from "../content.js";
 import { projectHumanField } from "./human-structured.js";
 import { captureStoredTogetherSeason3Harvest, attachStoredTogetherSeason3Harvest } from "../together-season3/service.js";
+import { withHalloweenFarmAction } from "../halloween/action-effects.mjs";
 import {
   createMinimalHumanActionReceipt,
   replayMinimalHumanActionReceipt,
@@ -45,9 +46,11 @@ function fingerprint(body) {
     .digest("hex");
 }
 
-function errorResponse(code, message, currentRevision) {
+function errorResponse(code, message, currentRevision, details) {
   const error = { code, message };
   if (currentRevision) error.current_revision = currentRevision;
+  if (details?.operation) error.operation = details.operation;
+  if (Number.isSafeInteger(details?.expires_at)) error.expires_at = details.expires_at;
   return { status: 409, json: { error } };
 }
 
@@ -64,7 +67,7 @@ function harvestPlotIds(working, states) {
  * Run the old Human UI action chain on an isolated farm clone.  The original
  * farm is replaced exactly once, after the receipt has been added to the clone.
  */
-export function handleHumanHarvestAssist(farm, body, now = Date.now(), options = {}) {
+function handleHumanHarvestAssistInAction(farm, body, now = Date.now(), options = {}) {
   const receipts = farm.doorbellHumanHarvestReceipts ?? {};
   const key = body.idempotency_key;
   const fp = fingerprint(body);
@@ -124,6 +127,8 @@ export function handleHumanHarvestAssist(farm, body, now = Date.now(), options =
     const season3Harvest=captureStoredTogetherSeason3Harvest(working,now);
     const harvest = humanHarvestAll(working, now, season?.mod, options);
     if (!harvest.ok) {
+      if (harvest.code === "human_effect_blocked")
+        return errorResponse(harvest.code, harvest.error, current.revision, harvest);
       return errorResponse(
         remainingBefore > 0 ? "no_ripe_plots" : "harvest_assist_exhausted",
         harvest.error,
@@ -192,4 +197,16 @@ export function handleHumanHarvestAssist(farm, body, now = Date.now(), options =
     // the authoritative farm remains untouched.
     return { status: 503, json: { error: { code: "farm_unavailable", message: "The harvest could not be saved" } } };
   }
+}
+
+
+export function handleHumanHarvestAssist(farm, body, now = Date.now(), options = {}) {
+  if (!options.halloweenService)
+    return handleHumanHarvestAssistInAction(farm, body, now, options);
+  return withHalloweenFarmAction(options.halloweenService, {
+    actorFarmId: farm.id,
+    side: "human",
+    operationId: String(body?.idempotency_key ?? "human-harvest"),
+    now,
+  }, () => handleHumanHarvestAssistInAction(farm, body, now, options));
 }

@@ -7,6 +7,7 @@ import { submitQixi2026Dish } from "../../qixi-2026.js";
 import { submitMidAutumnSeedDish } from '../../mid-autumn-seeds.js';
 import { bumpDaily } from "../../daily.js";
 import { ensureKitchen } from "../ranch/state.js";
+import { halloweenCookExtraDishes, halloweenHumanOperationBlock } from "../../halloween/action-effects.mjs";
 import {
     applyChefMaterialRefund,
     kitchenMethodToolStatus,
@@ -140,6 +141,9 @@ export function kitchenCook(farm, refs, now, options = {}) {
     const isOriginalRecipe = Boolean(recipe && originalRecipeForId(originalRecipes, recipe.recipeId));
     if (isOriginalRecipe && !originalReceiptCanBePersisted(farm, recipe, cookOptions, now))
         return { ok: false, code: "original_cooking_receipt_unavailable" };
+    const blocked = halloweenHumanOperationBlock({ farmId: farm.id, operation: "cook", now });
+    if (blocked)
+        return { ok: false, ...blocked, error: "万圣节糖果效果生效中，暂时不能做饭。" };
     const kitchen = ensureKitchen(farm);
     kitchen.products = kitchen.products.filter((item) => !picked.usedProducts.has(item.id));
     removeFishingCatchIds(farm, picked.usedFish);
@@ -173,7 +177,11 @@ export function kitchenCook(farm, refs, now, options = {}) {
     else {
         dish = { id: randomUUID(), recipeId: "odd_dish", name: "微妙的料理", rarity: "N", value: 1, image: "odd-dish.webp", createdAt: now, pricingVersion: COOKING_PRICE_VERSION };
     }
-    kitchen.dishes.push(dish);
+    const extraCount = recipe
+        ? halloweenCookExtraDishes({ farmId: farm.id, targetId: dish.id, now })
+        : 0;
+    const extraDishes = Array.from({ length: extraCount }, () => ({ ...dish, id: randomUUID() }));
+    kitchen.dishes.push(dish, ...extraDishes);
     if (!recipe)
         bumpDaily(farm, now, "oddDishes");
     const qixi = submitQixi2026Dish(farm, kitchen, dish, now);

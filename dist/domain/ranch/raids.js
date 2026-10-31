@@ -14,6 +14,7 @@ import { ensureRanch } from "./state.js";
 import { ranchAnimalCurrentProduceValue } from "./value.js";
 import { patrolGooseSkinCatchBonus } from "./skins.js";
 import { maybeApplyRanchRaidInjury, ranchHealthActionBlocked } from "../../career/p3-world.js";
+import { halloweenHumanOperationBlock } from "../../halloween/action-effects.mjs";
 
 const HOUR_MS = 60 * 60 * 1000;
 export const RANCH_RAID_DAILY_CAP = 10000;
@@ -68,6 +69,9 @@ export function dispatchRanchRaid(owner, target, animalIdx, durationHours, now) 
         return { ok: false, error: "派遣时长太大了。" };
     if (ranch.coins < reservedCoins)
         return { ok: false, error: `牧场金币不足：${hours} 小时需要冻结 ${reservedCoins} 金，现有 ${ranch.coins}。` };
+    const blocked = halloweenHumanOperationBlock({ farmId: owner.id, operation: "dispatch", now });
+    if (blocked)
+        return { ok: false, ...blocked, error: "万圣节糖果效果生效中，暂时不能派遣动物。" };
     const raid = {
         id: randomUUID(),
         animalKindId: animal.kindId,

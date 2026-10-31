@@ -14,12 +14,26 @@ import { pushLedger } from "./ledger.js";
 import { creditRanchHarvestAfterDebts, ranchRaidDebtTotal } from "./raids.js";
 import { ensureKitchen } from "./state.js";
 import { animalUpgradeCost, ranchAnimalCurrentProduceValue } from "./value.js";
+import { halloweenHumanOperationBlock, halloweenRanchYieldCount } from "../../halloween/action-effects.mjs";
 
 /** 伴侣收牧场产品：欠款存在时按动物稳定顺序整份回收还债；可烹饪产物锁价入柜，其余当场回收为牧场金币。 */
 export function ranchCollect(farm, farms, now, collector = humanDisplay(farm)) {
     const ranch = farm.ranch;
     if (!ranch || !ranch.animals.length)
         return { ok: false, error: `牧场还没有动物——让${aiDisplay(farm)}在商店买一只送进来。` };
+    const hasCollectable = ranch.animals.some((animal) => {
+        const kind = animalById.get(animal.kindId);
+        if (!kind)
+            return false;
+        const pending = Math.max(0, Math.floor(Number(animal.pending) || 0));
+        const pendingMeat = kind.meatId ? Math.max(0, Math.floor(Number(animal.pendingMeat) || 0)) : 0;
+        return pending + pendingMeat > 0;
+    });
+    if (hasCollectable) {
+        const blocked = halloweenHumanOperationBlock({ farmId: farm.id, operation: "ranch_collect", now });
+        if (blocked)
+            return { ok: false, ...blocked, error: "万圣节糖果效果生效中，暂时不能收取牧场产物。" };
+    }
     const kitchen = ensureKitchen(farm);
     let gross = 0;
     let gain = 0;
@@ -50,26 +64,33 @@ export function ranchCollect(farm, farms, now, collector = humanDisplay(farm)) {
             storedCount += 1;
         }
     };
-    for (const a of ranch.animals) {
+    for (const [animalIndex, a] of ranch.animals.entries()) {
         const kind = animalById.get(a.kindId);
         if (!kind)
             continue;
         const pending = Math.max(0, Math.floor(Number(a.pending) || 0));
+        const pendingMeat = Math.max(0, Math.floor(Number(a.pendingMeat) || 0));
+        const collectibleMeat = kind.meatId ? pendingMeat : 0;
+        const totalPending = pending + collectibleMeat;
+        const totalWithBonus = totalPending > 0 ? halloweenRanchYieldCount({ farmId: farm.id,
+            targetId: `${animalIndex}:${a.kindId}`, now, count: totalPending }) : 0;
+        const additional = totalWithBonus - totalPending;
         if (pending > 0) {
             const def = cookingProductById.get(kind.produceId);
             const base = ranchAnimalCurrentProduceValue(a);
-            for (let i = 0; i < pending; i++) {
+            const quantity = pending + additional;
+            for (let i = 0; i < quantity; i++) {
                 const value = i === 0 && a.pendingBoost ? Math.round(base * (1 + RANCH_FEED_BONUS_RATE)) : base;
                 receive({ id: randomUUID(), itemId: kind.produceId, name: def?.name ?? kind.produce, emoji: def?.emoji ?? kind.emoji, value, createdAt: now });
             }
             a.pending = 0;
             a.pendingBoost = false;
         }
-        const pendingMeat = Math.max(0, Math.floor(Number(a.pendingMeat) || 0));
         if (pendingMeat > 0 && kind.meatId) {
             const def = cookingProductById.get(kind.meatId);
             const value = Math.round(ranchAnimalCurrentProduceValue(a) * cooking.meatValueMultiplier);
-            for (let i = 0; i < pendingMeat; i++)
+            const quantity = pendingMeat + (pending > 0 ? 0 : additional);
+            for (let i = 0; i < quantity; i++)
                 receive({ id: randomUUID(), itemId: kind.meatId, name: def?.name ?? kind.meat, emoji: def?.emoji ?? "🥩", value, createdAt: now });
             a.pendingMeat = 0;
         }

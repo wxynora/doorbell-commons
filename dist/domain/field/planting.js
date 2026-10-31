@@ -7,6 +7,7 @@ import { recordWelfareWeekProgress } from "../../welfare-week.js";
 import { bumpDaily } from "../../daily.js";
 import { stageAnnualCounters } from "../../annual-statistics/world-buffer.js";
 import { pushLog, pushTrail } from "../shared/notifications.js";
+import { halloweenPlantGrowTicks } from "../../halloween/action-effects.mjs";
 
 /** 把"限定/自创种子"的引用解析成作物 id：接受 id 或中文名（背包/熔炼都给中文名，玩家自然照着填）。
  *  重名时优先用玩家背包里已有的那颗；官方限定（条件/金币种）按名字全库找。 */
@@ -69,7 +70,9 @@ export function plant(farm, plotId, seedType, limitedId, now) {
         else {
             return { ok: false, error: `你没有「${crop.name}」的种子——${crop.category === "ugc" ? "先设计它、或去摊位买" : "去熔炼，或等它在商店随机刷出来时买（每种每天限 1 颗）"}。` };
         }
-        plot.crop = { seedType: "limited", limitedId, growTicks: crop.growTicks, progress: 0, ripe: false, waterCount: 0 };
+        plot.crop = { seedType: "limited", limitedId, growTicks: halloweenPlantGrowTicks({
+            farmId: farm.id, plotId, now, growTicks: crop.growTicks,
+        }), progress: 0, ripe: false, waterCount: 0 };
         if (crop.category === "ugc")
             onTaskEvent(farm, "plant_ugc", now); // 随机任务：种下一株自创作物
         recordWelfareWeekProgress(farm, "plant", 1, now);
@@ -81,7 +84,9 @@ export function plant(farm, plotId, seedType, limitedId, now) {
         return { ok: false, error: `金币不足，${seedType === "common" ? "普通" : "奇幻"}种子要 ${price}` };
     farm.coins -= price;
     bumpDaily(farm, now, "coinSpend", price);
-    plot.crop = { seedType, growTicks: GROW_TICKS[seedType], progress: 0, ripe: false, waterCount: 0 };
+    plot.crop = { seedType, growTicks: halloweenPlantGrowTicks({
+        farmId: farm.id, plotId, now, growTicks: GROW_TICKS[seedType],
+    }), progress: 0, ripe: false, waterCount: 0 };
     recordWelfareWeekProgress(farm, "plant", 1, now);
     pushLog(farm, `种下一颗${seedType === "common" ? "普通" : "奇幻"}种子`);
     return { ok: true, seedType };

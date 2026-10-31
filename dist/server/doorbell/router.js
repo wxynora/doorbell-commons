@@ -49,6 +49,7 @@ import {
     handleDoorbellMcpMigration,
     handleDoorbellWelcomeReward,
 } from "./lifecycle.js";
+import { createDoorbellHalloweenHumanHandler } from "./halloween.js";
 import { handleDoorbellLingyeAction, handleDoorbellLingyeReadiness } from "./lingye.js";
 import {
     handleDoorbellConstablePublicNoticeOpen,
@@ -86,8 +87,13 @@ import { handleTogetherReward, handleTogetherRegistration } from "./together-rew
 import { readBody as readTogetherBody, jsonOut as togetherJsonOut } from "../http.js";
 import { requireDoorbellService as authorizeTogetherReward } from "./contract.js";
 
-export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime, gachaRuntime) {
+export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime, gachaRuntime, halloweenRuntime) {
+    const halloweenHumanHandler = createDoorbellHalloweenHumanHandler(halloweenRuntime);
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts.join("/") === "internal/doorbell/halloween/human") {
+            await halloweenHumanHandler(req, res, method);
+            return true;
+        }
         if (["internal/doorbell/together/reward", "internal/doorbell/together/registration"].includes(parts.join("/"))) {
             const handler = parts[3] === "registration" ? handleTogetherRegistration : handleTogetherReward;
             await handler(req, res, method, constableInterviewRuntime, {
@@ -331,7 +337,7 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "cook" && parts.length === 5) {
-            await handleDoorbellHumanKitchenCook(req, res, method, careerBenefitsForFarm);
+            await handleDoorbellHumanKitchenCook(req, res, method, careerBenefitsForFarm, halloweenRuntime?.service);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "kitchen" && parts[4] === "shop" && parts[5] === "refresh" && parts.length === 6) {
@@ -367,7 +373,7 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "ranch" && parts[4] === "collect" && parts.length === 5) {
-            await handleDoorbellHumanRanchCollection(req, res, method);
+            await handleDoorbellHumanRanchCollection(req, res, method, halloweenRuntime?.service);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "settings" && parts[4] === "action" && parts.length === 5) {
@@ -391,7 +397,7 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "ranch" && parts[4] === "interaction" && parts[5] === "action" && parts.length === 6) {
-            await handleDoorbellHumanRanchInteractionAction(req, res, method);
+            await handleDoorbellHumanRanchInteractionAction(req, res, method, halloweenRuntime?.service);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "market" && parts[4] === "action" && parts.length === 5) {
@@ -402,7 +408,7 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             await handleDoorbellHumanNeighborhoodMessageAction(req, res, method);
             return true;
         }
-        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "field" && parts[4] === "harvest-assist" && parts.length === 5) { await handleDoorbellHumanHarvestAssist(req, res, method, careerBenefitsForFarm); return true; }
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "field" && parts[4] === "harvest-assist" && parts.length === 5) { await handleDoorbellHumanHarvestAssist(req, res, method, careerBenefitsForFarm, halloweenRuntime?.service); return true; }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "field" && parts[4] === "upgrade" && parts.length === 5) { await handleDoorbellHumanLandUpgrade(req, res, method); return true; }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "welcome-reward" && parts.length === 3) {
             await handleDoorbellWelcomeReward(req, res, method);
@@ -418,7 +424,7 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "farm-creation" && parts.length === 3) {
-            await handleDoorbellFarmCreation(req, res, method);
+            await handleDoorbellFarmCreation(req, res, method, farm => halloweenRuntime?.scheduleNewFarm(farm.id));
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "mcp-migrations" && parts[3] === "revoke-farm-access" && parts.length === 4) {

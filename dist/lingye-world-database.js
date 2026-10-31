@@ -73,10 +73,12 @@ import { reporterHasCompletedWork } from "./career/reporter-submission-work.js";
 import { advanceReporterBoardSnapshotDay, amendReporterBoardSnapshotsForCommittedFarms, installReporterBoardSnapshotSchema } from "./career/reporter-board-snapshot.js";
 import { installLingyeNpcSchema } from "./npc/schema.js";
 import { installMidAutumnSchema } from "./mid-autumn-orders/schema.js";
+import { installHalloweenSchema } from "./halloween/schema.mjs";
 import { advanceLingyeNpcWorld } from "./npc/world-schedule.js";
 import { createLingyeNpcBusinessObserver } from "./npc/business-affinity-integration.js";
 
-export const LINGYE_WORLD_SCHEMA_VERSION = 2;
+export const LINGYE_WORLD_SCHEMA_VERSION = 3;
+const LINGYE_WORLD_SCHEMA_VERSION_2 = 2;
 
 const FARM_WORLD_PERSISTENCE_SCHEMA_SQL = `
   CREATE TABLE farm_states (
@@ -136,10 +138,18 @@ function migrateLingyeWorldSchemaV1ToV2(database) {
             schema_version INTEGER NOT NULL CHECK (schema_version >= 1)
           );
           INSERT INTO lingye_world_schema_meta (singleton_id, schema_version)
-          VALUES (1, ${LINGYE_WORLD_SCHEMA_VERSION});
+          VALUES (1, ${LINGYE_WORLD_SCHEMA_VERSION_2});
           DROP TABLE lingye_world_schema_meta_v1;
           ${FARM_WORLD_PERSISTENCE_SCHEMA_SQL}
         `);
+    });
+}
+
+function migrateLingyeWorldSchemaV2ToV3(database) {
+    runLingyeWorldTransaction(database, () => {
+        installHalloweenSchema(database);
+        database.prepare("UPDATE lingye_world_schema_meta SET schema_version = ? WHERE singleton_id = 1")
+            .run(LINGYE_WORLD_SCHEMA_VERSION);
     });
 }
 
@@ -207,9 +217,16 @@ export function installLingyeWorldSchema(database) {
             .prepare("SELECT schema_version FROM lingye_world_schema_meta WHERE singleton_id = 1")
             .get();
     }
+    if (version?.schema_version === 2) {
+        migrateLingyeWorldSchemaV2ToV3(database);
+        version = database
+            .prepare("SELECT schema_version FROM lingye_world_schema_meta WHERE singleton_id = 1")
+            .get();
+    }
     if (version?.schema_version !== LINGYE_WORLD_SCHEMA_VERSION)
         throw new Error(`Unsupported Lingye world schema version: ${version?.schema_version ?? "missing"}`);
     assertFarmWorldPersistenceSchema(database);
+    installHalloweenSchema(database);
     database.exec(`
       CREATE TABLE IF NOT EXISTS lingye_school_action_receipts (
         action_key TEXT PRIMARY KEY,
@@ -382,6 +399,7 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                     });
                 }
             }
+            options.beforeFarmBalanceProjection?.({ world, context, now });
             const ledgerAuthority = context?.balanceAuthority === "ledger";
             let balanceOperation = null;
             const changes = [];

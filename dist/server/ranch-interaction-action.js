@@ -124,9 +124,11 @@ function invalidRequest() {
   };
 }
 
-function errorResponse(code, message, currentRevision) {
+function errorResponse(code, message, currentRevision, details) {
   const error = { code, message };
   if (currentRevision) error.current_revision = currentRevision;
+  if (details?.operation) error.operation = details.operation;
+  if (Number.isSafeInteger(details?.expires_at)) error.expires_at = details.expires_at;
   return { status: 409, json: { error } };
 }
 
@@ -365,6 +367,9 @@ export function handleHumanRanchInteractionAction(farm, body, now = Date.now()) 
     return unavailable("The ranch interaction could not be executed");
   }
   if (!authorityResult?.ok) {
+    if (authorityResult?.code === "human_effect_blocked")
+      return errorResponse(authorityResult.code, authorityResult.error || "The ranch interaction was rejected",
+        current.revision, authorityResult);
     const authorityMessage =
       body.action === "dispatch" && authorityResult?.error === "OP_REJECTED"
         ? ranchDispatchHealthReason(

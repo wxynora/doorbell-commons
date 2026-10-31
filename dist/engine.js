@@ -10,6 +10,7 @@ import { glimmerBuffMultiplier } from "./glimmer.js";
 import { qixi2026HarvestSilver, qixi2026TransferAllowed, recordQixi2026Harvest } from "./qixi-2026.js";
 import { midAutumnSeedHarvestSilver, recordMidAutumnSeedHarvest } from './mid-autumn-seeds.js';
 import { recordWelfareWeekProgress } from "./welfare-week.js";
+import { halloweenHarvestGoldBonus, halloweenDogBlockProbability, halloweenHumanOperationBlock } from "./halloween/action-effects.mjs";
 import { bumpDaily } from "./daily.js";
 import { pushInbox, pushLog, pushSocialInbox, pushTrail, takeInbox } from "./domain/shared/notifications.js";
 import {
@@ -324,6 +325,7 @@ export function harvest(farm, plotId, now, seasonMod, options = {}) {
     if (qixiSilver !== null && bonus?.effectType === "倍率")
         bonus = null; // 七夕作物只按审定的基础银币与品相倍率结算，不展示未生效的金币价值倍率事件
     let value = qixiSilver ?? cropValue(crop, quality);
+    const halloweenBaseGold = qixiSilver === null ? value : null;
     if (qixiSilver === null) {
         // 旧农场每块地只结算一份作物，因此“基础产量”落在该份基础金币价值上；
         // 不影响活动银币、图鉴奖励、随机事件或其他独立结算。
@@ -343,6 +345,11 @@ export function harvest(farm, plotId, now, seasonMod, options = {}) {
     const extraYield = agronomistExtraHarvestEligible(crop, c) && qixiSilver === null && chance > 0
         && rng.next() < Math.min(1, chance) ? 1 : 0;
     const extraValue = extraYield ? value : 0;
+    if (qixiSilver === null) {
+        value += Math.round(halloweenHarvestGoldBonus({
+            farmId: farm.id, plotId, now, baseGold: halloweenBaseGold, effective: true,
+        }));
+    }
     value += extraValue;
     if (apply && seasonMod.capLeft)
         seasonMod.capLeft.n -= 1; // 吃掉一株名额
@@ -409,6 +416,11 @@ export function humanHarvestAll(farm, now, seasonMod, options = {}) {
         : { day, n: 0 };
     if ((daily.n ?? 0) >= HUMAN_HARVEST_DAILY_CAP)
         return { ok: false, error: `今天已经帮 TA 一键收过 ${HUMAN_HARVEST_DAILY_CAP} 次菜了，明天再来吧。` };
+    if (farm.plots.some(plot => plot.crop?.ripe)) {
+        const blocked = halloweenHumanOperationBlock({ farmId: farm.id, operation: "harvest", now });
+        if (blocked)
+            return { ok: false, ...blocked, error: "万圣节糖果效果生效中，暂时不能收菜。" };
+    }
     const results = harvestAll(farm, now, seasonMod, options);
     if (!results.length)
         return { ok: false, error: "现在没有成熟的作物可收。" };
@@ -486,8 +498,12 @@ export function steal(victim, plotId, by, now, thief, options = {}) {
     const foil = petBuffs(victim, now).foil;
     if (!options.resumeGuard && foil > 0) {
         const disliked = activeCookingDebuff(thief, now)?.kind === "dog_disliked";
+        const adjustedFoil = disliked ? foil : halloweenDogBlockProbability({
+            victimFarmId: victim.id, plotId, now, baseProbability: foil,
+            eligible: !options.resumeGuard && foil > 0,
+        });
         const grng = disliked ? null : new Rng(victim.rngState);
-        const foiled = disliked || grng.next() < foil;
+        const foiled = disliked || grng.next() < adjustedFoil;
         if (grng)
             victim.rngState = grng.state;
         if (foiled) {

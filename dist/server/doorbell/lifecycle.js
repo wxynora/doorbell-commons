@@ -81,7 +81,7 @@ function doorbellFarmCreationReceipt(creationId, result) {
     };
 }
 
-export async function handleDoorbellFarmCreation(req, res, method) {
+export async function handleDoorbellFarmCreation(req, res, method, onFarmCreated) {
     if (!requireDoorbellService(req, res, method))
         return;
     try {
@@ -105,6 +105,7 @@ export async function handleDoorbellFarmCreation(req, res, method) {
                 return internalServiceError(res, 503, "registration_unavailable", "Farm capacity is full");
             result = createDoorbellFarm(creationId, farmName, { aiName, humanName });
         }
+        if (result.created) onFarmCreated?.(result.farm);
         return jsonOut(res, result.created ? 201 : 200, doorbellFarmCreationReceipt(creationId, result));
     }
     catch (error) {

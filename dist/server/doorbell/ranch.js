@@ -8,6 +8,7 @@ import { handleHumanRanchDecorationAction } from "../ranch-decoration-action.js"
 import { handleHumanRanchInteractionAction } from "../ranch-interaction-action.js";
 import { handleHumanRanchResidentAction } from "../ranch-resident-action.js";
 import { settleDueRanchRaids } from "../ranch-raid-settlement.js";
+import { withHalloweenFarmAction } from "../../halloween/action-effects.mjs";
 import {
     FARM_DOORPLATE_RE,
     humanFieldError,
@@ -90,7 +91,7 @@ export async function handleDoorbellHumanRanchDecorationAction(req, res, method)
     }
 }
 
-export async function handleDoorbellHumanRanchCollection(req, res, method) {
+export async function handleDoorbellHumanRanchCollection(req, res, method, halloweenService) {
     if (!requireDoorbellHumanFieldService(req, res, method))
         return;
     try {
@@ -100,7 +101,12 @@ export async function handleDoorbellHumanRanchCollection(req, res, method) {
         const binding = validateFarmBinding(body);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
-        const out = handleHumanRanchCollection(binding.farm, body);
+        const now = Date.now();
+        const perform = () => handleHumanRanchCollection(binding.farm, body, now);
+        const out = halloweenService && typeof body.idempotency_key === "string" && body.idempotency_key.trim()
+            ? withHalloweenFarmAction(halloweenService, { actorFarmId: binding.farm.id, side: "human",
+                operationId: body.idempotency_key, now }, perform)
+            : perform();
         return jsonOut(res, out.status, out.json);
     }
     catch (error) {
@@ -112,7 +118,7 @@ export async function handleDoorbellHumanRanchCollection(req, res, method) {
     }
 }
 
-export async function handleDoorbellHumanRanchInteractionAction(req, res, method) {
+export async function handleDoorbellHumanRanchInteractionAction(req, res, method, halloweenService) {
     if (!requireDoorbellHumanFieldService(req, res, method))
         return;
     try {
@@ -122,7 +128,12 @@ export async function handleDoorbellHumanRanchInteractionAction(req, res, method
         const binding = validateFarmBinding(body);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
-        const out = handleHumanRanchInteractionAction(binding.farm, body);
+        const now = Date.now();
+        const perform = () => handleHumanRanchInteractionAction(binding.farm, body, now);
+        const out = halloweenService && typeof body.idempotency_key === "string" && body.idempotency_key.trim()
+            ? withHalloweenFarmAction(halloweenService, { actorFarmId: binding.farm.id, side: "human",
+                operationId: body.idempotency_key, now }, perform)
+            : perform();
         return jsonOut(res, out.status, out.json);
     }
     catch (error) {

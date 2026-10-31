@@ -140,9 +140,11 @@ function unavailable(message) {
   return { status: 503, json: { error: { code: "farm_unavailable", message } } };
 }
 
-function errorResponse(code, message, currentRevision) {
+function errorResponse(code, message, currentRevision, details) {
   const error = { code, message };
   if (currentRevision) error.current_kitchen_inventory_revision = currentRevision;
+  if (details?.operation) error.operation = details.operation;
+  if (Number.isSafeInteger(details?.expires_at)) error.expires_at = details.expires_at;
   return { status: 409, json: { error } };
 }
 
@@ -321,6 +323,9 @@ export function handleHumanKitchenCookAction(farm, body, now = Date.now(), optio
     return unavailable("The kitchen cook could not be executed");
   }
   if (!authorityResult?.ok) {
+    if (authorityResult?.code === "human_effect_blocked")
+      return errorResponse(authorityResult.code, authorityResult.error || "The kitchen cook was rejected",
+        current.revision, authorityResult);
     return errorResponse("cook_rejected", authorityResult?.error || "The kitchen cook was rejected", current.revision);
   }
   const recipeError = authorityRecipeError(working, authorityResult, body.method_id);
