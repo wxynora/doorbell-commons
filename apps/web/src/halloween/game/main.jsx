@@ -24,7 +24,7 @@ function App() {
     const action = pending.current;
     try {
       const data = await sendCommand(action.payload); action.receipt = data; ++loadVersion.current;
-      if (action.payload.op === 'collection_pick' && data.collection && !data.stageCompleted) {
+      if ((action.payload.op === 'collection_pick' || action.payload.op === 'collection_shake') && data.collection && !data.stageCompleted) {
         setView(current => ({ ...current, collection: data.collection }));
       } else await refresh();
       pending.current = null; action.done?.(data);

@@ -44,13 +44,34 @@ export class CollectionPicks {
   }
   drain() {
     if (this.disposed || this.active || this.suspended || this.uncertain || !this.picks.length) return;
-    const tile = this.picks[0], collection = this.confirmed;
-    if (collection?.status !== 'active' || !collection.tiles.some(item => item.id === tile.id && item.selectable)) {
+    const collection = this.confirmed;
+    if (collection?.status !== 'active') {
       this.picks = [];
       this.emit();
       this.onUnavailable();
       return;
     }
+    let unavailable = false;
+    while (this.picks.length && !collection.tiles.some(item => item.id === this.picks[0].id && item.selectable)) {
+      this.picks.shift();
+      unavailable = true;
+    }
+    if (unavailable) {
+      // Dropping a predicted triple can make the remaining preview exceed the
+      // real pocket capacity. Keep only the in-order prefix that still fits.
+      let shown = collection;
+      let count = 0;
+      for (const pick of this.picks) {
+        if (shown.tray.length >= shown.capacity) break;
+        shown = previewCollectionPicks(shown, [pick]);
+        count++;
+      }
+      this.picks.length = count;
+      this.emit();
+      this.onUnavailable();
+    }
+    if (!this.picks.length) return;
+    const tile = this.picks[0];
     this.active = tile;
     const args = {tileId: tile.id, sessionId: collection.session.id, revision: collection.pile.revision};
     Promise.resolve(this.send(args, data => this.accept(tile, data))).then(status => {
