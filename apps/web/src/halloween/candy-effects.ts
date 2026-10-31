@@ -33,5 +33,5 @@ export function candyEffectStatusText(effect: CandyEffect) {
 }
 
 export function candyEffectExpiry(expiresAt: number) {
-  return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(expiresAt);
+  return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(expiresAt);
 }

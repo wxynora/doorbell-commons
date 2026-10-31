@@ -4,7 +4,7 @@
   --gift-cream: #fff3dc;
   --gift-gold: #d9b77e;
 }
-.halloween-candy-backpack { color: var(--gift-ink); background: #faf0e5; border-radius: 18px; }
+.halloween-candy-backpack { display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--gift-ink); background: #faf0e5; border-radius: 18px; }
 .halloween-gift-scrim {
   position: fixed; inset: 0; z-index: 940;
   display: grid; place-items: center;
@@ -34,7 +34,7 @@
 .halloween-gift-seal path:last-child { fill: none; stroke: #715274; stroke-width: 2; stroke-linecap: round; }
 .halloween-gift-close { position: absolute; top: 19px; right: 15px; width: 38px; height: 38px; padding: 8px; border: 1px solid var(--gift-gold); border-radius: 50%; background: #fff1d8; color: var(--gift-ink); cursor: pointer; }
 .halloween-gift-close svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-.halloween-gift-content { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 12px; }
+.halloween-gift-content { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 12px; }
 .halloween-gift-candies { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 8px; padding: 0; margin: 0; list-style: none; }
 .halloween-gift-candies li { min-width: 0; text-align: center; }
 .halloween-gift-art { position: relative; display: grid; place-items: center; aspect-ratio: 1; border-radius: 12px; background: radial-gradient(ellipse at center, #fffdf3 12%, #eadbec 92%); border: 1px solid #d2bad5; box-shadow: inset 0 2px 0 #fff9; }
@@ -49,7 +49,9 @@
 .halloween-gift-dialog button:focus-visible { outline: 3px solid #d8a354; outline-offset: 3px; }
 .halloween-candy-eat, .halloween-candy-feedback button { margin-top: 8px; padding: 8px 16px; border: 1px solid #c5a0c8; border-radius: 15px; color: #674975; background: #f4e4f0; font: inherit; font-size: 14px; cursor: pointer; }
 .halloween-candy-eat:disabled, .halloween-candy-feedback button:disabled { opacity: .5; cursor: default; }
-.halloween-candy-feedback, .halloween-candy-effects { margin-top: 20px; border-top: 1px solid #d8bfcc; padding-top: 16px; font-size: 15px; line-height: 1.6; }
+.halloween-candy-feedback { margin-top: 20px; border-top: 1px solid #d8bfcc; padding-top: 16px; font-size: 15px; line-height: 1.6; }
+.halloween-candy-effects { text-align: left; font-size: 14px; line-height: 1.6; }
+.halloween-candy-effects-open { flex: none; align-self: center; margin: 4px 0 10px; padding: 7px 18px; border: 1px solid #d9b77e; border-radius: 12px; background: #80618f; color: #fff3dc; font: inherit; font-size: 13px; cursor: pointer; }
 .halloween-candy-effects h3 { margin: 0; font: inherit; font-weight: 700; }
 .halloween-candy-effects p { margin: 10px 0; }
 .halloween-candy-effects small { display: block; color: var(--gift-muted); font-size: 13px; }
@@ -60,9 +62,14 @@
 .halloween-candy-choice-scrim{z-index:960}
 .halloween-candy-choice{position:relative;box-sizing:border-box;width:min(340px,100%);max-height:100%;overflow:auto;padding:42px 18px 20px;background:#faf0e5;border:2px solid var(--gift-gold);border-radius:22px;box-shadow:0 12px 48px #21172766;text-align:center}
 .halloween-candy-choice .halloween-gift-close{top:10px;right:10px;width:30px;height:30px;padding:6px}
-.halloween-candy-choice-picture{display:grid;place-items:center}
+.halloween-candy-choice-picture{display:grid;place-items:center;margin-bottom:12px}
 .halloween-candy-choice-picture img{display:block;width:88px;height:88px;object-fit:contain}
 .halloween-candy-choice h3{font:inherit;font-size:16px;font-weight:700;line-height:1.45;margin:12px 0;overflow-wrap:anywhere}
 .halloween-candy-choice p{font-size:14px;line-height:1.65;margin:0 0 8px;color:#67464d}
 .halloween-candy-eat-options{display:flex;justify-content:center;gap:12px}
 .halloween-candy-eat-options button{flex:1;min-height:44px;max-width:180px;font-size:16px;background:#775381;border:2px solid #d8b77b;color:#fff1ce;box-shadow:inset 0 0 0 1px #b18a94;text-shadow:0 1px #4a2d50}
+.halloween-candy-toast { position: fixed; z-index: 980; box-sizing: border-box; top: max(18px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(360px, calc(100% - 32px)); padding: 14px 40px 14px 16px; border: 1px solid #d9b77e; border-radius: 16px; background: #573f65; color: #fff3dc; box-shadow: 0 6px 24px #21172755; font: inherit; font-size: 14px; line-height: 1.5; }
+.halloween-candy-toast p { margin: 4px 0; }
+.halloween-candy-toast small { font-size: 12px; color: #e5d5df; }
+.halloween-candy-toast button { position: absolute; top: 4px; right: 4px; width: 32px; height: 32px; border: 0; background: none; color: inherit; cursor: pointer; }
+.halloween-candy-toast svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
