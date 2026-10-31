@@ -1286,6 +1286,7 @@ export type CandidateTwoAction =
   | { type: "lingye-snow-live-open" }
   | { type: "lingye-memorial-open" }
   | { type: "lingye-mid-autumn-open" }
+  | { type: "lingye-halloween-open" }
   | { type: "lingye-together-open" }
   | { type: "lingye-presence-change"; active: boolean; mapActive: boolean }
   | { type: "home-mailbox-list"; category: MailboxCategory | null; page: number }
@@ -1334,6 +1335,7 @@ const candidateTwoActionKeys = {
   "lingye-snow-live-open": ["type"],
   "lingye-memorial-open": ["type"],
   "lingye-mid-autumn-open": ["type"],
+  "lingye-halloween-open": ["type"],
   "lingye-together-open": ["type"],
   "lingye-presence-change": ["type", "active", "mapActive"],
   "home-mailbox-list": ["type", "category", "page"],
@@ -1629,6 +1631,7 @@ export function parseCandidateTwoAction(value: unknown): CandidateTwoAction | nu
     type === "lingye-snow-live-open" ||
     type === "lingye-memorial-open" ||
     type === "lingye-mid-autumn-open" ||
+    type === "lingye-halloween-open" ||
     type === "lingye-together-open" ||
     type === "owner-profile-career-open" ||
     type === "lounge-open" ||
@@ -4882,6 +4885,16 @@ const LINGYE_SCREEN = `
         <button class="candidate2-lingye-daily-entry" type="button" aria-label="打开铃野日报" onclick="openLingyeDaily()">
             <img src="/lingye/ui/lingye-daily-newspaper.png" alt="" width="256" height="256" draggable="false">
         </button>
+        <button class="candidate2-lingye-halloween-entry" type="button" aria-label="进入万圣节糖果大作战" title="糖果大作战" onclick="openHalloweenActivity()">
+            <svg viewBox="0 0 44 48" width="36" height="40" fill="none" aria-hidden="true">
+                <path d="M7 25C4 7 15 3 23 5c11 1 15 10 13 21l2 12c-4 1-6-5-9-3s-4 7-8 5-3-7-7-6-4 4-8 3l1-12Z" fill="#fff9ec" stroke="#71617f" stroke-width="1.6" stroke-linejoin="round"/>
+                <ellipse cx="17" cy="20" rx="2" ry="2.8" fill="#65556f"/>
+                <ellipse cx="28" cy="19" rx="2" ry="2.8" fill="#65556f"/>
+                <path d="M21 25c1.3 1.8 3 1.8 4.3-.2" stroke="#65556f" stroke-width="1.5" stroke-linecap="round"/>
+                <ellipse cx="13" cy="25" rx="3.1" ry="1.6" fill="#edbdc4"/>
+                <ellipse cx="32" cy="24" rx="3.1" ry="1.6" fill="#edbdc4"/>
+            </svg>
+        </button>
         ${SNOW_LIVE_ENTRY}
         <button class="candidate2-lingye-mid-autumn-entry" type="button" aria-label="进入月满心间中秋活动" onclick="openMidAutumnActivity()" hidden>
             <span aria-hidden="true">月满心间</span>
@@ -5336,6 +5349,7 @@ const LINGYE_STYLES = `${SNOW_LIVE_ENTRY_STYLES}
 
         .candidate2-lingye-memories,
         .candidate2-lingye-daily-entry,
+        .candidate2-lingye-halloween-entry,
         .candidate2-lingye-mid-autumn-entry {
             position: absolute;
             z-index: 30;
@@ -5355,6 +5369,20 @@ const LINGYE_STYLES = `${SNOW_LIVE_ENTRY_STYLES}
 
         .candidate2-lingye-daily-entry {
             top: calc(94px + var(--candidate2-lingye-rail-icon-size));
+        }
+
+        .candidate2-lingye-halloween-entry {
+            top: calc(102px + 2 * var(--candidate2-lingye-rail-icon-size));
+            display: grid;
+            place-items: center;
+            filter: drop-shadow(0 2px 2px rgba(73, 53, 76, 0.22));
+        }
+
+        .candidate2-lingye-halloween-entry svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
         }
 
         .candidate2-lingye-mid-autumn-entry {
@@ -5415,6 +5443,7 @@ const LINGYE_STYLES = `${SNOW_LIVE_ENTRY_STYLES}
 
         .candidate2-lingye-memories:focus-visible,
         .candidate2-lingye-daily-entry:focus-visible,
+        .candidate2-lingye-halloween-entry:focus-visible,
         .candidate2-lingye-mid-autumn-entry:focus-visible {
             outline: 3px solid rgba(255, 248, 222, 0.92);
             outline-offset: 2px;
@@ -8022,6 +8051,10 @@ const LINGYE_SCRIPT = `
             return;
         }
         sendAction({ type: 'lingye-memorial-open' });
+    }
+
+    function openHalloweenActivity() {
+        sendAction({ type: 'lingye-halloween-open' });
     }
 
     function openMidAutumnActivity() {

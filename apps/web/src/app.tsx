@@ -1161,6 +1161,11 @@ function LiveApp() {
         return;
       }
 
+      if (action.type === "lingye-halloween-open") {
+        if (appState.stage === "authenticated") openHalloweenPage();
+        return;
+      }
+
       if (action.type === "lingye-mid-autumn-open") {
         if (appState.stage === "authenticated") openMidAutumnPage();
         return;
