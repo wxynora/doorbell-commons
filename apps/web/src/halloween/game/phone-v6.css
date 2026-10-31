@@ -1,0 +1,158 @@
+/* Scene type and labels share the 863 × 1823 illustrated design canvas. */
+.scene-centered{--ink:#51303d;--faded-ink:#886044;--gilt:#efd19a;--lettering:'Songti SC','Noto Serif SC',STSong,serif}
+.scene-centered .inventory-scene-art{width:100%;height:100%;object-fit:contain}
+.scene-centered .craft-controls{left:85px;width:693px}
+.scene-centered .cooking-hud{left:auto;top:auto}
+/* Original font, with shared ink and gilded effects. No replacement typeface. */
+.scene-centered .craft-primary,.scene-centered .craft-secondary,.scene-centered .spell-button,.scene-centered .shop-cart-shortcut{position:relative;border:0;border-radius:0;background:transparent url('/halloween/type/sign-plum.svg') center/100% 100% no-repeat;box-shadow:none;color:#ffe8b1;font-family:var(--lettering);font-weight:400;letter-spacing:2px;text-shadow:0 2px 1px #3e1c2d,0 -1px #fff1c322;padding:17px 32px 20px}
+.scene-centered .craft-secondary{background-image:url('/halloween/type/sign-ivory.svg');color:#6b3e3e;text-shadow:0 1px #fff6de}
+.scene-centered .craft-primary:active:not(:disabled),.scene-centered .spell-button:active:not(:disabled){filter:brightness(1.12)}
+.scene-centered .craft-primary:disabled,.scene-centered .spell-button:disabled{opacity:.48;filter:saturate(.4)}
+.workshop-v5 .craft-step-ribbon{top:271px;left:247px;width:369px;height:50px;gap:15px;color:#a1815c}
+.workshop-v5 .craft-step-ribbon .step-number{width:33px;height:33px;font:32px var(--lettering);border:0;background:none;position:relative}
+.workshop-v5 .craft-step-ribbon li:not(.active) .step-number:after{content:'';position:absolute;width:21px;height:1px;bottom:-4px;background:#b58b57}
+.workshop-v5 .craft-step-ribbon .active .step-number{width:40px;height:40px;border-radius:50%;background:#854837;border:3px double #ce9e63;box-shadow:0 2px 2px #64392955,inset 0 0 0 2px #a26444;color:#ffe0a2}
+.workshop-v5 .craft-step-ribbon .step-name{font:32px/1 var(--lettering);letter-spacing:2px;color:#613b3d;text-shadow:0 1px #fff1c6}
+.workshop-v5 .recipe-slots>button{border:1px solid #bb936173;border-bottom:3px solid #a77b4d;border-radius:3px 3px 12px 12px;background:linear-gradient(#f9e6bf33,#d9b17c33);box-shadow:inset 0 1px #fff1cd}
+.workshop-v5 .recipe-slots span{font:32px/1.15 var(--lettering);color:#69413f}
+.workshop-v5 .recipe-pantry b,.workshop-v5 .timed-ingredients b{font:32px/1.15 var(--lettering);color:#60353b;text-shadow:0 1px #fff1cf}
+.workshop-v5 .recipe-pantry small{font-size:32px;font-variant-numeric:tabular-nums;margin-top:2px;color:#946948}
+.workshop-v5 .craft-primary,.workshop-v5 .craft-secondary{font-size:32px;line-height:1.1}
+.workshop-v5 .cooking-hud strong{font:32px/1.1 var(--lettering);color:#61333a;text-shadow:0 1px #fff1c7}
+.workshop-v5 .cooking-hud output{font:32px/1.2 var(--lettering);color:#8d5a34}
+.workshop-v5 .cooking-hud p{font-size:32px;color:#79513f;letter-spacing:.5px}
+.workshop-v5 .stir-meter,.workshop-v5 .fill-meter{height:15px;border:2px solid #b38b50;box-shadow:0 1px #fff3cd,inset 0 2px 4px #6d4a3655;background:#bc9c73}
+.workshop-v5 .stir-meter>span,.workshop-v5 .fill-meter>span{background:linear-gradient(#fce2a0,#d29a42);box-shadow:inset 0 1px #fff4ce}
+.workshop-v5 .timed-ingredients .good-time{background:#f9e7bf;border:1px solid #bd945b;box-shadow:inset 0 0 0 3px #fff0d0}
+.workshop-v5 .timed-ingredients small{font-size:32px}
+.workshop-v5 .mold-categories button{font:32px/1.15 var(--lettering);border-bottom:1px solid #b68b5844;padding:4px 2px;color:#97704f}
+.workshop-v5 .mold-categories .chosen{color:#603041;border-color:#8a4d45;border-width:3px;text-shadow:0 1px #fff2d7}
+.workshop-v5 .mold-library span{font:32px/1.1 var(--lettering)}
+.workshop-v5 .mold-library .chosen{background:#f9e6b5;border:2px solid #b78b4d;box-shadow:inset 0 0 0 2px #fff2cf}
+.workshop-v5 .craft-pour .craft-secondary{font-size:32px;padding:10px 32px;min-height:62px}
+.workshop-v5 .craft-result-heading{height:49px;align-items:center;padding:0 14px;border-bottom:1px solid #ac7b4955}
+.craft-result-heading .batch-title{font:32px/1 var(--lettering);letter-spacing:4px;color:#874c38;text-shadow:0 1px #fff2d6}
+.craft-result-heading .batch-quantity{font-size:32px;color:#90633f}
+.craft-result-heading .batch-quantity strong{font:32px/1 var(--lettering);color:#6d3d31}
+.workshop-v5 .finished-candy{height:155px;min-height:0;margin:0 0 12px;gap:8px;padding:10px 35px;position:relative}
+.workshop-v5 .finished-candy:before,.workshop-v5 .finished-candy:after{content:'';width:8px;height:8px;transform:rotate(45deg);background:#ba8d51;position:absolute;top:63px;left:9px;box-shadow:0 0 0 3px #e6c891}
+.workshop-v5 .finished-candy:after{left:auto;right:9px}
+.workshop-v5 .finished-candy h2{font:32px/1.22 var(--lettering);color:#59323e;letter-spacing:2px;text-shadow:0 1px #fff4d9;text-wrap:balance;max-width:100%}
+.workshop-v5 .finished-candy .batch-quality{font-size:32px;letter-spacing:2px;color:#936e49}
+.batch-quality strong{font-weight:500;color:#9c563c}
+.workshop-v5 .craft-finish-actions button{font-size:32px;min-height:82px}
+.scene-centered .cooking-help-scrim h2,.scene-centered .candy-reveal h2,.scene-centered .witch-cart h2{font:32px/1.25 var(--lettering);letter-spacing:2px;color:#63353c;text-shadow:0 1px #fff2d2}
+.scene-centered .candy-reveal p,.scene-centered .cooking-help-scrim p{font-size:32px;line-height:1.65;color:#78543f}
+.scene-centered .candy-reveal{border:7px double #b88c56;border-radius:14px;background:radial-gradient(ellipse at 50% 10%,#fff2d4,#efdab2 80%);box-shadow:0 18px 40px #1c112280,inset 0 0 0 10px #f6e4be}
+.scene-centered .candy-reveal h2{margin:14px 0 22px;text-wrap:balance}
+.scene-centered .candy-reveal .spell-button{font-size:32px;min-height:90px}
+.scene-centered .candy-sender{display:block;color:#966b49;font-size:32px}
+.scene-centered .candy-pick-all{font:32px/1.2 var(--lettering);color:#8a583f}
+/* The witch's ingredient cabinet. Small engraved paper signs belong to the shelf. */
+.shop-page .room-page-art{background:url('/halloween/shop-phone-v6.webp') center/100% 100% no-repeat}
+.shop-page .room-heading h1{position:absolute;width:1px;height:1px;clip:rect(0,0,0,0);overflow:hidden}
+.shop-page .room-heading{left:150px;right:150px;top:270px}
+.shop-page .tier-tabs{left:90px;right:90px;top:355px;gap:15px}
+.shop-page .tier-tabs button{font:32px/1.15 var(--lettering);padding:13px 4px;border:3px double #c89d5b;background:#573a36;color:#e9c796;box-shadow:0 3px 2px #20151b88}
+.shop-page .tier-tabs button.active{background:linear-gradient(#ffedc9,#eac38b);color:#643442;border-color:#f8d593;box-shadow:0 2px #89552c,inset 0 0 0 3px #b8884c}
+.scene-centered.shop-page .shop-shelves{top:455px;left:49px;right:49px;height:945px}
+.shop-page .shop-shelf{padding:0 2px 33px;gap:8px}
+.shop-page .shop-shelf .material-art{width:100%;height:175px}
+.shop-page .shop-shelf button{width:100%;padding-bottom:0}
+.shop-page .shop-shelf button>span:not(.material-art){font:32px/1.05 var(--lettering);height:74px;padding:4px 12px;color:#643a35;white-space:normal;text-wrap:balance;word-break:normal;border:0;border-radius:0;background:transparent url('/halloween/type/sign-ivory.svg') center/100% 100% no-repeat;text-shadow:0 1px #fff4d5}
+.shop-page .shop-shelf small{font-size:32px;line-height:1.2;margin-top:3px;letter-spacing:1px;color:#f6d9a4;text-shadow:0 2px 2px #48251d}
+.shop-page .shop-product.in-cart>button>span{filter:sepia(.15) brightness(1.05);box-shadow:none}
+.shop-page .shop-product.in-cart>button>span:before{content:'';position:absolute;right:4px;top:170px;width:20px;height:20px;border-radius:50%;background:#844638;border:3px double #efc486;box-shadow:0 2px #412324}
+.scene-centered.shop-page .shop-cart-shortcut{left:160px;top:1520px;width:543px;height:92px;bottom:auto;font-size:32px}
+.shop-page .shop-cart-shortcut strong{font:32px/1.2 var(--lettering);margin-left:18px}
+.shop-page .shop-cart-shortcut b{font:32px/1.3 var(--lettering);min-width:34px;background:#f3cc85;color:#653d38;border:2px solid #a56a3c}
+.scene-centered.shop-page .witch-cart{left:75px;top:380px;width:713px;max-height:1160px;border-radius:15px;background:radial-gradient(at 40% 0,#fff0ce,#efd6aa);border:7px double #b0824d;padding:35px}
+.witch-cart li b{font:32px/1.25 var(--lettering);color:#613540;text-wrap:balance}
+.witch-cart li span{font-size:32px}.witch-cart header{border-bottom:3px double #ba8e59}.witch-cart li{border-bottom:1px dashed #c8a474}.witch-cart small{font-size:32px;line-height:1.5}.witch-cart .spell-button{font-size:32px}
+/* Cloth-backed inventory: an ink caption, with the quantity on a small brass tab. */
+.materials-inventory .bag-tier-tabs{left:172px;top:508px;width:580px;height:64px;gap:11px}
+.materials-inventory .bag-inventory-grid{left:124px;top:622px;width:640px;height:795px;grid-auto-rows:184px;gap:16px 10px}
+.materials-inventory .bag-material img.material-art{width:158px;height:114px}
+.materials-inventory .bag-material b{font:32px/1.2 var(--lettering);color:#603839;text-shadow:0 1px #ffedcb;text-wrap:balance;max-width:180px}
+.materials-inventory .bag-quantity{font:32px/1.1 var(--lettering);right:6px;top:4px;background:#705039;border:3px double #eac689;padding:5px 9px;color:#ffdf9d;box-shadow:0 2px 3px #3b2b2544}
+.materials-inventory .bag-material.unowned b{color:#a48a6b}
+.materials-inventory .bag-go-craft{left:206px;top:1527px;width:450px;height:126px}
+/* Candy labels and the little neighbour address cards. */
+.candy-gallery-v2 .candy-delivery-today,.candy-gallery-v2 .candy-delivery-total{top:298px;height:62px;gap:1px;align-items:center;justify-content:center;flex-direction:column;color:#7c513a}
+.candy-gallery-v2 .candy-delivery-today{left:242px;width:190px;border-right:1px solid #bb905c88}
+.candy-gallery-v2 .candy-delivery-total{left:441px;width:180px}
+.candy-gallery-v2 .candy-delivery-today span,.candy-gallery-v2 .candy-delivery-total span{font:32px/1.1 var(--lettering);letter-spacing:2px;color:#85523c}
+.candy-gallery-v2 .candy-delivery-today strong,.candy-gallery-v2 .candy-delivery-total strong{font:32px/1.1 var(--lettering);color:#613b40}
+.candy-gallery-v2 .candy-delivery-today small,.candy-gallery-v2 .candy-delivery-total small{font:32px/1.1 'Songti SC',serif;color:#956d4c}
+.candy-gallery-v2 .candy-jar-display{left:89px;top:432px;width:685px;height:720px}
+.candy-gallery-v2 .candy-jars-webgl{width:100%;height:100%}
+.candy-gallery-v2 .candy-compartments{grid-template-rows:235px 240px 245px}
+.candy-gallery-v2 .candy-jar-art{top:0;height:182px}
+.candy-gallery-v2 .candy-label{top:184px;left:14px;right:14px;min-height:48px;padding:8px 10px;border:0;border-radius:0;background:transparent url('/halloween/type/sign-ivory.svg') center/100% 100% no-repeat;box-shadow:0 3px 4px #29192033}
+.candy-gallery-v2 .candy-label b{font:32px/1.1 var(--lettering);white-space:normal;color:#654035;text-shadow:0 1px #ffedc8;text-wrap:balance}
+.candy-gallery-v2 .candy-label small{font-size:32px;line-height:1.15;letter-spacing:2px;margin-top:3px;color:#a07950}
+.candy-gallery-v2 .is-empty .candy-label{background:transparent url('/halloween/type/sign-ivory.svg') center/100% 100% no-repeat;color:#98754f;opacity:.8}
+.candy-gallery-v2 .is-empty .candy-label b{color:#997650}
+.candy-gallery-v2 .candy-compartment.is-selected .candy-label{background-color:transparent;border:0;box-shadow:0 0 0 2px #d6a35c;filter:brightness(1.08)}
+.candy-gallery-v2 .candy-stock-count{top:0;right:10px;font:32px/1 var(--lettering);background:#784932;border:3px double #e4b775;min-width:39px;padding:7px}
+.candy-gallery-v2 .candy-pick-label{top:145px;left:30px;font-size:32px;line-height:1.25;background:#6a394ce8;color:#ffe0a7;border:1px solid #d7ae6e;padding:3px 8px;border-radius:3px}
+.candy-gallery-v2 .candy-selected-summary{top:1173px;left:130px;width:200px;font:32px/1.1 var(--lettering);color:#f5d5a2}
+.candy-gallery-v2 .candy-gallery-pager{top:1166px;left:326px;width:210px;font:32px var(--lettering)}
+.candy-gallery-v2 .candy-taste-button{top:1160px;left:580px;width:140px;height:60px;font:32px/1 var(--lettering);border:0;border-radius:0;box-shadow:none;background:transparent url('/halloween/type/sign-plum.svg') center/100% 100% no-repeat}
+.candy-inventory.candy-gallery-v2 .gift-neighbor-options{left:195px;top:1295px;width:475px;height:210px;gap:25px}
+.candy-inventory.candy-gallery-v2 .gift-neighbor-options button{flex:1;min-width:0;height:210px;background:none;border-radius:25px}
+.candy-inventory.candy-gallery-v2 .gift-neighbor-options button>span:last-child{bottom:15px;left:18px;right:18px;font:32px/1.2 var(--lettering);color:#744343;text-wrap:balance;text-shadow:0 1px #fff0cc}
+.candy-gallery-v2 .neighbor-turn{top:1385px;width:53px;height:62px}
+.candy-gallery-v2 .neighbor-prev{left:130px}.candy-gallery-v2 .neighbor-next{left:682px}
+.candy-gallery-v2 .neighbor-position{top:1508px;left:195px;width:475px;font:32px/1.2 var(--lettering);color:#edc896}
+.candy-gallery-v2 .candy-send-button{left:205px;top:1540px;width:452px;height:118px}
+/* Trunk HUD: parchment chapter marker, watch, and the brass-button action. */
+.collection-page .room-page-art{background:url('/halloween/collection-phone-v6.webp') center/100% 100% no-repeat}
+.collection-page .room-heading{width:863px}
+.collection-page .room-heading p{left:297px;top:266px;width:270px;font:32px/1.1 var(--lettering);color:#6c3f3b;letter-spacing:2px;text-shadow:0 1px #fff1cc}
+.scene-centered.collection-page .collection-pool{left:67px;right:56px;top:382px;height:861px}
+.scene-centered.collection-page .collection-clock{left:auto;right:27px;top:274px;padding:8px 12px;border-radius:17px;gap:8px}
+.collection-page .collection-clock output{font:32px/1 var(--lettering);font-variant-numeric:tabular-nums}
+.collection-clock>svg{width:29px;height:32px}.collection-clock button{width:37px;height:36px}.collection-clock button svg{width:30px;height:30px}
+.scene-centered.collection-page .collection-tray{left:25px;right:24px;top:1380px;gap:10px}
+.scene-centered.collection-page .collection-tray:before{display:none}
+.scene-centered.collection-page .collection-tray>div{height:114px;border:0;background:none;box-shadow:none}
+.scene-centered.collection-page .collection-tray img{top:0;width:105px;height:105px;max-width:100%}
+.scene-centered.collection-page .collection-controls{left:272px;top:1544px;width:319px;height:90px}
+.scene-centered.collection-page .collection-controls button{width:319px;height:90px;font:32px/1.1 var(--lettering);color:#6f3d3e;text-shadow:0 1px #fff3d3}
+.scene-centered.collection-page .collection-controls p{left:-180px;top:98px;width:680px;font-size:32px;letter-spacing:1px;color:#e7c392}
+.collection-page .collection-cover{background:radial-gradient(ellipse at center,#4b294adb,#24172cbd);padding:60px;gap:15px;border-radius:12px}
+.collection-page .collection-cover:before{content:'';width:46px;height:46px;border:2px solid #c39c64;border-radius:50%;box-shadow:inset -12px -3px #d9b36e;transform:rotate(-22deg);margin-bottom:5px}
+.collection-page .collection-cover h2{font:32px/1.3 var(--lettering);letter-spacing:3px;color:#fce0a3;text-shadow:0 3px #352035;margin:0}
+.collection-page .collection-cover p{font-size:32px;line-height:1.6;color:#ceb58e;margin:0 0 20px;text-wrap:balance}
+.collection-page .collection-cover .spell-button{max-width:100%;font-size:32px;width:475px;min-height:98px;margin-top:0}
+
+/* Text treatment: two readable sizes plus one title size, matched to the painted scene. */
+.scene-centered .craft-primary,.scene-centered .craft-secondary,.scene-centered .spell-button,.scene-centered .shop-cart-shortcut,.scene-centered .candy-taste-button{font-family:inherit;font-weight:700;letter-spacing:1px;-webkit-text-stroke:1.5px #573026;paint-order:stroke fill;text-shadow:0 -1px 0 #fff1c6,0 3px 0 #71432c,0 5px 5px #25132388;color:#ffe0a0}
+.scene-centered .craft-secondary{color:#70402f;-webkit-text-stroke:.7px #70402f;text-shadow:0 2px 0 #fff2d2,0 3px 2px #ae7c4633}
+.workshop-v5 .craft-primary,.workshop-v5 .craft-secondary,.scene-centered .spell-button{font-size:32px}
+.workshop-v5 .recipe-pantry b,.workshop-v5 .timed-ingredients b,.workshop-v5 .recipe-slots span,.workshop-v5 .mold-library span,.materials-inventory .bag-material b,.shop-page .shop-shelf button>span:not(.material-art),.candy-gallery-v2 .candy-label b,.candy-inventory.candy-gallery-v2 .gift-neighbor-options button>span:last-child{font-family:inherit;font-size:32px;font-weight:600;letter-spacing:0;color:#633b34;-webkit-text-stroke:.65px #633b34;paint-order:stroke fill;text-shadow:0 2px 0 #fff1ce,0 3px 2px #88573533}
+.workshop-v5 .craft-step-ribbon .step-name,.workshop-v5 .cooking-hud strong,.craft-result-heading .batch-title,.collection-page .room-heading p{font-family:inherit;font-size:32px;font-weight:700;letter-spacing:2px;color:#71412f;-webkit-text-stroke:.8px #71412f;paint-order:stroke fill;text-shadow:0 2px 0 #fff1cc,0 4px 3px #91623a33}
+.workshop-v5 .finished-candy h2,.scene-centered .candy-reveal h2,.scene-centered .witch-cart h2,.scene-centered .cooking-help-scrim h2{font-family:inherit;font-size:32px;font-weight:700;letter-spacing:1px;color:#63363c;-webkit-text-stroke:.75px #63363c;paint-order:stroke fill;text-shadow:0 2px #fff2cc,0 4px 3px #a2754b44}
+.collection-page .collection-cover h2{font-family:inherit;font-size:32px;font-weight:700;color:#ffe2a1;-webkit-text-stroke:1.5px #70412b;paint-order:stroke fill;text-shadow:0 3px #89582c,0 6px 7px #1e102e}
+.scene-centered .cooking-hud p,.scene-centered .recipe-pantry small,.scene-centered .timed-ingredients small,.scene-centered .batch-quality,.scene-centered .candy-label small{font-size:32px;letter-spacing:0;font-weight:400;text-shadow:0 1px #fff0ce88}
+.scene-centered .shop-shelf small,.scene-centered .candy-selected-summary,.scene-centered .neighbor-position,.scene-centered .collection-controls p{font-family:inherit;font-size:32px;letter-spacing:0;color:#f9ddae;-webkit-text-stroke:.5px #573325;paint-order:stroke fill;text-shadow:0 2px 2px #321b23,0 0 4px #321b2388}
+
+.candy-gallery-v2 .candy-delivery-today span,.candy-gallery-v2 .candy-delivery-total span{font-weight:600;-webkit-text-stroke:.5px #85523c;paint-order:stroke fill;text-shadow:0 2px #fff0cc}
+/* One shared scale and centered grouping inside the parchment. */
+.scene-centered .halloween-canvas h2,.workshop-v5 .craft-step-ribbon .step-name,.workshop-v5 .cooking-hud strong,.craft-result-heading .batch-title,.collection-page .room-heading p{font-size:36px}
+.scene-centered .candy-delivery-today small,.scene-centered .candy-delivery-total small,.scene-centered .witch-cart small,.scene-centered .witch-cart li span,.scene-centered .candy-reveal p,.scene-centered .candy-reveal small,.scene-centered .cooking-help-scrim p,.scene-centered .candy-quantity-stepper output,.scene-centered .candy-pick-all,.scene-centered .witch-cart li strong,.scene-centered .witch-cart header span,.scene-centered .witch-cart footer p{font-size:32px}
+.workshop-v5 .recipe-pantry{height:148px;scrollbar-width:none}
+.workshop-v5 .recipe-pantry>button{position:relative;padding:0}
+.workshop-v5 .recipe-pantry img.material-art{height:46px}
+.workshop-v5 .recipe-pantry b{font-size:32px;min-height:0;line-height:1.05;max-height:68px;text-wrap:balance}
+.workshop-v5 .recipe-pantry small{position:static;margin:auto 0 0;padding:0;border:0;background:none;font-size:32px;line-height:1;color:#78503b}
+.workshop-v5 .timed-ingredients button{display:flex;flex-direction:column;justify-content:center;gap:4px;height:120px;max-width:260px;padding:4px 5px;text-align:center}
+.workshop-v5 .timed-ingredients .material-art{display:none}
+.workshop-v5 .timed-ingredients b,.workshop-v5 .timed-ingredients small{font-size:32px;line-height:1.1;text-wrap:balance;white-space:normal}
+.workshop-v5 .timed-ingredients button:disabled{opacity:.7}
+.workshop-v5 .cooking-hud{text-align:center;margin-bottom:6px}
+.workshop-v5 .cooking-hud p{color:#5c353d;text-align:center;background:#ffedc766;border-radius:6px;letter-spacing:0;-webkit-text-stroke:.4px #5c353d;text-shadow:0 1px #fff3da}
+.workshop-v5 .craft-result-heading{justify-content:center}
+
+.halloween-viewport{background:#2b1d29}

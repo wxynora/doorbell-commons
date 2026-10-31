@@ -20,6 +20,8 @@ import type {
   RanchDecorationActionExecutor,
 } from "./types";
 
+const HalloweenCandyBackpack = lazy(() => import("../../../halloween/doorstep-dialog").then(module => ({default:module.HalloweenCandyBackpack})));
+
 const KitchenInventoryPanelContent = lazy(async () => {
   const module = await import("../kitchen-inventory-panel");
   return { default: module.KitchenInventoryPanelContent };
@@ -118,7 +120,8 @@ export function FarmBackpackPanel({
   onPlaceFarmDecoration?: ((itemId: string) => void) | undefined;
   scene: Exclude<FarmSceneId, "neighborhood">;
 }) {
-  const tabs = FARM_FEATURE_PANELS[scene].backpack?.tabs ?? [];
+  const originalTabs = FARM_FEATURE_PANELS[scene].backpack?.tabs ?? [];
+  const tabs = scene === "field" ? [...originalTabs, "糖果"] : originalTabs;
   const [activeTab, setActiveTab] = useState(tabs[0] ?? "");
   const [decorationAction, setDecorationAction] = useState<RanchDecorationActionState>({
     stage: "idle",
@@ -163,7 +166,7 @@ export function FarmBackpackPanel({
 
   if (scene === "field") {
     const section = farmCatalog?.data.backpack;
-    if (activeTab !== "装饰" && (!section || section.status === "unavailable")) {
+    if (activeTab !== "糖果" && activeTab !== "装饰" && (!section || section.status === "unavailable")) {
       return (
         <FarmUnavailablePanel
           iconKey="panel.tool.backpack"
@@ -185,7 +188,9 @@ export function FarmBackpackPanel({
             </button>
           ))}
         </nav>
-        {activeTab === "装饰" ? (
+        {activeTab === "糖果" ? (
+          <Suspense fallback={<p role="status">正在读取糖果…</p>}><HalloweenCandyBackpack /></Suspense>
+        ) : activeTab === "装饰" ? (
           !farmDecorations ? (
             <FarmUnavailablePanel iconKey="panel.tool.backpack" label="装饰库存暂不可用" />
           ) : (

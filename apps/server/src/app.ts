@@ -10,6 +10,8 @@ import { registerLoungeRoutes } from "./lounge-routes.js";
 import { registerFarmLayoutShareRoutes } from "./farm-layout-sharing/routes.js";
 import { installFaultReports, type FaultReports } from "./fault-reports/collector.js";
 import { registerMidAutumnRoutes } from "./mid-autumn-routes.js";
+import { registerHalloweenRoutes } from "./halloween/routes.js";
+import type { HalloweenHumanClient } from "./halloween/client.js";
 import { registerHumanBulletinRoutes } from "./human-bulletin-routes.js";
 import { registerHumanNpcRoutes } from "./lingye-npc/routes.js";
 import {dailyImageUrl, registerDailyImageRoutes} from "./lingye-daily-images.js";
@@ -588,6 +590,7 @@ export interface BuildAppOptions {
   mailboxService?: MailboxService;
   mcpAccessService?: McpAccessService;
   mcpRuntime?: DoorbellMcpRuntime;
+  halloweenClient?: HalloweenHumanClient;
   loungeService?: LoungeService;
   residentSocialStore?: ResidentSocialStoreReader;
   refreshResidentActivity?: (community: Awaited<ReturnType<RegistrationAuthService["getCurrentSessionWithMembership"]>>) => Promise<void>;
@@ -2073,6 +2076,13 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (options.togetherBoard) registerTogetherRoutes(app, { registrationAuth: options.registrationAuth, board: options.togetherBoard, secureCookies: options.secureCookies });
   if (options.snowLive) registerSnowLiveRoutes(app, { registrationAuth: options.registrationAuth, live: options.snowLive, secureCookies: options.secureCookies });
   registerMidAutumnRoutes(app, { registrationAuth: options.registrationAuth, secureCookies: options.secureCookies });
+  if (options.halloweenClient) {
+    registerHalloweenRoutes(app, {
+      registrationAuth: options.registrationAuth,
+      client: options.halloweenClient,
+      secureCookies: options.secureCookies,
+    });
+  }
   app.addContentTypeParser(
     "application/x-www-form-urlencoded",
     { parseAs: "string" },

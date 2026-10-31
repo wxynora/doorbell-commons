@@ -1,0 +1,175 @@
+{
+  "version": "halloween-candy-v2",
+  "shapes": [
+    {
+      "id": "star",
+      "name": "星星"
+    },
+    {
+      "id": "heart",
+      "name": "爱心"
+    },
+    {
+      "id": "pumpkin",
+      "name": "南瓜"
+    },
+    {
+      "id": "ghost",
+      "name": "幽灵"
+    }
+  ],
+  "colors": [
+    {
+      "id": "amber",
+      "name": "琥珀金",
+      "hex": "#F4A941"
+    },
+    {
+      "id": "rose",
+      "name": "莓果粉",
+      "hex": "#D16B87"
+    },
+    {
+      "id": "plum",
+      "name": "葡萄紫",
+      "hex": "#9972B8"
+    },
+    {
+      "id": "cream",
+      "name": "奶油白",
+      "hex": "#F5E5BB"
+    },
+    {
+      "id": "mint",
+      "name": "薄荷绿",
+      "hex": "#79B8A3"
+    },
+    {
+      "id": "blue",
+      "name": "晴空蓝",
+      "hex": "#84B7D6"
+    }
+  ],
+  "assets": [
+    {
+      "shape": "star",
+      "color": "amber",
+      "url": "/halloween/candies/v2/star-amber.png"
+    },
+    {
+      "shape": "star",
+      "color": "rose",
+      "url": "/halloween/candies/v2/star-rose.png"
+    },
+    {
+      "shape": "star",
+      "color": "plum",
+      "url": "/halloween/candies/v2/star-plum.png"
+    },
+    {
+      "shape": "star",
+      "color": "cream",
+      "url": "/halloween/candies/v2/star-cream.png"
+    },
+    {
+      "shape": "star",
+      "color": "mint",
+      "url": "/halloween/candies/v2/star-mint.png"
+    },
+    {
+      "shape": "star",
+      "color": "blue",
+      "url": "/halloween/candies/v2/star-blue.png"
+    },
+    {
+      "shape": "heart",
+      "color": "amber",
+      "url": "/halloween/candies/v2/heart-amber.png"
+    },
+    {
+      "shape": "heart",
+      "color": "rose",
+      "url": "/halloween/candies/v2/heart-rose.png"
+    },
+    {
+      "shape": "heart",
+      "color": "plum",
+      "url": "/halloween/candies/v2/heart-plum.png"
+    },
+    {
+      "shape": "heart",
+      "color": "cream",
+      "url": "/halloween/candies/v2/heart-cream.png"
+    },
+    {
+      "shape": "heart",
+      "color": "mint",
+      "url": "/halloween/candies/v2/heart-mint.png"
+    },
+    {
+      "shape": "heart",
+      "color": "blue",
+      "url": "/halloween/candies/v2/heart-blue.png"
+    },
+    {
+      "shape": "pumpkin",
+      "color": "amber",
+      "url": "/halloween/candies/v2/pumpkin-amber.png"
+    },
+    {
+      "shape": "pumpkin",
+      "color": "rose",
+      "url": "/halloween/candies/v2/pumpkin-rose.png"
+    },
+    {
+      "shape": "pumpkin",
+      "color": "plum",
+      "url": "/halloween/candies/v2/pumpkin-plum.png"
+    },
+    {
+      "shape": "pumpkin",
+      "color": "cream",
+      "url": "/halloween/candies/v2/pumpkin-cream.png"
+    },
+    {
+      "shape": "pumpkin",
+      "color": "mint",
+      "url": "/halloween/candies/v2/pumpkin-mint.png"
+    },
+    {
+      "shape": "pumpkin",
+      "color": "blue",
+      "url": "/halloween/candies/v2/pumpkin-blue.png"
+    },
+    {
+      "shape": "ghost",
+      "color": "amber",
+      "url": "/halloween/candies/v2/ghost-amber.png"
+    },
+    {
+      "shape": "ghost",
+      "color": "rose",
+      "url": "/halloween/candies/v2/ghost-rose.png"
+    },
+    {
+      "shape": "ghost",
+      "color": "plum",
+      "url": "/halloween/candies/v2/ghost-plum.png"
+    },
+    {
+      "shape": "ghost",
+      "color": "cream",
+      "url": "/halloween/candies/v2/ghost-cream.png"
+    },
+    {
+      "shape": "ghost",
+      "color": "mint",
+      "url": "/halloween/candies/v2/ghost-mint.png"
+    },
+    {
+      "shape": "ghost",
+      "color": "blue",
+      "url": "/halloween/candies/v2/ghost-blue.png"
+    }
+  ]
+}

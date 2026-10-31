@@ -130,6 +130,26 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isHalloweenActivityOption(option: unknown): option is string {
+  return typeof option === "string" &&
+    (option === "万圣节" || option.startsWith("万圣节:"));
+}
+
+function isHalloweenActivityCall(params: unknown, togetherActivity?: TogetherActivity): boolean {
+  if (!isPlainObject(params) || params.name !== "doorbell" || !isPlainObject(params.arguments))
+    return false;
+  const call = params.arguments;
+  if ((call.op !== "farm.together.view" && call.op !== "farm.together.choose") || !isPlainObject(call.args))
+    return false;
+  const registered = findDoorbellOperation(call.op);
+  if (!registered || registered.kind !== "farm") return false;
+  const parsed = registered.operation.argsSchema.safeParse(call.args);
+  if (!parsed.success || !isPlainObject(parsed.data)) return false;
+  if (call.op === "farm.together.view")
+    return togetherActivity?.isHalloweenStatusView?.(parsed.data.section) === true;
+  return parsed.data.action !== "chat" && isHalloweenActivityOption(parsed.data.option);
+}
+
 function jsonRpcSuccess(id: JsonRpcId, result: unknown): JsonRpcSuccess {
   return { jsonrpc: "2.0", id, result };
 }
@@ -634,7 +654,9 @@ export class DoorbellMcpRuntime {
         try {
           const result = await this.#callTool(request.params, context);
           try {
-            return jsonRpcSuccess(id, this.#appendResidentNotifications(result, context));
+            return jsonRpcSuccess(id, isHalloweenActivityCall(request.params, this.#togetherActivity)
+              ? result
+              : this.#appendResidentNotifications(result, context));
           } catch (error) {
             try {
               this.#onNotificationDeliveryError(error);
@@ -911,12 +933,17 @@ export class DoorbellMcpRuntime {
         detail,
         ...(shouldAppendStatus && op !== "farm.status" ? { includeStatus: true } : {}),
       });
-      recordResidentFarmAction(this.#database.residentSocialStore, context.residentId, op, result.ok, this.#now());
-      let text = op === "farm.status" && result.ok
-        ? this.#decorateFarmStatus(result.text, context)
-        : result.text;
-      if (shouldAppendStatus && op !== "farm.status" && result.status_text !== undefined) {
-        text = `${text}\n\n【农场近况】\n${this.#decorateFarmStatus(result.status_text, context)}`;
+      let text =
+        op === "farm.status" && result.ok
+          ? (this.#togetherActivity?.decorateFarmStatus?.(context.residentId, result.text) ??
+            result.text)
+          : result.text;
+      const halloweenChoice = op === "farm.together.choose" &&
+        isHalloweenActivityOption(businessArgs.option);
+      const halloweenStatusView = op === "farm.together.view" &&
+        this.#togetherActivity?.isHalloweenStatusView?.(businessArgs.section) === true;
+      if (shouldAppendStatus && op !== "farm.status" && !halloweenChoice && !halloweenStatusView) {
+        text = await this.#appendStatusWhenAvailable(text, context);
       }
       return farmToolResult(text, result.ok, result.farm);
     } catch (error) {

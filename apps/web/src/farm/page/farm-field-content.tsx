@@ -196,6 +196,7 @@ export function bulletinReminderKeys(bulletin: BoundBulletinRead | null): string
 }
 
 export function FarmFieldContent({
+  onOpenCandyBox,
   active = true,
   data,
   harvestAction = { stage: "idle" },
@@ -249,6 +250,7 @@ export function FarmFieldContent({
 }: {
   active?: boolean;
   data: BoundFarmField;
+  onOpenCandyBox?: (()=>void) | undefined;
   harvestAction?: FarmHarvestActionState;
   harvestRequestAction?: FarmHarvestRequestActionState;
   plantRequestAction?: FarmPlantRequestActionState;
@@ -990,6 +992,7 @@ export function FarmFieldContent({
             >
               {scene.id === "field" ? (
                 <FieldScene
+                  onOpenCandyBox={onOpenCandyBox}
                   active={active && activeScene === "field"}
                   decorationData={farmDecorations?.data}
                   placementRequest={placementRequest}

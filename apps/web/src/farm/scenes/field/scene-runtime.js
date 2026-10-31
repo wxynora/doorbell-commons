@@ -1,6 +1,8 @@
 import { canMirrorDecoration, applyDecorationMirror, decorationMirrorPose } from "./models/decoration-mirror.js";
 import { planSharedLayout } from "./layout-sharing-plan.js";
 import * as T from "three";
+import { createDoorstepBoxController } from "../../../halloween/doorstep-model.mjs";
+import { createPlacementTerrain, LAND } from "./models/placement-terrain.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createWorld, groundPoint } from "./models/world.js";
 import { createFarmCamera, resizeFarmCamera, limitFarmView, CAMERA_TARGET, MIN_ZOOM, MAX_ZOOM } from "./models/camera.js";
@@ -58,6 +60,8 @@ export function createFieldRuntime(host, options) {
     else if(!enabled&&modelOutline){modelOutline.dispose();modelOutline=null;}
   }
   world.decorations=[];
+  const candyBox=createDoorstepBoxController(world,{createTerrain:()=>createPlacementTerrain(world.plots.map(o=>o.userData.plot),world.house.position,world.fieldLayout),land:LAND,cellSize:CELL_SIZE,camera});
+  function setCandyBoxAvailable(value){candyBox.setAvailable(value);candyBox.sync(editing);modelOutline?.refresh();environment.refreshRainSurfaces();}
   const winterSnowman=createWinterSnowman(world,options.houseLevel??1);
   let natureEffects=createNatureEffects(world.root,definitions,groundPoint);
   scene.add(world.root);
@@ -91,6 +95,7 @@ export function createFieldRuntime(host, options) {
   }
   function emit(message="") {
     winterSnowman.setVisible(!editing);
+    candyBox.sync(editing);
     const current=currentPlacement(),object=current?.object,id=object?.userData.itemId;
     const group=fieldPlacement?.groups[fieldPlacement.selected],columns=group?.columns??fieldLayout?.columns??6;
     options.onEditState({editing,valid:!saving&&(!current?.active||current.valid),treeMoving:fixtureEditing||!!placement?.active&&object?.userData.nativeTree!==undefined,houseMoving:!!housePlacement,fieldMoving:!!fieldPlacement,fieldColumns:columns,fieldRows:group?.rows??fieldLayout?.rows??Math.ceil(Math.max(0,...definitions.map(p=>p.id))/columns),...(fieldPlacement?{fieldGroup:fieldPlacement.selected,fieldGroups:fieldPlacement.groups.map(g=>({count:g.count}))}:{}),boundaryItemId,title:fixtureEditing?"场景物件收起":fieldPlacement?"移动田地":housePlacement?"移动房屋":importing?"导入布局预览":object?.userData.label||"布置农场",layoutPreview:importing,canFlip:!saving&&!!placement?.active&&canMirrorDecoration(object),mirrored:!!object&&object.scale.x<0,canAdd:!saving&&!!id&&remaining(id),canRemove:!saving&&!!placement?.active&&(!!id||object?.userData.nativeTree!==undefined||object===placement.stall),message});
@@ -103,6 +108,7 @@ export function createFieldRuntime(host, options) {
   }
   function refreshSnowman(){
     if(winterSnowman.sync(data?season:null,data?capture():null,data?.catalog))environment.refreshRainSurfaces();
+    if(candyBox.refresh()){environment.refreshRainSurfaces();modelOutline?.refresh();}
   }
   function setFieldLayout(value){
     const next=value?normalizeFieldLayout(value,definitions):null;
@@ -334,8 +340,9 @@ export function createFieldRuntime(host, options) {
     if(saving||importing){down=null;return;}
     if(currentPlacement()?.active){move(e);down=null;return;}
     if(!down||moved){down=null;return;}down=null;pointerRay(e);
-    const hit=ray.intersectObject(world.root,true).find(h=>h.object.isMesh&&(h.object.userData.nativeTree===undefined||world.nativeTrees[h.object.userData.nativeTree].visible)&&(!h.object.userData.stall||placement?.stall.visible));
-    if(hit?.object.userData.winterSnowman&&!editing)emit(SNOWMAN_MESSAGE);
+    const hit=ray.intersectObject(world.root,true).find(h=>h.object.isMesh&&(!h.object.userData.halloweenCandyBox||candyBox.visible)&&(h.object.userData.nativeTree===undefined||world.nativeTrees[h.object.userData.nativeTree].visible)&&(!h.object.userData.stall||placement?.stall.visible));
+    if(hit?.object.userData.halloweenCandyBox&&!editing)options.onOpenCandyBox?.();
+    else if(hit?.object.userData.winterSnowman&&!editing)emit(SNOWMAN_MESSAGE);
     else if(hit?.object.userData.nativeTree!==undefined&&!editing)startNativeTreeMove(hit.object.userData.nativeTree);
     else if(hit?.object.userData.house&&!editing)options.onSelectHouse?.();
     else if(hit?.object.userData.wateringCan&&placement)begin(world.wateringCan);
@@ -376,6 +383,7 @@ export function createFieldRuntime(host, options) {
     if(fogWeather!==value.weather){scene.fog=value.weather==="fog"?new T.FogExp2("#b8c9c8",.025):null;fogWeather=value.weather;}
   }
   setEnvironment(nature);
+  setCandyBoxAvailable(options.candyBoxAvailable??false);
   const reduce=matchMedia("(prefers-reduced-motion: reduce)");
   const nightSun=new T.Color("#acc4e4"),nightSky=new T.Color("#f4f1d6"),nightGround=new T.Color("#819474");
   let time=0,last=performance.now(),frame=null,active=options.active??true;
@@ -410,9 +418,9 @@ export function createFieldRuntime(host, options) {
     frame=requestAnimationFrame(animate);
   }
   if(active&&!document.hidden)frame=requestAnimationFrame(animate);
-  return {previewLayout,setActive,setModelOutline,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startNativeTreeMove,hideNativeTree,startStallMove,hideStall,startHouseMove,changeHouseStyle,startFieldMove,changeFieldColumns,changeFieldRows,selectFieldGroup,splitFieldGroup,mergeFieldGroup,rotate,flip,addOne,remove,cancel,save,changeRoof,changeCanopy,changeBoundary,
+  return {setCandyBoxAvailable,previewLayout,setActive,setModelOutline,setPlots,setEnvironment,setDecorations,selectPlot,startPlacement,startNativeTreeMove,hideNativeTree,startStallMove,hideStall,startHouseMove,changeHouseStyle,startFieldMove,changeFieldColumns,changeFieldRows,selectFieldGroup,splitFieldGroup,mergeFieldGroup,rotate,flip,addOne,remove,cancel,save,changeRoof,changeCanopy,changeBoundary,
     zoom(factor){camera.zoom=T.MathUtils.clamp(camera.zoom*factor,MIN_ZOOM,MAX_ZOOM);camera.updateProjectionMatrix();},
     resetView(){controls.reset();},
-    dispose(){disposed=true;if(frame!==null)cancelAnimationFrame(frame);frame=null;document.removeEventListener("visibilitychange",visibilityChanged);observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();modelOutline?.dispose();winterSnowman.dispose();environment.dispose();world.dispose();renderer.dispose();canvas.remove();}
+    dispose(){disposed=true;if(frame!==null)cancelAnimationFrame(frame);frame=null;document.removeEventListener("visibilitychange",visibilityChanged);observer.disconnect();for(const [name,fn] of listeners)canvas.removeEventListener(name,fn);controls.dispose();modelOutline?.dispose();winterSnowman.dispose();environment.dispose();candyBox.dispose();world.dispose();renderer.dispose();canvas.remove();}
   };
 }

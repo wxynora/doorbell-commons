@@ -77,8 +77,10 @@ import {
 } from "./preview/candidate-two-preview";
 import {
   DOORBELL_FARM_PATH,
+  HALLOWEEN_PATH,
   isConstableInterviewPath,
   isDoorbellFarmPath,
+  isHalloweenPath,
   isMidAutumnPath,
   isSnowLivePath,
   MID_AUTUMN_PATH,
@@ -99,6 +101,8 @@ const FarmPage = lazy(async () => {
   const module = await import("./farm/farm-page");
   return { default: module.FarmPage };
 });
+
+const HalloweenPage = lazy(() => import("./halloween/halloween-entry").then(module => ({ default: module.HalloweenEntry })));
 
 const MidAutumnPage = lazy(async () => {
   const module = await import("./mid-autumn/mid-autumn-entry");
@@ -429,10 +433,12 @@ function authenticatedViewState(
 function LiveApp() {
   const [appState, setAppState] = useState<AppState>({ stage: "checking-session" });
   const [activeInternalPage, setActiveInternalPage] = useState<
-    "community" | "daily" | "farm" | "lounge" | "mid-autumn"
+    "community" | "daily" | "farm" | "lounge" | "mid-autumn" | "halloween"
   >(
     () =>
-      isDoorbellFarmPath(window.location.pathname)
+      isHalloweenPath(window.location.pathname)
+        ? "halloween"
+        : isDoorbellFarmPath(window.location.pathname)
         ? "farm"
         : isMidAutumnPath(window.location.pathname)
           ? "mid-autumn"
@@ -488,8 +494,10 @@ function LiveApp() {
   useEffect(() => {
     const syncInternalPageFromLocation = () => {
       setActiveInternalPage(
-        isDoorbellFarmPath(window.location.pathname)
-          ? "farm"
+        isHalloweenPath(window.location.pathname)
+          ? "halloween"
+          : isDoorbellFarmPath(window.location.pathname)
+            ? "farm"
           : isMidAutumnPath(window.location.pathname)
             ? "mid-autumn"
           : window.history.state?.doorbellInternalPage === "daily"
@@ -544,6 +552,16 @@ function LiveApp() {
   const openLoungePage = useCallback(() => {
     setCandidateTwoScreenCommand(null);
     setActiveInternalPage("lounge");
+  }, []);
+
+  const openHalloweenPage = useCallback((page: "home" | "candies" = "home") => {
+    window.history.pushState({ doorbellInternalPage: "halloween" }, "", HALLOWEEN_PATH + (page === "candies" ? "?page=candies" : ""));
+    setActiveInternalPage("halloween");
+  }, []);
+  const closeHalloweenPage = useCallback(() => {
+    if (window.history.state?.doorbellInternalPage === "halloween") { window.history.back(); return; }
+    window.history.replaceState({ doorbellInternalPage: "farm" }, "", DOORBELL_FARM_PATH);
+    setActiveInternalPage("farm");
   }, []);
 
   const openMidAutumnPage = useCallback(() => {
@@ -1486,7 +1504,7 @@ function LiveApp() {
           setShowMcpAfterPermit(false);
           setLingyeScreenActive(false);
           setLingyeMapActive(false);
-          if (isDoorbellFarmPath(window.location.pathname) || isMidAutumnPath(window.location.pathname)) {
+          if (isHalloweenPath(window.location.pathname) || isDoorbellFarmPath(window.location.pathname) || isMidAutumnPath(window.location.pathname)) {
             window.history.replaceState({}, "", "/");
           }
           setActiveInternalPage("community");
@@ -1513,6 +1531,7 @@ function LiveApp() {
       openDailyPage,
       openFarmPage,
       openLoungePage,
+      openHalloweenPage,
       openMidAutumnPage,
     ],
   );
@@ -1601,6 +1620,9 @@ function LiveApp() {
           </Suspense>
         </FarmLazyBoundary>
       ) : null}
+      {appState.stage === "authenticated" && activeInternalPage === "halloween" ? (
+        <Suspense fallback={null}><HalloweenPage onBack={closeHalloweenPage} /></Suspense>
+      ) : null}
       {appState.stage === "authenticated" && activeInternalPage === "mid-autumn" ? (
         <Suspense fallback={<FarmLazyLoading label="正在打开中秋活动" mode="page" />}>
           <MidAutumnPage
@@ -1625,7 +1647,7 @@ function LiveApp() {
           }
         >
           <Suspense fallback={<FarmLazyLoading label="正在打开农场" mode="page" />}>
-            <FarmPage active={farmOpen} onBack={closeFarmPage} />
+            <FarmPage active={farmOpen} onBack={closeFarmPage} onOpenHalloween={openHalloweenPage} />
           </Suspense>
         </FarmLazyBoundary>
         </div>

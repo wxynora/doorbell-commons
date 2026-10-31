@@ -1,6 +1,7 @@
 /** Internal adapter for an active limited-time Together edition, never a new MCP tool. */
 export interface TogetherActivity {
   decorateFarmStatus?(residentId: string, text: string): string;
+  isHalloweenStatusView?(section: unknown): boolean;
   mailboxNotificationExclusions?(residentId: string, deliveredMessageIds?: string[]): string[];
   execute(input: {
     residentId: string;

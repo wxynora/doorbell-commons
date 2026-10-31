@@ -249,6 +249,7 @@ export type KitchenCookActionState =
   | { stage: "success"; outcome: KitchenCookOutcome };
 
 export interface FarmPageProps {
+  onOpenHalloween?: (page?: "home" | "candies") => void;
   active?: boolean;
   onBack: () => void;
   previewData?: BoundFarmField;

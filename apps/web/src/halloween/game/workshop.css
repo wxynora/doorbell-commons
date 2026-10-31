@@ -1,0 +1,76 @@
+/* Every dimension belongs to the same 863 × 1823 illustrated canvas. */
+.workshop-v5 .halloween-canvas { background:#533427; }
+.workshop-magic-background { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.workshop-v5 .workshop-webgl { position:absolute; left:0; top:365px; width:863px; height:855px; z-index:1; touch-action:none; cursor:grab; }
+.workshop-v5 .workshop-webgl:active { cursor:grabbing; }
+.craft-step-ribbon { position:absolute; z-index:3; left:233px; top:265px; width:397px; height:60px; display:flex; justify-content:space-between; align-items:center; gap:18px; list-style:none; padding:0; margin:0; color:#947250; }
+.craft-step-ribbon li { display:flex; align-items:center; gap:12px; white-space:nowrap; }
+.craft-step-ribbon .step-number { display:grid; place-items:center; font-size:32px; line-height:1; width:38px; height:38px; border:2px solid #ba9163; border-radius:50%; }
+.craft-step-ribbon .step-name { font-size:32px; line-height:1; font-weight:600; }
+.craft-step-ribbon .active { color:#57323d; }
+.craft-step-ribbon .active .step-number { background:#a46c36; border-color:#a46c36; color:#fff0cd; }
+.workshop-v5 .craft-controls { position:absolute; z-index:3; left:85px; width:693px; top:1280px; height:310px; color:#51303b; text-align:center; }
+.workshop-v5 .craft-ingredients { top:1270px; height:330px; }
+.workshop-v5 .craft-syrup { top:1325px; height:230px; }
+.workshop-v5 .craft-controls h2 { font-size:32px; line-height:1.4; font-weight:600; margin:0; }
+.recipe-slots { display:flex; gap:14px; height:70px; }
+.recipe-slots>button { flex:1; min-width:0; height:70px; padding:4px 8px; display:flex; align-items:center; justify-content:center; gap:8px; color:#56343e; background:#e4c49855; border:2px dashed #b58c5d; border-radius:12px; }
+.recipe-slots img.material-art { width:52px; height:52px; flex-shrink:0; object-fit:contain; }
+.workshop-v5 .recipe-slots span { flex:0 1 auto; font-size:32px; line-height:1.2; text-align:center; text-wrap:balance; }
+.recipe-empty { width:28px; height:28px; margin:auto; fill:none; stroke:#b28e68; stroke-width:3; stroke-linecap:round; }
+.recipe-pantry { display:flex; gap:14px; overflow:auto; overscroll-behavior:contain; height:132px; margin:12px 0; }
+.recipe-pantry>button { flex:0 0 148px; display:flex; flex-direction:column; align-items:center; background:none; border:0; padding:0; color:#51303b; }
+.recipe-pantry img.material-art { width:62px; height:62px; object-fit:contain; }
+.recipe-pantry b { font-size:32px; font-weight:600; line-height:1.25; }
+.recipe-pantry small { font-size:32px; line-height:1.25; color:#896445; }
+.recipe-pantry button:disabled { opacity:1; filter:saturate(.55); }
+.recipe-pantry p { font-size:32px; line-height:1.5; width:100%; }
+.craft-primary,.craft-secondary { min-width:0; min-height:82px; padding:10px 22px; border:4px double #dfb675; border-radius:20px; background:#674275; color:#ffedc5; font-size:32px; line-height:1.25; font-weight:600; box-shadow:0 3px 0 #513548; }
+.craft-controls>.craft-primary { width:100%; }
+.craft-primary:disabled { opacity:.45; box-shadow:none; }
+.craft-secondary { background:#ecd2a8; border-color:#b18656; color:#65424c; box-shadow:0 3px #ad8355; }
+.cooking-hud { position:relative; top:auto; left:auto; width:100%; padding:0; margin:0 0 10px; color:#553442; text-align:center; }
+.cooking-hud>div:first-child { display:grid; grid-template-columns:100px minmax(0,1fr) 100px; align-items:center; height:44px; font-size:32px; line-height:1.2; }
+.cooking-hud strong { grid-column:2; grid-row:1; font-weight:600; text-align:center; }
+.cooking-hud output { grid-column:3; grid-row:1; margin:0; text-align:center; font-size:32px; font-variant-numeric:tabular-nums; }
+.cooking-hud p { font-size:32px; line-height:40px; height:40px; margin:8px 0 0; text-align:center; }
+.stir-meter,.fill-meter { position:relative; height:13px; margin-top:8px; border:2px solid #d6b57f; border-radius:12px; background:#bda88d; overflow:hidden; }
+.stir-meter>span,.fill-meter>span { display:block; height:100%; background:linear-gradient(90deg,#ce8b3c,#efc777); }
+.stir-late-mark { position:absolute; top:0; left:75%; height:100%; border-left:3px solid #fff0b7; }
+.workshop-v5 .cooking-help { position:absolute; z-index:4; left:calc(var(--safe-left) + var(--safe-width) - 132px); top:calc(var(--safe-top) + 40px); display:flex; align-items:center; justify-content:center; width:100px; height:100px; padding:12px; margin:0; border:5px double #e6be7d; border-radius:24px; background:linear-gradient(#785177,#52304e); color:#ffe7b4; font:36px/1.1 var(--lettering); text-shadow:0 2px 2px #321c32; box-shadow:0 5px 0 #35213a88,inset 0 2px #f8dea344; }
+.workshop-v5 .cooking-help svg { width:52px; height:52px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linejoin:round; }
+.workshop-v5 .cooking-help:focus-visible { outline:5px solid #fff1c7; outline-offset:5px; }
+.workshop-v5 .timed-ingredients { display:flex; justify-content:center; gap:14px; margin:0; }
+.timed-ingredients button { flex:1; min-width:0; height:84px; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#e6cca43b; border:2px solid transparent; border-radius:12px; color:#553442; padding:3px 6px; }
+.timed-ingredients .good-time { border-color:#c39a63; background:#f8e6bf; }
+.timed-ingredients .material-art { width:40px; height:40px; }
+.timed-ingredients b { font-size:32px; font-weight:600; line-height:1.2; }
+.timed-ingredients small { font-size:32px; line-height:1.2; color:#846044; }
+.timed-ingredients button:disabled { opacity:.48; }
+.workshop-v5 .cooking-action-row { display:flex; margin-top:12px; }
+.workshop-v5 .cooking-action-row .craft-primary { flex:1; min-width:0; }
+.mold-categories { display:flex; justify-content:space-between; gap:10px; height:46px; margin-bottom:10px; }
+.workshop-v5 .mold-categories button { flex:1; border:0; border-bottom:3px solid transparent; border-radius:0; background:none; color:#84644d; font-size:32px; padding:4px 2px; white-space:nowrap; }
+.workshop-v5 .mold-categories .chosen { color:#563040; border-color:#956b41; font-weight:600; }
+.workshop-v5 .mold-library { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); grid-auto-rows:74px; gap:8px; height:156px; overflow:auto; padding:0; margin-bottom:12px; align-content:start; }
+.mold-library button { min-width:0; height:74px; background:none; border:2px solid transparent; border-radius:10px; padding:0; color:#583944; }
+.mold-library .chosen { border-color:#bd955e; background:#fff0cd; }
+.mold-library img { width:43px; height:43px; display:block; object-fit:contain; margin:auto; }
+.workshop-v5 .mold-library span { display:block; font-size:32px; line-height:1.1; white-space:nowrap; }
+.craft-pour .pour-hold-control { display:block; width:100%; margin:22px auto 14px; min-height:88px; }
+.craft-pour .craft-secondary { min-height:60px; font-size:32px; padding:8px 28px; }
+.pour-short-rule { font-size:32px; line-height:1.4; margin:8px; color:#89674d; }
+.craft-result-heading { display:flex; justify-content:center; gap:26px; align-items:baseline; font-size:32px; line-height:1.3; color:#8b6544; }
+.craft-result-heading strong { font-weight:600; color:#59373e; }
+.finished-candy { min-height:158px; display:flex; flex-direction:column; justify-content:center; gap:10px; padding:12px 10px; margin:0 0 12px; }
+.workshop-v5 .finished-candy h2 { font-size:32px; line-height:1.35; text-wrap:balance; overflow-wrap:anywhere; }
+.finished-candy p { margin:0; font-size:32px; line-height:1.3; color:#896747; }
+.craft-finish-actions { display:flex; gap:18px; }
+.craft-finish-actions button { flex:1; min-width:0; min-height:82px; font-size:32px; }
+.cooking-help-scrim { position:absolute; inset:0; z-index:30; background:#211729b3; display:grid; place-items:center; }
+.cooking-help-scrim section { position:relative; width:690px; padding:46px; background:#f6e4c2; border:5px double #b88b59; border-radius:24px; color:#583947; }
+.cooking-help-scrim h2 { font-size:32px; margin:0 0 24px; }
+.cooking-help-scrim p { font-size:32px; line-height:1.65; margin:0 0 20px; text-align:left; }
+.kitchen-loading { position:absolute; top:650px; width:100%; text-align:center; z-index:5; font-size:32px; color:#ffe3ac; }
+.neighbor-seal { width:75px; height:75px; margin:0 auto!important; }
+.neighbor-seal svg { width:75px; height:75px; fill:#a87843; stroke:#69442f; stroke-width:2; stroke-linejoin:round; }

@@ -1,0 +1,1161 @@
+{
+  "version": "halloween-candy-v3",
+  "shapes": [
+    {
+      "id": "star",
+      "name": "星星"
+    },
+    {
+      "id": "heart",
+      "name": "爱心"
+    },
+    {
+      "id": "pumpkin",
+      "name": "南瓜"
+    },
+    {
+      "id": "ghost",
+      "name": "幽灵"
+    },
+    {
+      "id": "apple",
+      "name": "苹果"
+    },
+    {
+      "id": "strawberry",
+      "name": "草莓"
+    },
+    {
+      "id": "orange",
+      "name": "橙子"
+    },
+    {
+      "id": "lemon",
+      "name": "柠檬"
+    },
+    {
+      "id": "grape",
+      "name": "葡萄"
+    },
+    {
+      "id": "peach",
+      "name": "桃子"
+    },
+    {
+      "id": "cherry",
+      "name": "樱桃"
+    },
+    {
+      "id": "watermelon",
+      "name": "西瓜"
+    },
+    {
+      "id": "banana",
+      "name": "香蕉"
+    },
+    {
+      "id": "pear",
+      "name": "梨子"
+    },
+    {
+      "id": "pineapple",
+      "name": "菠萝"
+    },
+    {
+      "id": "kiwi",
+      "name": "奇异果"
+    },
+    {
+      "id": "chiikawa",
+      "name": "吉伊卡哇"
+    },
+    {
+      "id": "hachiware",
+      "name": "小八"
+    },
+    {
+      "id": "usagi",
+      "name": "乌萨奇"
+    },
+    {
+      "id": "momonga",
+      "name": "飞鼠"
+    },
+    {
+      "id": "kurimanju",
+      "name": "栗子馒头"
+    },
+    {
+      "id": "shisa",
+      "name": "师萨"
+    },
+    {
+      "id": "rakko",
+      "name": "海獭"
+    },
+    {
+      "id": "hello_kitty",
+      "name": "凯蒂猫"
+    },
+    {
+      "id": "my_melody",
+      "name": "美乐蒂"
+    },
+    {
+      "id": "kuromi",
+      "name": "酷洛米"
+    },
+    {
+      "id": "cinnamoroll",
+      "name": "玉桂狗"
+    },
+    {
+      "id": "pompompurin",
+      "name": "布丁狗"
+    },
+    {
+      "id": "pochacco",
+      "name": "帕恰狗"
+    },
+    {
+      "id": "keroppi",
+      "name": "大眼蛙"
+    },
+    {
+      "id": "badtz_maru",
+      "name": "酷企鹅"
+    },
+    {
+      "id": "tuxedosam",
+      "name": "山姆企鹅"
+    },
+    {
+      "id": "hangyodon",
+      "name": "人鱼汉顿"
+    }
+  ],
+  "colors": [
+    {
+      "id": "amber",
+      "name": "琥珀金",
+      "hex": "#F4A941"
+    },
+    {
+      "id": "rose",
+      "name": "莓果粉",
+      "hex": "#D16B87"
+    },
+    {
+      "id": "plum",
+      "name": "葡萄紫",
+      "hex": "#9972B8"
+    },
+    {
+      "id": "cream",
+      "name": "奶油白",
+      "hex": "#F5E5BB"
+    },
+    {
+      "id": "mint",
+      "name": "薄荷绿",
+      "hex": "#79B8A3"
+    },
+    {
+      "id": "blue",
+      "name": "晴空蓝",
+      "hex": "#84B7D6"
+    }
+  ],
+  "assets": [
+    {
+      "shape": "star",
+      "color": "amber",
+      "url": "/halloween/candies/v3/star-amber.png"
+    },
+    {
+      "shape": "star",
+      "color": "rose",
+      "url": "/halloween/candies/v3/star-rose.png"
+    },
+    {
+      "shape": "star",
+      "color": "plum",
+      "url": "/halloween/candies/v3/star-plum.png"
+    },
+    {
+      "shape": "star",
+      "color": "cream",
+      "url": "/halloween/candies/v3/star-cream.png"
+    },
+    {
+      "shape": "star",
+      "color": "mint",
+      "url": "/halloween/candies/v3/star-mint.png"
+    },
+    {
+      "shape": "star",
+      "color": "blue",
+      "url": "/halloween/candies/v3/star-blue.png"
+    },
+    {
+      "shape": "heart",
+      "color": "amber",
+      "url": "/halloween/candies/v3/heart-amber.png"
+    },
+    {
+      "shape": "heart",
+      "color": "rose",
+      "url": "/halloween/candies/v3/heart-rose.png"
+    },
+    {
+      "shape": "heart",
+      "color": "plum",
+      "url": "/halloween/candies/v3/heart-plum.png"
+    },
+    {
+      "shape": "heart",
+      "color": "cream",
+      "url": "/halloween/candies/v3/heart-cream.png"
+    },
+    {
+      "shape": "heart",
+      "color": "mint",
+      "url": "/halloween/candies/v3/heart-mint.png"
+    },
+    {
+      "shape": "heart",
+      "color": "blue",
+      "url": "/halloween/candies/v3/heart-blue.png"
+    },
+    {
+      "shape": "pumpkin",
+      "color": "amber",
+      "url": "/halloween/candies/v3/pumpkin-amber.png"
+    },
+    {
+      "shape": "pumpkin",
+      "color": "rose",
+      "url": "/halloween/candies/v3/pumpkin-rose.png"
+    },
+    {
+      "shape": "pumpkin",
+      "color": "plum",
+      "url": "/halloween/candies/v3/pumpkin-plum.png"
+    },
+    {
+      "shape": "pumpkin",
+      "color": "cream",
+      "url": "/halloween/candies/v3/pumpkin-cream.png"
+    },
+    {
+      "shape": "pumpkin",
+      "color": "mint",
+      "url": "/halloween/candies/v3/pumpkin-mint.png"
+    },
+    {
+      "shape": "pumpkin",
+      "color": "blue",
+      "url": "/halloween/candies/v3/pumpkin-blue.png"
+    },
+    {
+      "shape": "ghost",
+      "color": "amber",
+      "url": "/halloween/candies/v3/ghost-amber.png"
+    },
+    {
+      "shape": "ghost",
+      "color": "rose",
+      "url": "/halloween/candies/v3/ghost-rose.png"
+    },
+    {
+      "shape": "ghost",
+      "color": "plum",
+      "url": "/halloween/candies/v3/ghost-plum.png"
+    },
+    {
+      "shape": "ghost",
+      "color": "cream",
+      "url": "/halloween/candies/v3/ghost-cream.png"
+    },
+    {
+      "shape": "ghost",
+      "color": "mint",
+      "url": "/halloween/candies/v3/ghost-mint.png"
+    },
+    {
+      "shape": "ghost",
+      "color": "blue",
+      "url": "/halloween/candies/v3/ghost-blue.png"
+    },
+    {
+      "shape": "apple",
+      "color": "amber",
+      "url": "/halloween/candies/v3/apple-amber.png"
+    },
+    {
+      "shape": "apple",
+      "color": "rose",
+      "url": "/halloween/candies/v3/apple-rose.png"
+    },
+    {
+      "shape": "apple",
+      "color": "plum",
+      "url": "/halloween/candies/v3/apple-plum.png"
+    },
+    {
+      "shape": "apple",
+      "color": "cream",
+      "url": "/halloween/candies/v3/apple-cream.png"
+    },
+    {
+      "shape": "apple",
+      "color": "mint",
+      "url": "/halloween/candies/v3/apple-mint.png"
+    },
+    {
+      "shape": "apple",
+      "color": "blue",
+      "url": "/halloween/candies/v3/apple-blue.png"
+    },
+    {
+      "shape": "strawberry",
+      "color": "amber",
+      "url": "/halloween/candies/v3/strawberry-amber.png"
+    },
+    {
+      "shape": "strawberry",
+      "color": "rose",
+      "url": "/halloween/candies/v3/strawberry-rose.png"
+    },
+    {
+      "shape": "strawberry",
+      "color": "plum",
+      "url": "/halloween/candies/v3/strawberry-plum.png"
+    },
+    {
+      "shape": "strawberry",
+      "color": "cream",
+      "url": "/halloween/candies/v3/strawberry-cream.png"
+    },
+    {
+      "shape": "strawberry",
+      "color": "mint",
+      "url": "/halloween/candies/v3/strawberry-mint.png"
+    },
+    {
+      "shape": "strawberry",
+      "color": "blue",
+      "url": "/halloween/candies/v3/strawberry-blue.png"
+    },
+    {
+      "shape": "orange",
+      "color": "amber",
+      "url": "/halloween/candies/v3/orange-amber.png"
+    },
+    {
+      "shape": "orange",
+      "color": "rose",
+      "url": "/halloween/candies/v3/orange-rose.png"
+    },
+    {
+      "shape": "orange",
+      "color": "plum",
+      "url": "/halloween/candies/v3/orange-plum.png"
+    },
+    {
+      "shape": "orange",
+      "color": "cream",
+      "url": "/halloween/candies/v3/orange-cream.png"
+    },
+    {
+      "shape": "orange",
+      "color": "mint",
+      "url": "/halloween/candies/v3/orange-mint.png"
+    },
+    {
+      "shape": "orange",
+      "color": "blue",
+      "url": "/halloween/candies/v3/orange-blue.png"
+    },
+    {
+      "shape": "lemon",
+      "color": "amber",
+      "url": "/halloween/candies/v3/lemon-amber.png"
+    },
+    {
+      "shape": "lemon",
+      "color": "rose",
+      "url": "/halloween/candies/v3/lemon-rose.png"
+    },
+    {
+      "shape": "lemon",
+      "color": "plum",
+      "url": "/halloween/candies/v3/lemon-plum.png"
+    },
+    {
+      "shape": "lemon",
+      "color": "cream",
+      "url": "/halloween/candies/v3/lemon-cream.png"
+    },
+    {
+      "shape": "lemon",
+      "color": "mint",
+      "url": "/halloween/candies/v3/lemon-mint.png"
+    },
+    {
+      "shape": "lemon",
+      "color": "blue",
+      "url": "/halloween/candies/v3/lemon-blue.png"
+    },
+    {
+      "shape": "grape",
+      "color": "amber",
+      "url": "/halloween/candies/v3/grape-amber.png"
+    },
+    {
+      "shape": "grape",
+      "color": "rose",
+      "url": "/halloween/candies/v3/grape-rose.png"
+    },
+    {
+      "shape": "grape",
+      "color": "plum",
+      "url": "/halloween/candies/v3/grape-plum.png"
+    },
+    {
+      "shape": "grape",
+      "color": "cream",
+      "url": "/halloween/candies/v3/grape-cream.png"
+    },
+    {
+      "shape": "grape",
+      "color": "mint",
+      "url": "/halloween/candies/v3/grape-mint.png"
+    },
+    {
+      "shape": "grape",
+      "color": "blue",
+      "url": "/halloween/candies/v3/grape-blue.png"
+    },
+    {
+      "shape": "peach",
+      "color": "amber",
+      "url": "/halloween/candies/v3/peach-amber.png"
+    },
+    {
+      "shape": "peach",
+      "color": "rose",
+      "url": "/halloween/candies/v3/peach-rose.png"
+    },
+    {
+      "shape": "peach",
+      "color": "plum",
+      "url": "/halloween/candies/v3/peach-plum.png"
+    },
+    {
+      "shape": "peach",
+      "color": "cream",
+      "url": "/halloween/candies/v3/peach-cream.png"
+    },
+    {
+      "shape": "peach",
+      "color": "mint",
+      "url": "/halloween/candies/v3/peach-mint.png"
+    },
+    {
+      "shape": "peach",
+      "color": "blue",
+      "url": "/halloween/candies/v3/peach-blue.png"
+    },
+    {
+      "shape": "cherry",
+      "color": "amber",
+      "url": "/halloween/candies/v3/cherry-amber.png"
+    },
+    {
+      "shape": "cherry",
+      "color": "rose",
+      "url": "/halloween/candies/v3/cherry-rose.png"
+    },
+    {
+      "shape": "cherry",
+      "color": "plum",
+      "url": "/halloween/candies/v3/cherry-plum.png"
+    },
+    {
+      "shape": "cherry",
+      "color": "cream",
+      "url": "/halloween/candies/v3/cherry-cream.png"
+    },
+    {
+      "shape": "cherry",
+      "color": "mint",
+      "url": "/halloween/candies/v3/cherry-mint.png"
+    },
+    {
+      "shape": "cherry",
+      "color": "blue",
+      "url": "/halloween/candies/v3/cherry-blue.png"
+    },
+    {
+      "shape": "watermelon",
+      "color": "amber",
+      "url": "/halloween/candies/v3/watermelon-amber.png"
+    },
+    {
+      "shape": "watermelon",
+      "color": "rose",
+      "url": "/halloween/candies/v3/watermelon-rose.png"
+    },
+    {
+      "shape": "watermelon",
+      "color": "plum",
+      "url": "/halloween/candies/v3/watermelon-plum.png"
+    },
+    {
+      "shape": "watermelon",
+      "color": "cream",
+      "url": "/halloween/candies/v3/watermelon-cream.png"
+    },
+    {
+      "shape": "watermelon",
+      "color": "mint",
+      "url": "/halloween/candies/v3/watermelon-mint.png"
+    },
+    {
+      "shape": "watermelon",
+      "color": "blue",
+      "url": "/halloween/candies/v3/watermelon-blue.png"
+    },
+    {
+      "shape": "banana",
+      "color": "amber",
+      "url": "/halloween/candies/v3/banana-amber.png"
+    },
+    {
+      "shape": "banana",
+      "color": "rose",
+      "url": "/halloween/candies/v3/banana-rose.png"
+    },
+    {
+      "shape": "banana",
+      "color": "plum",
+      "url": "/halloween/candies/v3/banana-plum.png"
+    },
+    {
+      "shape": "banana",
+      "color": "cream",
+      "url": "/halloween/candies/v3/banana-cream.png"
+    },
+    {
+      "shape": "banana",
+      "color": "mint",
+      "url": "/halloween/candies/v3/banana-mint.png"
+    },
+    {
+      "shape": "banana",
+      "color": "blue",
+      "url": "/halloween/candies/v3/banana-blue.png"
+    },
+    {
+      "shape": "pear",
+      "color": "amber",
+      "url": "/halloween/candies/v3/pear-amber.png"
+    },
+    {
+      "shape": "pear",
+      "color": "rose",
+      "url": "/halloween/candies/v3/pear-rose.png"
+    },
+    {
+      "shape": "pear",
+      "color": "plum",
+      "url": "/halloween/candies/v3/pear-plum.png"
+    },
+    {
+      "shape": "pear",
+      "color": "cream",
+      "url": "/halloween/candies/v3/pear-cream.png"
+    },
+    {
+      "shape": "pear",
+      "color": "mint",
+      "url": "/halloween/candies/v3/pear-mint.png"
+    },
+    {
+      "shape": "pear",
+      "color": "blue",
+      "url": "/halloween/candies/v3/pear-blue.png"
+    },
+    {
+      "shape": "pineapple",
+      "color": "amber",
+      "url": "/halloween/candies/v3/pineapple-amber.png"
+    },
+    {
+      "shape": "pineapple",
+      "color": "rose",
+      "url": "/halloween/candies/v3/pineapple-rose.png"
+    },
+    {
+      "shape": "pineapple",
+      "color": "plum",
+      "url": "/halloween/candies/v3/pineapple-plum.png"
+    },
+    {
+      "shape": "pineapple",
+      "color": "cream",
+      "url": "/halloween/candies/v3/pineapple-cream.png"
+    },
+    {
+      "shape": "pineapple",
+      "color": "mint",
+      "url": "/halloween/candies/v3/pineapple-mint.png"
+    },
+    {
+      "shape": "pineapple",
+      "color": "blue",
+      "url": "/halloween/candies/v3/pineapple-blue.png"
+    },
+    {
+      "shape": "kiwi",
+      "color": "amber",
+      "url": "/halloween/candies/v3/kiwi-amber.png"
+    },
+    {
+      "shape": "kiwi",
+      "color": "rose",
+      "url": "/halloween/candies/v3/kiwi-rose.png"
+    },
+    {
+      "shape": "kiwi",
+      "color": "plum",
+      "url": "/halloween/candies/v3/kiwi-plum.png"
+    },
+    {
+      "shape": "kiwi",
+      "color": "cream",
+      "url": "/halloween/candies/v3/kiwi-cream.png"
+    },
+    {
+      "shape": "kiwi",
+      "color": "mint",
+      "url": "/halloween/candies/v3/kiwi-mint.png"
+    },
+    {
+      "shape": "kiwi",
+      "color": "blue",
+      "url": "/halloween/candies/v3/kiwi-blue.png"
+    },
+    {
+      "shape": "chiikawa",
+      "color": "amber",
+      "url": "/halloween/candies/v3/chiikawa-amber.png"
+    },
+    {
+      "shape": "chiikawa",
+      "color": "rose",
+      "url": "/halloween/candies/v3/chiikawa-rose.png"
+    },
+    {
+      "shape": "chiikawa",
+      "color": "plum",
+      "url": "/halloween/candies/v3/chiikawa-plum.png"
+    },
+    {
+      "shape": "chiikawa",
+      "color": "cream",
+      "url": "/halloween/candies/v3/chiikawa-cream.png"
+    },
+    {
+      "shape": "chiikawa",
+      "color": "mint",
+      "url": "/halloween/candies/v3/chiikawa-mint.png"
+    },
+    {
+      "shape": "chiikawa",
+      "color": "blue",
+      "url": "/halloween/candies/v3/chiikawa-blue.png"
+    },
+    {
+      "shape": "hachiware",
+      "color": "amber",
+      "url": "/halloween/candies/v3/hachiware-amber.png"
+    },
+    {
+      "shape": "hachiware",
+      "color": "rose",
+      "url": "/halloween/candies/v3/hachiware-rose.png"
+    },
+    {
+      "shape": "hachiware",
+      "color": "plum",
+      "url": "/halloween/candies/v3/hachiware-plum.png"
+    },
+    {
+      "shape": "hachiware",
+      "color": "cream",
+      "url": "/halloween/candies/v3/hachiware-cream.png"
+    },
+    {
+      "shape": "hachiware",
+      "color": "mint",
+      "url": "/halloween/candies/v3/hachiware-mint.png"
+    },
+    {
+      "shape": "hachiware",
+      "color": "blue",
+      "url": "/halloween/candies/v3/hachiware-blue.png"
+    },
+    {
+      "shape": "usagi",
+      "color": "amber",
+      "url": "/halloween/candies/v3/usagi-amber.png"
+    },
+    {
+      "shape": "usagi",
+      "color": "rose",
+      "url": "/halloween/candies/v3/usagi-rose.png"
+    },
+    {
+      "shape": "usagi",
+      "color": "plum",
+      "url": "/halloween/candies/v3/usagi-plum.png"
+    },
+    {
+      "shape": "usagi",
+      "color": "cream",
+      "url": "/halloween/candies/v3/usagi-cream.png"
+    },
+    {
+      "shape": "usagi",
+      "color": "mint",
+      "url": "/halloween/candies/v3/usagi-mint.png"
+    },
+    {
+      "shape": "usagi",
+      "color": "blue",
+      "url": "/halloween/candies/v3/usagi-blue.png"
+    },
+    {
+      "shape": "momonga",
+      "color": "amber",
+      "url": "/halloween/candies/v3/momonga-amber.png"
+    },
+    {
+      "shape": "momonga",
+      "color": "rose",
+      "url": "/halloween/candies/v3/momonga-rose.png"
+    },
+    {
+      "shape": "momonga",
+      "color": "plum",
+      "url": "/halloween/candies/v3/momonga-plum.png"
+    },
+    {
+      "shape": "momonga",
+      "color": "cream",
+      "url": "/halloween/candies/v3/momonga-cream.png"
+    },
+    {
+      "shape": "momonga",
+      "color": "mint",
+      "url": "/halloween/candies/v3/momonga-mint.png"
+    },
+    {
+      "shape": "momonga",
+      "color": "blue",
+      "url": "/halloween/candies/v3/momonga-blue.png"
+    },
+    {
+      "shape": "kurimanju",
+      "color": "amber",
+      "url": "/halloween/candies/v3/kurimanju-amber.png"
+    },
+    {
+      "shape": "kurimanju",
+      "color": "rose",
+      "url": "/halloween/candies/v3/kurimanju-rose.png"
+    },
+    {
+      "shape": "kurimanju",
+      "color": "plum",
+      "url": "/halloween/candies/v3/kurimanju-plum.png"
+    },
+    {
+      "shape": "kurimanju",
+      "color": "cream",
+      "url": "/halloween/candies/v3/kurimanju-cream.png"
+    },
+    {
+      "shape": "kurimanju",
+      "color": "mint",
+      "url": "/halloween/candies/v3/kurimanju-mint.png"
+    },
+    {
+      "shape": "kurimanju",
+      "color": "blue",
+      "url": "/halloween/candies/v3/kurimanju-blue.png"
+    },
+    {
+      "shape": "shisa",
+      "color": "amber",
+      "url": "/halloween/candies/v3/shisa-amber.png"
+    },
+    {
+      "shape": "shisa",
+      "color": "rose",
+      "url": "/halloween/candies/v3/shisa-rose.png"
+    },
+    {
+      "shape": "shisa",
+      "color": "plum",
+      "url": "/halloween/candies/v3/shisa-plum.png"
+    },
+    {
+      "shape": "shisa",
+      "color": "cream",
+      "url": "/halloween/candies/v3/shisa-cream.png"
+    },
+    {
+      "shape": "shisa",
+      "color": "mint",
+      "url": "/halloween/candies/v3/shisa-mint.png"
+    },
+    {
+      "shape": "shisa",
+      "color": "blue",
+      "url": "/halloween/candies/v3/shisa-blue.png"
+    },
+    {
+      "shape": "rakko",
+      "color": "amber",
+      "url": "/halloween/candies/v3/rakko-amber.png"
+    },
+    {
+      "shape": "rakko",
+      "color": "rose",
+      "url": "/halloween/candies/v3/rakko-rose.png"
+    },
+    {
+      "shape": "rakko",
+      "color": "plum",
+      "url": "/halloween/candies/v3/rakko-plum.png"
+    },
+    {
+      "shape": "rakko",
+      "color": "cream",
+      "url": "/halloween/candies/v3/rakko-cream.png"
+    },
+    {
+      "shape": "rakko",
+      "color": "mint",
+      "url": "/halloween/candies/v3/rakko-mint.png"
+    },
+    {
+      "shape": "rakko",
+      "color": "blue",
+      "url": "/halloween/candies/v3/rakko-blue.png"
+    },
+    {
+      "shape": "hello_kitty",
+      "color": "amber",
+      "url": "/halloween/candies/v3/hello_kitty-amber.png"
+    },
+    {
+      "shape": "hello_kitty",
+      "color": "rose",
+      "url": "/halloween/candies/v3/hello_kitty-rose.png"
+    },
+    {
+      "shape": "hello_kitty",
+      "color": "plum",
+      "url": "/halloween/candies/v3/hello_kitty-plum.png"
+    },
+    {
+      "shape": "hello_kitty",
+      "color": "cream",
+      "url": "/halloween/candies/v3/hello_kitty-cream.png"
+    },
+    {
+      "shape": "hello_kitty",
+      "color": "mint",
+      "url": "/halloween/candies/v3/hello_kitty-mint.png"
+    },
+    {
+      "shape": "hello_kitty",
+      "color": "blue",
+      "url": "/halloween/candies/v3/hello_kitty-blue.png"
+    },
+    {
+      "shape": "my_melody",
+      "color": "amber",
+      "url": "/halloween/candies/v3/my_melody-amber.png"
+    },
+    {
+      "shape": "my_melody",
+      "color": "rose",
+      "url": "/halloween/candies/v3/my_melody-rose.png"
+    },
+    {
+      "shape": "my_melody",
+      "color": "plum",
+      "url": "/halloween/candies/v3/my_melody-plum.png"
+    },
+    {
+      "shape": "my_melody",
+      "color": "cream",
+      "url": "/halloween/candies/v3/my_melody-cream.png"
+    },
+    {
+      "shape": "my_melody",
+      "color": "mint",
+      "url": "/halloween/candies/v3/my_melody-mint.png"
+    },
+    {
+      "shape": "my_melody",
+      "color": "blue",
+      "url": "/halloween/candies/v3/my_melody-blue.png"
+    },
+    {
+      "shape": "kuromi",
+      "color": "amber",
+      "url": "/halloween/candies/v3/kuromi-amber.png"
+    },
+    {
+      "shape": "kuromi",
+      "color": "rose",
+      "url": "/halloween/candies/v3/kuromi-rose.png"
+    },
+    {
+      "shape": "kuromi",
+      "color": "plum",
+      "url": "/halloween/candies/v3/kuromi-plum.png"
+    },
+    {
+      "shape": "kuromi",
+      "color": "cream",
+      "url": "/halloween/candies/v3/kuromi-cream.png"
+    },
+    {
+      "shape": "kuromi",
+      "color": "mint",
+      "url": "/halloween/candies/v3/kuromi-mint.png"
+    },
+    {
+      "shape": "kuromi",
+      "color": "blue",
+      "url": "/halloween/candies/v3/kuromi-blue.png"
+    },
+    {
+      "shape": "cinnamoroll",
+      "color": "amber",
+      "url": "/halloween/candies/v3/cinnamoroll-amber.png"
+    },
+    {
+      "shape": "cinnamoroll",
+      "color": "rose",
+      "url": "/halloween/candies/v3/cinnamoroll-rose.png"
+    },
+    {
+      "shape": "cinnamoroll",
+      "color": "plum",
+      "url": "/halloween/candies/v3/cinnamoroll-plum.png"
+    },
+    {
+      "shape": "cinnamoroll",
+      "color": "cream",
+      "url": "/halloween/candies/v3/cinnamoroll-cream.png"
+    },
+    {
+      "shape": "cinnamoroll",
+      "color": "mint",
+      "url": "/halloween/candies/v3/cinnamoroll-mint.png"
+    },
+    {
+      "shape": "cinnamoroll",
+      "color": "blue",
+      "url": "/halloween/candies/v3/cinnamoroll-blue.png"
+    },
+    {
+      "shape": "pompompurin",
+      "color": "amber",
+      "url": "/halloween/candies/v3/pompompurin-amber.png"
+    },
+    {
+      "shape": "pompompurin",
+      "color": "rose",
+      "url": "/halloween/candies/v3/pompompurin-rose.png"
+    },
+    {
+      "shape": "pompompurin",
+      "color": "plum",
+      "url": "/halloween/candies/v3/pompompurin-plum.png"
+    },
+    {
+      "shape": "pompompurin",
+      "color": "cream",
+      "url": "/halloween/candies/v3/pompompurin-cream.png"
+    },
+    {
+      "shape": "pompompurin",
+      "color": "mint",
+      "url": "/halloween/candies/v3/pompompurin-mint.png"
+    },
+    {
+      "shape": "pompompurin",
+      "color": "blue",
+      "url": "/halloween/candies/v3/pompompurin-blue.png"
+    },
+    {
+      "shape": "pochacco",
+      "color": "amber",
+      "url": "/halloween/candies/v3/pochacco-amber.png"
+    },
+    {
+      "shape": "pochacco",
+      "color": "rose",
+      "url": "/halloween/candies/v3/pochacco-rose.png"
+    },
+    {
+      "shape": "pochacco",
+      "color": "plum",
+      "url": "/halloween/candies/v3/pochacco-plum.png"
+    },
+    {
+      "shape": "pochacco",
+      "color": "cream",
+      "url": "/halloween/candies/v3/pochacco-cream.png"
+    },
+    {
+      "shape": "pochacco",
+      "color": "mint",
+      "url": "/halloween/candies/v3/pochacco-mint.png"
+    },
+    {
+      "shape": "pochacco",
+      "color": "blue",
+      "url": "/halloween/candies/v3/pochacco-blue.png"
+    },
+    {
+      "shape": "keroppi",
+      "color": "amber",
+      "url": "/halloween/candies/v3/keroppi-amber.png"
+    },
+    {
+      "shape": "keroppi",
+      "color": "rose",
+      "url": "/halloween/candies/v3/keroppi-rose.png"
+    },
+    {
+      "shape": "keroppi",
+      "color": "plum",
+      "url": "/halloween/candies/v3/keroppi-plum.png"
+    },
+    {
+      "shape": "keroppi",
+      "color": "cream",
+      "url": "/halloween/candies/v3/keroppi-cream.png"
+    },
+    {
+      "shape": "keroppi",
+      "color": "mint",
+      "url": "/halloween/candies/v3/keroppi-mint.png"
+    },
+    {
+      "shape": "keroppi",
+      "color": "blue",
+      "url": "/halloween/candies/v3/keroppi-blue.png"
+    },
+    {
+      "shape": "badtz_maru",
+      "color": "amber",
+      "url": "/halloween/candies/v3/badtz_maru-amber.png"
+    },
+    {
+      "shape": "badtz_maru",
+      "color": "rose",
+      "url": "/halloween/candies/v3/badtz_maru-rose.png"
+    },
+    {
+      "shape": "badtz_maru",
+      "color": "plum",
+      "url": "/halloween/candies/v3/badtz_maru-plum.png"
+    },
+    {
+      "shape": "badtz_maru",
+      "color": "cream",
+      "url": "/halloween/candies/v3/badtz_maru-cream.png"
+    },
+    {
+      "shape": "badtz_maru",
+      "color": "mint",
+      "url": "/halloween/candies/v3/badtz_maru-mint.png"
+    },
+    {
+      "shape": "badtz_maru",
+      "color": "blue",
+      "url": "/halloween/candies/v3/badtz_maru-blue.png"
+    },
+    {
+      "shape": "tuxedosam",
+      "color": "amber",
+      "url": "/halloween/candies/v3/tuxedosam-amber.png"
+    },
+    {
+      "shape": "tuxedosam",
+      "color": "rose",
+      "url": "/halloween/candies/v3/tuxedosam-rose.png"
+    },
+    {
+      "shape": "tuxedosam",
+      "color": "plum",
+      "url": "/halloween/candies/v3/tuxedosam-plum.png"
+    },
+    {
+      "shape": "tuxedosam",
+      "color": "cream",
+      "url": "/halloween/candies/v3/tuxedosam-cream.png"
+    },
+    {
+      "shape": "tuxedosam",
+      "color": "mint",
+      "url": "/halloween/candies/v3/tuxedosam-mint.png"
+    },
+    {
+      "shape": "tuxedosam",
+      "color": "blue",
+      "url": "/halloween/candies/v3/tuxedosam-blue.png"
+    },
+    {
+      "shape": "hangyodon",
+      "color": "amber",
+      "url": "/halloween/candies/v3/hangyodon-amber.png"
+    },
+    {
+      "shape": "hangyodon",
+      "color": "rose",
+      "url": "/halloween/candies/v3/hangyodon-rose.png"
+    },
+    {
+      "shape": "hangyodon",
+      "color": "plum",
+      "url": "/halloween/candies/v3/hangyodon-plum.png"
+    },
+    {
+      "shape": "hangyodon",
+      "color": "cream",
+      "url": "/halloween/candies/v3/hangyodon-cream.png"
+    },
+    {
+      "shape": "hangyodon",
+      "color": "mint",
+      "url": "/halloween/candies/v3/hangyodon-mint.png"
+    },
+    {
+      "shape": "hangyodon",
+      "color": "blue",
+      "url": "/halloween/candies/v3/hangyodon-blue.png"
+    }
+  ]
+}

@@ -61,6 +61,7 @@ export function FieldScene({
   onRequestHousePurchase,
   housePurchaseFeedback,
   onOpenHouse,
+  onOpenCandyBox,
 }: {
   layoutPreviewRequest?: { layout: SceneDecorationLayout; requestKey: string } | undefined;
   active?: boolean;
@@ -80,6 +81,7 @@ export function FieldScene({
   onRequestHousePurchase?: ((itemId: string) => void) | undefined;
   housePurchaseFeedback?: {stage: string; message?: string} | undefined;
   onOpenHouse?: (()=>void) | undefined;
+  onOpenCandyBox?: (()=>void) | undefined;
 }) {
   const host = useRef<HTMLDivElement>(null), runtime = useRef<SceneRuntime | null>(null);
   const [modelOutline]=useModelOutlinePreference();
@@ -107,8 +109,8 @@ export function FieldScene({
   const fieldDraftValid=useRef(true);
   useEffect(()=>{if(edit.fieldMoving)setFieldSize({rows:String(edit.fieldRows??1),columns:String(edit.fieldColumns??6)});},[edit.fieldMoving,edit.fieldRows,edit.fieldColumns,edit.fieldGroup,edit.fieldGroups?.length]);
   const [renderPlots, setRenderPlots] = useState(plots);
-  const callbacks = useRef({onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot});
-  callbacks.current={onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot};
+  const callbacks = useRef({onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot,onOpenCandyBox});
+  callbacks.current={onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot,onOpenCandyBox};
   const currentActive=useRef(active);currentActive.current=active;
   const currentData=useRef(decorationData);currentData.current=decorationData;
   const plotKey=JSON.stringify(renderPlots.map(plot=>plot.plot_id));
@@ -123,6 +125,8 @@ export function FieldScene({
       const instance=createFieldRuntime(host.current,{
         active:currentActive.current,plots:renderPlots,environment:currentEnvironment.current,houseLevel,houseStyle:currentData.current?.layout.house?.style??"classic",classicHouseLevel:currentData.current?.house?.classic_level??Math.min(houseLevel,3) as 1|2|3,
         onSelectHouse:()=>{if(currentData.current){setHouseMenu(true);setRequestedHouseItem(null);callbacks.current.onClosePlot();callbacks.current.onOpenHouse?.();}},
+        candyBoxAvailable:Boolean(callbacks.current.onOpenCandyBox),
+        onOpenCandyBox:()=>callbacks.current.onOpenCandyBox?.(),
         onSelectPlot:id=>callbacks.current.onSelectPlot(id),
         onEditState:state=>{setEdit(state);setSnowmanNotice(!state.editing&&state.message===SNOWMAN_MESSAGE);callbacks.current.onEditingChange?.(state.editing);},
         onSaveLayout:async layout=>{
@@ -144,6 +148,7 @@ export function FieldScene({
   },[plotKey,houseLevel]);
   useEffect(()=>{runtime.current?.setPlots(renderPlots);},[renderPlots,houseLevel]);
   useEffect(()=>{runtime.current?.setActive(active);},[active,plotKey,houseLevel]);
+  useEffect(()=>{runtime.current?.setCandyBoxAvailable(Boolean(onOpenCandyBox));},[Boolean(onOpenCandyBox),plotKey,houseLevel]);
   useEffect(()=>{runtime.current?.setModelOutline(modelOutline);},[modelOutline,plotKey,houseLevel]);
   useEffect(()=>{runtime.current?.setEnvironment(environment);},[environment.season,environment.weather,environment.night,environment.disaster?.type,environment.disaster?.phase,JSON.stringify(environment.flood),plotKey,houseLevel]);
   useEffect(()=>{if(decorationData)runtime.current?.setDecorations(decorationData);},[decorationData,plotKey,houseLevel]);

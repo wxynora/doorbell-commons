@@ -2,6 +2,7 @@ import type { LayoutShareSkip } from "./layout-sharing-plan.js";
 import type { FarmPlot } from "../../farm-overview";
 import type { SceneDecorationData, SceneDecorationLayout, SceneEditState, SceneEnvironment } from "./scene-types";
 export interface SceneRuntime {
+  setCandyBoxAvailable(available: boolean): void;
   previewLayout(layout: SceneDecorationLayout): LayoutShareSkip[];
   setActive(active: boolean): void;
   setModelOutline(enabled: boolean): void;
@@ -38,6 +39,8 @@ export interface SceneRuntime {
 export const roofChoices: readonly {id:string;label:string;color:string}[];
 export const SNOWMAN_MESSAGE: string;
 export function createFieldRuntime(host: HTMLElement, options: {
+  candyBoxAvailable?: boolean;
+  onOpenCandyBox?(): void;
   active?: boolean;
   plots: readonly FarmPlot[];
   houseLevel?: 1 | 2 | 3 | 4;
