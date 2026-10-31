@@ -59,7 +59,7 @@ function useReceivedCandies({ receivedOnly = false }: { receivedOnly?: boolean }
     if (!pending.current) return;
     active.current = true; setBusy(true); setEatError(null);
     try {
-      const eatingTarget = pending.current.args.target ?? 'self';
+      const eatingTarget = pending.current.args.target === 'other' ? 'other' : 'self';
       const receipt = await sendCommand<CandyEffectReceipt>(pending.current);
       setCandies(current => current?.filter(item => item.id !== receipt.candyId) ?? null);
       if (eatingTarget === 'self') setEffects(current => [...current.filter(item => item.candyId !== receipt.candyId), receipt]);
