@@ -193,15 +193,16 @@ function visibleTileIds(world, tiles, pile) {
 function syncPile(tiles, pile, { steps, impulseSeed } = {}) {
   const { world, wallCollisionPlanes } = makeWorld(pile);
   const bodies = addTileBodies(world, tiles);
-  if (impulseSeed != null) {
-    const random = seededPileRandom(impulseSeed);
-    for (const body of bodies.values()) {
-      body.wakeUp();
-      body.applyImpulse(new Vec3((random() - 0.5) * 1.35, random() * 0.5, (random() - 0.5) * 1.35));
-      body.angularVelocity.set(0, (random() - 0.5) * 1.6, 0);
-    }
-  }
+  const random = impulseSeed == null ? null : seededPileRandom(impulseSeed);
   for (let index = 0; index < steps; index++) {
+    // Three short shakes redistribute the actual bodies before they settle.
+    if (random && (index === 0 || index === 20 || index === 40)) {
+      for (const body of bodies.values()) {
+        body.wakeUp();
+        body.applyImpulse(new Vec3((random() - 0.5) * 16, random() * 6, (random() - 0.5) * 16));
+        body.angularVelocity.set(0, (random() - 0.5) * 12, 0);
+      }
+    }
     updateWallCollisionMasks(bodies, wallCollisionPlanes);
     world.step(FIXED_STEP);
   }

@@ -3,7 +3,7 @@ import { createFarmWorldSqlitePersistence } from '../farm-world-sqlite-persisten
 import { crops, titles } from '../content.js';
 import { getFarm, playerFarms } from '../store.js';
 import { LINGYE_NPCS } from '../npc/registry.js';
-import { projectHumanFarmCatalog } from '../server/farm-catalog-structured.js';
+import { projectHumanMessageBoards } from '../server/farm-catalog-structured.js';
 import { createCandyArt } from './candy-art.mjs';
 import { createHalloweenFarmRuntime } from './runtime.mjs';
 import { HALLOWEEN_COLLECTION, HALLOWEEN_ECONOMY, HALLOWEEN_REWARDS,
@@ -20,7 +20,7 @@ export function createHalloweenFarmIntegration({ database, backend, now = Date.n
     listFarmNeighbors: farmId => {
       const farm = getFarm(farmId);
       if (!farm) return [];
-      const boards = projectHumanFarmCatalog(farm, now()).data?.neighborhood?.message_boards;
+      const boards = projectHumanMessageBoards(farm);
       if (!Array.isArray(boards)) throw new Error('neighbor_catalog_unavailable');
       return boards.filter(board => board?.is_own !== true && typeof board?.farm_doorplate === 'string')
         .map(board => ({ id: board.farm_doorplate, name: String(board.farm_name ?? board.farm_doorplate) }));

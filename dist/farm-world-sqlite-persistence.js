@@ -51,8 +51,9 @@ function parseJson(text, label) {
 }
 
 function sameJson(left, right) {
-    return canonicalFarmWorldJson(parseJson(left, "comparison:left")) ===
-        canonicalFarmWorldJson(parseJson(right, "comparison:right"));
+    const canonicalLeft = canonicalFarmWorldJson(parseJson(left, "comparison:left"));
+    if (typeof left === "string" && left === right) return true;
+    return canonicalLeft === canonicalFarmWorldJson(parseJson(right, "comparison:right"));
 }
 
 function assertDatabase(database) {

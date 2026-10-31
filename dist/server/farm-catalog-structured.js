@@ -634,6 +634,22 @@ function projectBulletin(farm) {
   };
 }
 
+function projectMessageBoards(farm, farms) {
+  return [
+    projectMessageBoard(farm, true),
+    ...farms
+      .filter((item) => item.id !== farm.id && item.social?.visit !== false)
+      .map((item) => projectMessageBoard(item)),
+  ];
+}
+
+export function projectHumanMessageBoards(farm) {
+  if (!farm || typeof farm !== "object") throw new TypeError("Farm catalog requires a farm");
+  const farms = playerFarms();
+  if (!farms.some((item) => item.id === farm.id)) farms.push(farm);
+  return projectMessageBoards(farm, farms);
+}
+
 function projectNeighborhood(farm, now) {
   const farms = playerFarms();
   if (!farms.some((item) => item.id === farm.id)) farms.push(farm);
@@ -680,12 +696,7 @@ function projectNeighborhood(farm, now) {
     .filter(Boolean)
     .slice(-10)
     .reverse();
-  const messageBoards = [
-    projectMessageBoard(farm, true),
-    ...farms
-      .filter((item) => item.id !== farm.id && item.social?.visit !== false)
-      .map((item) => projectMessageBoard(item)),
-  ];
+  const messageBoards = projectMessageBoards(farm, farms);
   return {
     status: "available",
     rankings,
