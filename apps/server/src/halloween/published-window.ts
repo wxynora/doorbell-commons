@@ -1,4 +1,4 @@
-const DURATION_MS = 72 * 60 * 60 * 1000;
+const DURATION_MS = 120 * 60 * 60 * 1000;
 
 export interface HalloweenReleaseWindow {
   opensAt: number;
