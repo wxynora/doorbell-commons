@@ -1,3 +1,4 @@
+import {configureGuestbookJudgments} from './server/doorbell/guestbook-judgments.mjs';
 import { createTogetherDecorationRewards } from "./server/doorbell/together-decoration.js";
 import { handleFarmDecorationAction } from './server/farm-decoration-agent-action.js';
 import { captureCommittedPlayerPatrolThefts } from "./security/player-patrol-runtime.js";
@@ -1027,6 +1028,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
     let rescheduleReporterEvaluation = () => {};
     let ranchRaidScheduler = null;
     activeLingyeWorldDatabase = lingyeWorldDatabase;
+    if (lingyeWorldDatabase) configureGuestbookJudgments(lingyeWorldDatabase);
     setDailySpendEconomyDatabase(lingyeWorldDatabase);
     activeMysteryMerchantRuntime = mysteryMerchantConfig;
     const lingyeEconomyRules = Object.freeze({

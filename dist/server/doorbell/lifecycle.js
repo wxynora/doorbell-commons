@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { MESSAGES_MAX } from "../../config.js";
+import { resolveNumberedTarget } from "../farm/social.js";
+import { foldGuestbookReceipt } from "./guestbook-similarity.mjs";
+import { readGuestbookScores } from "./guestbook-judgments.mjs";
 import { hasDamagedPublicName } from "../../game.js";
 import {
     allFarms,
@@ -221,6 +225,16 @@ export async function handleDoorbellFarmExecution(req, res, method, executeFarmA
             text: typeof out.json?.text === "string" ? out.json.text : "农场没有返回可读取的结果。",
             ...(body.detail === true && isPlainObject(out.json?.farm) ? { farm: out.json.farm } : {}),
         };
+        const ownGuestbook = body.action === "guestbook" && body.params.on === undefined;
+        const visitingGuestbook = body.action === "visit" && typeof body.params.to === "string" && body.params.to.trim() !== "";
+        if (publicResult.ok && body.params.expand !== true && (ownGuestbook || visitingGuestbook)) {
+            const board = ownGuestbook ? getFarm(binding.farm.id) : resolveNumberedTarget(body.params.to, binding.farm)?.farm;
+            if (board && board.guestbook !== false) {
+                const messages = (board.messages ?? []).slice(-MESSAGES_MAX);
+                if (ownGuestbook) messages.reverse();
+                publicResult.text = foldGuestbookReceipt({text:publicResult.text,messages,own:ownGuestbook,scores:readGuestbookScores(board.id,messages)});
+            }
+        }
         if (body.include_status === true && body.action !== "status") {
             try {
                 const currentFarm = getFarm(binding.farm.id);

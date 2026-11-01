@@ -1,3 +1,4 @@
+import {wakeGuestbookJudgments} from './server/doorbell/guestbook-judgments.mjs';
 import {
     assertJsonCompatible,
     canonicalFarmWorldJson,
@@ -397,14 +398,18 @@ export function createFarmWorldSqlitePersistence(database) {
             return exportFarmWorldFromDatabase(database);
         },
         commitMutation(input) {
-            return commitEntries(input);
+            const result = commitEntries(input);
+            wakeGuestbookJudgments(database);
+            return result;
         },
         commitLegacySnapshot(world, hints = null) {
             const projection = legacyWorldProjection(world);
             const selected = selectedProjection(projection, hints, database);
             if (selected.farms.length === 0 && selected.components.length === 0)
                 return { farms: [], components: [] };
-            return commitEntries(selected);
+            const result = commitEntries(selected);
+            wakeGuestbookJudgments(database);
+            return result;
         },
     });
 }
