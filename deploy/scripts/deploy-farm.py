@@ -89,6 +89,30 @@ def wait_for_quiet(paths, run=run_command, clock=time.monotonic, sleep=time.slee
             sleep(1)
 
 
+def prune_release_backups(root):
+    """Called with the Farm deploy lock held, after successful live health checks."""
+    require(root.is_dir() and not root.is_symlink(), '备份根目录无效')
+    backups = sorted((p for p in root.iterdir()
+                      if re.fullmatch(r'\d{8}T\d{6}\.\d{6}Z-[A-Za-z0-9-]+', p.name)
+                      and p.is_dir() and not p.is_symlink()),
+                     key=lambda p: p.name, reverse=True)
+    kept, obsolete = backups[:2], backups[2:]
+    if obsolete:
+        # Refuse deletion if either retained recovery point is incomplete.
+        for folder in kept:
+            receipt = json.loads((folder / 'report.json').read_text())
+            require(receipt.get('backup_complete') is True,
+                    '最新备份未完成，不清理旧恢复点')
+            require((folder / 'lingye-world.sqlite').is_file()
+                    and not (folder / 'lingye-world.sqlite').is_symlink(),
+                    '最新备份缺少数据库，不清理旧恢复点')
+    removed = []
+    for folder in obsolete:
+        shutil.rmtree(folder)
+        removed.append(folder.name)
+    return {'kept': [p.name for p in kept], 'removed': removed}
+
+
 def deploy(plan, paths=PATHS, run=run_command, clock=time.monotonic, sleep=time.sleep, report=emit):
     plan = parse_plan(plan)
     repo, data = paths['repo'], paths['data']
@@ -206,6 +230,8 @@ def deploy(plan, paths=PATHS, run=run_command, clock=time.monotonic, sleep=time.
                 marker.unlink()
                 require(health(DIRECT) == '200' and health(PUBLIC) == '200', '解除维护后健康检查未通过')
                 result.update(maintenance='off', direct_health=200, public_health=200)
+                stage('backup_retention')
+                result['backup_retention'] = prune_release_backups(paths['backups'])
                 stage('complete')
                 report(result)
                 return result
