@@ -25,7 +25,7 @@ export function readHalloweenReleaseWindow(env = process.env) {
   const value = raw.trim();
   if (!/^[1-9][0-9]*$/.test(value)) return null;
   const publishedAt = Number(value);
-  const duration = 72 * 60 * 60 * 1000;
+  const duration = 120 * 60 * 60 * 1000;
   if (!Number.isSafeInteger(publishedAt) || !Number.isSafeInteger(publishedAt + duration)) return null;
   return Object.freeze({ publishedAt, opensAt: publishedAt, closesAt: publishedAt + duration });
 }
