@@ -193,8 +193,8 @@ export const farmFieldPlotSchema = z
     watered: z.number().int().nonnegative(),
     progress: z
       .object({
-        current: z.number().int().nonnegative(),
-        total: z.number().int().positive(),
+        current: z.number().nonnegative(),
+        total: z.number().positive(),
       })
       .strict()
       .nullable(),
