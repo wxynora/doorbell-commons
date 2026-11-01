@@ -345,10 +345,10 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   ),
   direct(
     "farm.visit",
-    "查看可以拜访的农场；提供 to 时进入指定农场。",
-    "{to?, detail?}",
+    "查看可以拜访的农场；提供 to 时进入指定农场。留言板相似内容默认折叠；expand:true显示全部原文。",
+    "{to?, expand?, detail?}",
     "visit",
-    { to: nonEmptyString.optional() },
+    { to: nonEmptyString.optional(), expand: z.boolean().optional() },
     [{}, { to: "6" }],
   ),
   direct(
@@ -369,10 +369,10 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   ),
   direct(
     "farm.guestbook",
-    "不提供 on 时读取自己的最新留言；提供 on 时开启或关闭自己的留言板。",
-    "{on?, detail?}",
+    "不提供on时读取自己的最新留言，相似内容默认折叠；expand:true显示全部原文。提供on时开启或关闭自己的留言板。",
+    "{on?, expand?, detail?}",
     "guestbook",
-    { on: z.boolean().optional() },
+    { on: z.boolean().optional(), expand: z.boolean().optional() },
     [{}, { on: false }],
   ),
   defineOperation({
