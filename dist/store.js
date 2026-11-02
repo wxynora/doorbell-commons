@@ -1,3 +1,4 @@
+import { measureFarmPhase } from "./server/farm-request-timing.js";
 // 农场仓库：唯一 id、内存索引、JSON 存档（含 rngState）、健壮读档。
 import { createHash, randomInt } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -506,9 +507,9 @@ function commitWorld(world, hints = null) {
     const write = (additionalHints = null) => worldPersistenceAdapter
         ? worldPersistenceAdapter.commitLegacySnapshot(world, mergePersistenceHints(hints, additionalHints))
         : writeWorldAtomic(world);
-    return worldCommitCoordinator
+    return measureFarmPhase("worldCommit", () => worldCommitCoordinator
         ? worldCommitCoordinator(world, context, write, hints)
-        : write();
+        : write());
 }
 export function setWorldCommitCoordinator(coordinator) {
     if (coordinator !== null && typeof coordinator !== "function")

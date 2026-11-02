@@ -1,3 +1,4 @@
+import { measureFarmPhase } from "./server/farm-request-timing.js";
 import { manualPerformanceWorkflow, registerManualPublication } from "./career/reporter-manual-publication.js";
 import { installAnnualStatisticsSchema } from "./annual-statistics/schema.js";
 import { PENDING_COUNTERS, flushAnnualCounters } from "./annual-statistics/world-buffer.js";
@@ -164,10 +165,10 @@ let lingyeWorldTransactionSequence = 0;
 export function runLingyeWorldTransaction(database, operation) {
     const nested = database.isTransaction;
     const savepoint = `lingye_world_tx_${++lingyeWorldTransactionSequence}`;
-    database.exec(nested ? `SAVEPOINT ${savepoint}` : "BEGIN IMMEDIATE");
+    measureFarmPhase("transactionBegin", () => database.exec(nested ? `SAVEPOINT ${savepoint}` : "BEGIN IMMEDIATE"));
     try {
         const result = operation();
-        database.exec(nested ? `RELEASE SAVEPOINT ${savepoint}` : "COMMIT");
+        measureFarmPhase("transactionCommit", () => database.exec(nested ? `RELEASE SAVEPOINT ${savepoint}` : "COMMIT"));
         return result;
     }
     catch (error) {
@@ -373,7 +374,7 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 publications.push({ target: farm, staged });
                 return staged;
             });
-            const migrated = world.farms.filter((farm) => farm?.doorbellMcpMigration?.migrationId);
+            let migrated = world.farms.filter((farm) => farm?.doorbellMcpMigration?.migrationId);
             const byResident = new Set();
             for (const farm of migrated) {
                 const migration = farm.doorbellMcpMigration;
@@ -399,12 +400,29 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                     });
                 }
             }
-            options.beforeFarmBalanceProjection?.({ world, context, now });
+            const hookFarmIds = new Set();
+            const stageFarm = (farmId) => {
+                const index = world.farms.findIndex(farm => farm.id === farmId);
+                if (index < 0) return null;
+                const existing = publications.find(entry => entry.staged === world.farms[index]);
+                if (existing) return existing.staged;
+                const target = world.farms[index];
+                const staged = structuredClone(target);
+                publications.push({target, staged});
+                world.farms[index] = staged;
+                candidateFarmIds?.add(farmId);
+                hookFarmIds.add(farmId);
+                return staged;
+            };
+            // Cross-farm settlement hooks must stage their affected farm before
+            // changing its balance; it joins this transaction and its rollback.
+            options.beforeFarmBalanceProjection?.({ world, context, now, stageFarm });
+            migrated = world.farms.filter(farm => farm?.doorbellMcpMigration?.migrationId);
             const ledgerAuthority = context?.balanceAuthority === "ledger";
             let balanceOperation = null;
             const changes = [];
             const farmChanges = [];
-            const persistenceFarmIds = new Set();
+            const persistenceFarmIds = new Set(hookFarmIds);
             for (const farm of migrated) {
                 if (candidateFarmIds && !candidateFarmIds.has(farm.id))
                     continue;

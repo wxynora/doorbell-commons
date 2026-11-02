@@ -1,3 +1,4 @@
+import { measureFarmPhase } from "./server/farm-request-timing.js";
 import {wakeGuestbookJudgments} from './server/doorbell/guestbook-judgments.mjs';
 import {
     assertJsonCompatible,
@@ -57,6 +58,12 @@ function sameJson(left, right) {
     return canonicalLeft === canonicalFarmWorldJson(parseJson(right, "comparison:right"));
 }
 
+// Only for JSON produced by materializeFarm/materializeComponent, after
+// assertJsonCompatible. Arbitrary pre-decomposed callers still use sameJson.
+function sameValidatedJson(stored, generated) {
+    return stored === generated || sameJson(stored, generated);
+}
+
 function assertDatabase(database) {
     if (!database || typeof database.prepare !== "function" || typeof database.exec !== "function")
         fail("farm_persistence_database_required", "Farm persistence requires the shared Lingye DatabaseSync");
@@ -81,6 +88,45 @@ function readReceiptRows(database, farmId) {
       WHERE farm_id = ?
       ORDER BY scope, receipt_key
     `).all(farmId);
+}
+
+// Compare already validated, freshly serialized receipts inside SQLite. Only
+// differences cross back into JS; no historical result cache is kept. The PK
+// lookup remains (farm_id, scope, receipt_key), including for a new receipt.
+function receiptDifferences(database, farmId, receipts) {
+    const candidates = new Map();
+    for (const receipt of receipts) {
+        const key = receiptKey(receipt);
+        if (candidates.has(key))
+            fail("farm_receipt_duplicate", `Farm receipt is duplicated: ${receipt.scope}/${receipt.receiptKey}`);
+        candidates.set(key, receipt);
+    }
+    const rows = database.prepare(`
+      WITH incoming AS MATERIALIZED (
+        SELECT json_extract(value, '$[0]') AS scope,
+               json_extract(value, '$[1]') AS receipt_key,
+               json_extract(value, '$[2]') AS payload_hash,
+               json_extract(value, '$[3]') AS result_json
+        FROM json_each(?)
+      )
+      SELECT incoming.scope, incoming.receipt_key, stored.farm_id,
+             stored.payload_hash, stored.result_json
+      FROM incoming LEFT JOIN farm_action_receipts AS stored
+        ON stored.farm_id = ? AND stored.scope = incoming.scope
+          AND stored.receipt_key = incoming.receipt_key
+      WHERE stored.farm_id IS NULL OR stored.payload_hash != incoming.payload_hash
+         OR stored.result_json != incoming.result_json
+    `).all(JSON.stringify(receipts.map(r => [r.scope, r.receiptKey, r.payloadHash, r.resultJson])), farmId);
+    const count = database.prepare("SELECT COUNT(*) AS count FROM farm_action_receipts WHERE farm_id = ?").get(farmId).count;
+    const additions = rows.filter(row => row.farm_id === null).length;
+    if (count !== receipts.length - additions) {
+        const keys = database.prepare("SELECT scope, receipt_key FROM farm_action_receipts WHERE farm_id = ?").all(farmId);
+        const removed = keys.find(row => !candidates.has(`${row.scope}\u0000${row.receipt_key}`));
+        if (removed)
+            fail("farm_receipt_removal_forbidden", `Farm receipt cannot be removed: ${removed.scope}/${removed.receipt_key}`);
+    }
+    return rows.map(row => ({ receipt: candidates.get(`${row.scope}\u0000${row.receipt_key}`),
+        existing: row.farm_id === null ? undefined : row }));
 }
 
 function sameReceiptMetadata(existing, candidate) {
@@ -116,22 +162,26 @@ function assertChefStoreTransition(existing, receipt, options) {
 }
 
 function synchronizeReceipts(database, farmId, receipts, options = {}) {
-    const existingRows = readReceiptRows(database, farmId);
-    const existingByKey = new Map(existingRows.map((row) => [
-        `${row.scope}\u0000${row.receipt_key}`,
-        row,
-    ]));
-    const candidateByKey = new Map();
-    for (const receipt of receipts) {
-        const key = receiptKey(receipt);
-        if (candidateByKey.has(key))
-            fail("farm_receipt_duplicate", `Farm receipt is duplicated: ${receipt.scope}/${receipt.receiptKey}`);
-        candidateByKey.set(key, receipt);
-    }
-    for (const existing of existingRows) {
-        const key = `${existing.scope}\u0000${existing.receipt_key}`;
-        if (!candidateByKey.has(key))
-            fail("farm_receipt_removal_forbidden", `Farm receipt cannot be removed: ${existing.scope}/${existing.receipt_key}`);
+    let compared;
+    if (options.validatedReceipts === true) {
+        compared = receiptDifferences(database, farmId, receipts);
+    } else {
+        // Public commitMutation may supply a pre-decomposed entry. Keep the
+        // original parser/validation path for that untrusted representation.
+        const existingRows = readReceiptRows(database, farmId);
+        const existingByKey = new Map(existingRows.map(row => [`${row.scope}\u0000${row.receipt_key}`, row]));
+        const candidates = new Map();
+        for (const receipt of receipts) {
+            const key = receiptKey(receipt);
+            if (candidates.has(key))
+                fail("farm_receipt_duplicate", `Farm receipt is duplicated: ${receipt.scope}/${receipt.receiptKey}`);
+            candidates.set(key, receipt);
+        }
+        for (const existing of existingRows) {
+            if (!candidates.has(`${existing.scope}\u0000${existing.receipt_key}`))
+                fail("farm_receipt_removal_forbidden", `Farm receipt cannot be removed: ${existing.scope}/${existing.receipt_key}`);
+        }
+        compared = receipts.map(receipt => ({receipt, existing: existingByKey.get(receiptKey(receipt))}));
     }
     const insert = database.prepare(`
       INSERT INTO farm_action_receipts (
@@ -144,8 +194,7 @@ function synchronizeReceipts(database, farmId, receipts, options = {}) {
       WHERE farm_id = ? AND scope = ? AND receipt_key = ?
         AND payload_hash = ? AND result_json = ?
     `);
-    for (const receipt of receipts) {
-        const existing = existingByKey.get(receiptKey(receipt));
+    for (const { receipt, existing } of compared) {
         if (!existing) {
             if (options.durableBoundary === false && receipt.scope !== CHEF_STORE_SCOPE)
                 fail("farm_durable_checkpoint_nested_forbidden", "A farm receipt checkpoint cannot be created inside an older outer transaction");
@@ -206,21 +255,6 @@ function farmPosition(database, farmId, requestedPosition) {
     return { position: requestedPosition, exists: false };
 }
 
-function sameReceiptRows(existingRows, receipts) {
-    if (existingRows.length !== receipts.length)
-        return false;
-    const existingByKey = new Map(existingRows.map((row) => [
-        `${row.scope}\u0000${row.receipt_key}`,
-        row,
-    ]));
-    return receipts.every((receipt) => {
-        const existing = existingByKey.get(receiptKey(receipt));
-        return existing !== undefined &&
-            sameReceiptMetadata(existing, receipt) &&
-            sameJson(existing.result_json, receipt.resultJson);
-    });
-}
-
 function farmChanged(database, entry) {
     const stored = database
         .prepare("SELECT position, state_json FROM farm_states WHERE farm_id = ?")
@@ -228,15 +262,16 @@ function farmChanged(database, entry) {
     if (!stored)
         return true;
     return stored.position !== entry.position ||
-        !sameJson(stored.state_json, JSON.stringify(entry.decomposed.state)) ||
-        !sameReceiptRows(readReceiptRows(database, entry.id), entry.decomposed.receipts);
+        !sameValidatedJson(stored.state_json, JSON.stringify(entry.decomposed.state)) ||
+        receiptDifferences(database, entry.id, entry.decomposed.receipts).some(({ receipt, existing }) =>
+            !existing || !sameReceiptMetadata(existing, receipt) || !sameJson(existing.result_json, receipt.resultJson));
 }
 
 function componentChanged(database, entry) {
     const stored = database
         .prepare("SELECT state_json FROM world_components WHERE component_key = ?")
         .get(entry.key);
-    return !stored || !sameJson(stored.state_json, entry.stateJson);
+    return !stored || !sameValidatedJson(stored.state_json, entry.stateJson);
 }
 
 function legacyWorldProjection(world) {
@@ -305,7 +340,7 @@ function selectedProjection(projection, hints, database) {
 
 export function createFarmWorldSqlitePersistence(database) {
     assertDatabase(database);
-    const commitEntries = (input) => {
+    const commitEntries = (input, internallyDecomposed = false) => {
         if (!isRecord(input) || !Array.isArray(input.farms) || !Array.isArray(input.components))
             throw new TypeError("Farm persistence mutation requires farms and components arrays");
         const durableBoundary = input.durableBoundary ?? !database.isTransaction;
@@ -315,6 +350,7 @@ export function createFarmWorldSqlitePersistence(database) {
             return {
                 ...entry,
                 decomposed: entry.decomposed ?? decomposeFarmForPersistence(entry.state),
+                validatedReceipts: internallyDecomposed || entry.decomposed === undefined,
             };
         });
         const components = input.components.map((entry) => {
@@ -347,8 +383,8 @@ export function createFarmWorldSqlitePersistence(database) {
                 }
                 if (position.exists) {
                     database.prepare(`
-                      UPDATE farm_states SET state_json = ? WHERE farm_id = ?
-                    `).run(stateJson, entry.id);
+                      UPDATE farm_states SET state_json = ? WHERE farm_id = ? AND state_json != ?
+                    `).run(stateJson, entry.id, stateJson);
                 }
                 else {
                     database.prepare(`
@@ -356,11 +392,12 @@ export function createFarmWorldSqlitePersistence(database) {
                       VALUES (?, ?, ?)
                     `).run(entry.id, position.position, stateJson);
                 }
-                synchronizeReceipts(database, entry.id, entry.decomposed.receipts, {
+                measureFarmPhase("receiptSync", () => synchronizeReceipts(database, entry.id, entry.decomposed.receipts, {
                     allowCrossDomain: input.allowCrossDomain === true,
                     durableBoundary,
                     mutationFarmCount: farms.length,
-                });
+                    validatedReceipts: entry.validatedReceipts,
+                }));
                 committedFarms.push(entry.id);
             }
             const committedComponents = [];
@@ -370,8 +407,8 @@ export function createFarmWorldSqlitePersistence(database) {
                     .get(entry.key) !== undefined;
                 if (exists) {
                     database.prepare(`
-                      UPDATE world_components SET state_json = ? WHERE component_key = ?
-                    `).run(entry.stateJson, entry.key);
+                      UPDATE world_components SET state_json = ? WHERE component_key = ? AND state_json != ?
+                    `).run(entry.stateJson, entry.key, entry.stateJson);
                 }
                 else {
                     database.prepare(`
@@ -404,10 +441,10 @@ export function createFarmWorldSqlitePersistence(database) {
         },
         commitLegacySnapshot(world, hints = null) {
             const projection = legacyWorldProjection(world);
-            const selected = selectedProjection(projection, hints, database);
+            const selected = measureFarmPhase("snapshotProjection", () => selectedProjection(projection, hints, database));
             if (selected.farms.length === 0 && selected.components.length === 0)
                 return { farms: [], components: [] };
-            const result = commitEntries(selected);
+            const result = commitEntries(selected, true);
             wakeGuestbookJudgments(database);
             return result;
         },

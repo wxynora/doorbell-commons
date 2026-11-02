@@ -1,3 +1,4 @@
+import { withFarmRequestTiming, measureFarmPhase, measureFarmPhaseAsync } from "../farm-request-timing.js";
 import { randomUUID } from "node:crypto";
 import { MESSAGES_MAX } from "../../config.js";
 import { resolveNumberedTarget } from "../farm/social.js";
@@ -198,11 +199,14 @@ export async function handleDoorbellMcpMigration(req, res, method, runtime) {
     }
 }
 
-export async function handleDoorbellFarmExecution(req, res, method, executeFarmAction) {
+export function handleDoorbellFarmExecution(req, res, method, executeFarmAction) {
+    return withFarmRequestTiming(() => executeDoorbellFarmRequest(req, res, method, executeFarmAction));
+}
+async function executeDoorbellFarmRequest(req, res, method, executeFarmAction) {
     if (!requireDoorbellService(req, res, method))
         return;
     try {
-        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const body = await measureFarmPhaseAsync("readBody", () => readJsonBody(req, MAX_BODY_BYTES));
         const keys = isPlainObject(body) ? Object.keys(body) : [];
         const allowedKeys = new Set(["farm_human_key", "expected_farm_doorplate", "action", "params", "detail", "include_status", "source_op"]);
         if (!isPlainObject(body) || keys.some((key) => !allowedKeys.has(key)) || keys.some((key) => !["detail", "include_status", "source_op"].includes(key) && body[key] === undefined))
@@ -219,7 +223,7 @@ export async function handleDoorbellFarmExecution(req, res, method, executeFarmA
             return internalServiceError(res, binding.error.status, binding.error.code, binding.error.message);
         if (!legacyAgentAccessRevoked(binding.farm))
             return internalServiceError(res, 409, "farm_migration_required", "Legacy farm access must be revoked before Doorbell execution is enabled");
-        const out = executeFarmAction(binding.farm, body.action, body.params, body.detail === true, Date.now(), body.source_op);
+        const out = measureFarmPhase("action", () => executeFarmAction(binding.farm, body.action, body.params, body.detail === true, Date.now(), body.source_op));
         const publicResult = {
             ok: out.json?.ok === true,
             text: typeof out.json?.text === "string" ? out.json.text : "农场没有返回可读取的结果。",
@@ -238,7 +242,7 @@ export async function handleDoorbellFarmExecution(req, res, method, executeFarmA
         if (body.include_status === true && body.action !== "status") {
             try {
                 const currentFarm = getFarm(binding.farm.id);
-                const status = executeFarmAction(currentFarm, "status", {}, false, Date.now());
+                const status = measureFarmPhase("optionalStatus", () => executeFarmAction(currentFarm, "status", {}, false, Date.now()));
                 if (status.json?.ok === true && typeof status.json.text === "string")
                     publicResult.status_text = status.json.text;
             }

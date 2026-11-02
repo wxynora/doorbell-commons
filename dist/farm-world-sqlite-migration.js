@@ -228,7 +228,8 @@ export function decomposeFarmForPersistence(farm) {
     if (!isRecord(farm) || typeof farm.id !== "string" || farm.id.length === 0)
         fail("farm_world_invalid", "A persisted farm must have a valid id");
     assertJsonCompatible(farm);
-    const state = structuredClone(farm);
+    // Copy ledger parents only; receipt history is persisted separately.
+    const state = { ...farm };
     const receipts = [];
     for (const scope of LEGACY_FARM_RECEIPT_SCOPES) {
         const located = locateLedger(state, scope);
@@ -248,9 +249,14 @@ export function decomposeFarmForPersistence(farm) {
                 payloadHash: receiptPayloadHash(scope.kind, receipt),
             });
         }
-        delete located.owner[located.key];
+        let owner = state;
+        for (const key of scope.path.slice(0, -1)) {
+            owner[key] = { ...owner[key] };
+            owner = owner[key];
+        }
+        delete owner[located.key];
     }
-    return { state, receipts };
+    return { state: structuredClone(state), receipts };
 }
 
 function assertDatabaseIntegrity(database) {

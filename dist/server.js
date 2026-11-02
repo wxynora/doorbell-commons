@@ -1,3 +1,4 @@
+import { ownFarmPersistenceScope } from "./server/farm-persistence-scope.js";
 import {configureGuestbookJudgments} from './server/doorbell/guestbook-judgments.mjs';
 import { createTogetherDecorationRewards } from "./server/doorbell/together-decoration.js";
 import { handleFarmDecorationAction } from './server/farm-decoration-agent-action.js';
@@ -342,6 +343,11 @@ function agentReadyText(f, humanUrl, agentUrl, isNew) {
 📖 完整玩法 / 帮 AI 做"要打字的动作"（设计/留言/改名）：${BASE}/get
 （🏠 门牌号 ${f.id}，别人串门/偷菜认它、可公开。两条链接都不含主 token，AI 拿不到农场私钥。）`;
 }
+function saveKnownFarmChanges(farmIds, now, componentKeys = []) {
+    save(isTogetherSeason3(getPublicExpeditionWorld()) && !isQixiLantern2026Active(now)
+        ? { farmIds: [...new Set(farmIds)], componentKeys, allowCrossDomain: false }
+        : null);
+}
 function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     let currentFarm = getFarm(farmId);
     if (!currentFarm)
@@ -386,7 +392,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
                 if (checkTitles(v).length)
                     changed = true;
                 if (changed)
-                    save();
+                    saveKnownFarmChanges([v.id], now);
             }
         }
         const targetRef = b.targetRef ? String(b.targetRef) : undefined;
@@ -697,7 +703,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         if (b.kind === "seed" && String(b.id).startsWith("ugc_"))
             onTaskEvent(buyer, "buy_ugc", now); // 随机任务：买邻居原创作物
         checkTitles(buyer); // 任务称号（买原创可能完成任务）
-        save();
+        saveKnownFarmChanges([f.id, buyer.id], now, ["ugc"]);
         return { status: 200, json: { ok: true, text: `🛒 从「${f.name}」买到「${r.name}」×${r.qty}，-🪙${r.cost}银\n${statusFooter(buyer, now)}`, ...vf(buyer) } };
     }
     // 偷菜
@@ -798,7 +804,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         const got = tryWaterReward(f, visitor, now);
         checkTitles(visitor); // 热心称号
         pushSocialInbox(f, `💧 「${visitor.name}」给你浇了水`, now);
-        save();
+        saveKnownFarmChanges([f.id, visitor.id], now);
         return { status: 200, json: { ok: true, text: [`${waterText(false, visitor.name)}（帮「${f.name}」${r.plotId} 号地加速 30 分钟${r.ripened ? "，正好催熟啦" : ""}）${got ? "\n🧪 浇水有回报——掉了 1 瓶加速药水！" : ""}`, qixi2026CompletionText(qixi), midAutumnSeedCompletionText(autumn), statusFooter(visitor, now)].filter(Boolean).join("\n"), ...vf(visitor) } };
     }
     // 串门买别家商店随机刷出的「药水套装」（钱由买家=by 出，每份每人限购 1）
@@ -808,7 +814,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         const r = buyPotionSet(f, buyer, now);
         if (!r.ok)
             return { status: 400, json: { ok: false, text: r.error, ...vf(buyer) } };
-        save();
+        saveKnownFarmChanges([f.id, buyer.id], now);
         return { status: 200, json: { ok: true, text: `🎁 在「${f.name}」买下药水套装：+${r.qty} 瓶加速药水，-${r.cost}金。\n${statusFooter(buyer, now)}`, ...vf(buyer) } };
     }
     // 留言
@@ -833,7 +839,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         bumpDaily(poster, now, "messages"); // 热情榜（今日给别人留言数）
         onTaskEvent(poster, "message", now); // 随机任务：给邻居留言
         checkTitles(poster); // 任务称号（留言可能完成任务）
-        save();
+        saveKnownFarmChanges([f.id, poster.id], now);
         return { status: 200, json: { ok: true, text: `💬 已在「${f.name}」的留言板留言。` } };
     }
     // 删留言：主人(无by)删任意/清空(all)；留言者(带by)只能删自己那条
@@ -842,7 +848,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         const clearAll = (b.all === true || b.all === "true" || b.all === "1");
         if (clearAll && !byId) {
             f.messages = [];
-            save();
+            saveKnownFarmChanges([f.id], now);
             return { status: 200, json: { ok: true, text: "已清空留言板。" } };
         }
         const mid = String(b.messageId ?? b.id ?? "");
@@ -852,7 +858,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         if (byId && msg.by !== byId)
             return { status: 400, json: { ok: false, text: "你只能删自己留的言" } };
         f.messages = f.messages.filter((m) => m.id !== mid);
-        save();
+        saveKnownFarmChanges([f.id], now);
         return { status: 200, json: { ok: true, text: "留言已删除。" } };
     }
     // 其余=主人对自己农场的操作（plant/harvest/craft/design/list/sell/run/rename/guestbook/block… 已校验 :id token）
@@ -897,7 +903,8 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         if (qixi)
             r.text = `${r.text}\n${qixi.text}`;
     }
-    save();
+    save(isTogetherSeason3(publicWorld) && !isQixiLantern2026Active(now)
+        ? ownFarmPersistenceScope(action, f.id) : null);
     return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
 }
 function authenticatedResultFarm(farmId, body) {
@@ -1077,8 +1084,9 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         },
     });
     const balanceCoordinator = createLingyeFarmBalanceCoordinator(lingyeWorldDatabase, lingyeWorldBackend, {
-        beforeFarmBalanceProjection: ({ world, now }) => {
+        beforeFarmBalanceProjection: ({ world, now, stageFarm }) => {
             const capturedPlayerThefts = captureCommittedPlayerPatrolThefts(lingyeWorldDatabase, lingyeWorldBackend, world);
+            for (const capture of capturedPlayerThefts) stageFarm(capture.actorFarmId);
             halloweenRuntime.effectHooks.beforeFarmBalanceProjection({ world, now, capturedPlayerThefts });
         },
         beforeWorldWrite: input => recordPendingLingyeNpcFarmBusiness(lingyeWorldDatabase, input),
