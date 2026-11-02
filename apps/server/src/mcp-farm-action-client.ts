@@ -92,55 +92,72 @@ export class FarmMcpActionClient implements FarmMcpActionExecutor {
       ...(input.includeStatus === undefined ? {} : { include_status: input.includeStatus }),
     });
 
-    let response: Response;
+    const started = performance.now();
+    let headersMs: number | null = null;
+    let bodyMs: number | null = null;
+    let status: number | null = null;
     try {
-      response = await this.#fetch(this.#endpoint, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${this.#serviceToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(this.#requestTimeoutMs),
-      });
-    } catch {
-      throw new FarmMcpActionUnavailableError();
-    }
+      let response: Response;
+      try {
+        response = await this.#fetch(this.#endpoint, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${this.#serviceToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(this.#requestTimeoutMs),
+        });
+      } catch {
+        throw new FarmMcpActionUnavailableError();
+      }
 
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
+      headersMs = performance.now() - started;
+      status = response.status;
+      const bodyStarted = performance.now();
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        if (response.status >= 500) {
+          throw new FarmMcpActionUnavailableError();
+        }
+        throw new FarmMcpActionContractUnavailableError();
+      } finally {
+        bodyMs = performance.now() - bodyStarted;
+      }
+
       if (response.status >= 500) {
         throw new FarmMcpActionUnavailableError();
       }
-      throw new FarmMcpActionContractUnavailableError();
-    }
 
-    if (response.status >= 500) {
-      throw new FarmMcpActionUnavailableError();
-    }
+      const actionResult = farmMcpActionResultSchema.safeParse(body);
+      if (actionResult.success) {
+        return actionResult.data;
+      }
 
-    const actionResult = farmMcpActionResultSchema.safeParse(body);
-    if (actionResult.success) {
-      return actionResult.data;
-    }
-
-    const serviceError = farmMcpActionErrorSchema.safeParse(body);
-    if (!serviceError.success) {
-      throw new FarmMcpActionContractUnavailableError();
-    }
-    switch (serviceError.data.error.code) {
-      case "farm_credential_not_found":
-        throw new FarmMcpActionCredentialInvalidError();
-      case "farm_doorplate_mismatch":
-        throw new FarmMcpActionBindingMismatchError();
-      case "farm_migration_required":
-        throw new FarmMcpActionMigrationRequiredError();
-      case "farm_unavailable":
-        throw new FarmMcpActionUnavailableError();
-      default:
+      const serviceError = farmMcpActionErrorSchema.safeParse(body);
+      if (!serviceError.success) {
         throw new FarmMcpActionContractUnavailableError();
+      }
+      switch (serviceError.data.error.code) {
+        case "farm_credential_not_found":
+          throw new FarmMcpActionCredentialInvalidError();
+        case "farm_doorplate_mismatch":
+          throw new FarmMcpActionBindingMismatchError();
+        case "farm_migration_required":
+          throw new FarmMcpActionMigrationRequiredError();
+        case "farm_unavailable":
+          throw new FarmMcpActionUnavailableError();
+        default:
+          throw new FarmMcpActionContractUnavailableError();
+      }
+    } finally {
+      // Timing only: never log the binding, credential, arguments or result.
+      try {
+        console.info(JSON.stringify({event: "farm_upstream_timing",
+          headersMs, bodyMs, totalMs: performance.now() - started, status}));
+      } catch { /* Diagnostic failures cannot change an authoritative receipt. */ }
     }
   }
 }
