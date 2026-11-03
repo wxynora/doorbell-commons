@@ -1,13 +1,15 @@
 import type Database from "better-sqlite3";
-import type { DailyDocument, lingyeDailyReporterArticleSchema } from "@doorbell/protocol";
+import { dailyBlockText, type DailyDocument, type lingyeDailyReporterArticleSchema } from "@doorbell/protocol";
 type ReporterArticle=ReturnType<typeof lingyeDailyReporterArticleSchema.parse>;
 export interface PublishedManualIssueRow {issue_date:string;revision:number;published_at:number;edition_json:string;}
-export function manualFarmPublication(issue: Omit<PublishedManualIssueRow,"edition_json"> & {edition:{editor_document?:DailyDocument}}, version:number) {
+export function manualFarmPublication(issue: Omit<PublishedManualIssueRow,"edition_json"> & {edition:{editor_document?:DailyDocument}}, version:number, allowWholeIssue=false) {
     const farm=issue.edition.editor_document?.sections.find(section=>section.key==="farm");
-    const body=farm?.blocks.filter(block=>block.type!=="image" && block.type!=="byline")
+    const farmBody=farm?.blocks.filter(block=>block.type!=="image" && block.type!=="byline")
       .map(block=>(block.runs??[]).map(run=>run.text).join("")).filter(text=>text.trim()).join("\n\n");
-    if(!farm || !body) throw new Error("manual_farm_copy_missing");
-    const credit=farm.blocks.filter(block=>block.type==="byline").map(block=>block.runs.map(run=>run.text).join("")).filter(Boolean).join("　") || "人工编辑";
+    const body=farmBody || (allowWholeIssue ? issue.edition.editor_document?.sections
+      .flatMap(section=>section.blocks.filter(block=>block.type!=="image").map(dailyBlockText)).filter(text=>text.trim()).join("\n\n") : undefined);
+    if(!body) throw new Error("manual_farm_copy_missing");
+    const credit=(farm?.blocks ?? []).filter(block=>block.type==="byline").map(block=>block.runs.map(run=>run.text).join("")).filter(Boolean).join("　") || (allowWholeIssue && !farmBody ? "铃野日报编辑部" : "人工编辑");
     const byline=credit.startsWith("选题：") ? credit.slice(3).split("　撰稿：") : [];
     const publishedAt=new Date(issue.published_at).toISOString();
     const publicationId=`main:lingye-daily:${issue.issue_date}:revision:${issue.revision}:published:${issue.published_at}`;

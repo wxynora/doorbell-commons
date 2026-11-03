@@ -1,3 +1,5 @@
+import type { DailyColumnImageService } from "./daily-column-images/service.js";
+import type { DailyFarmService } from "./daily-farm/service.js";
 import { manualFarmPublication, saveManualPublicationReference, type PublishedManualIssueRow } from "./lingye-daily-manual-publication.js";
 import { timingSafeEqual } from "node:crypto";
 import { DailyReporterTransferService, type TransferTask } from "./lingye-daily-transfer-service.js";
@@ -29,6 +31,8 @@ export interface LingyeDailyServiceOptions {
   weather?: LingyeDailyWeatherReader;
   voice?: LingyeDailyVoiceService;
   columns?: DailyColumnService;
+  generatedFarm?: DailyFarmService;
+  columnImages?: DailyColumnImageService;
   farm?: {apiBaseUrl:string;serviceToken:string;requestTimeoutMs:number;fetchImplementation?:typeof fetch};
 }
 
@@ -65,6 +69,8 @@ export class LingyeDailyService {
   readonly #weather: LingyeDailyWeatherReader | undefined;
   readonly #voice: LingyeDailyVoiceService | undefined;
   readonly columns: DailyColumnService | undefined;
+  readonly generatedFarm: DailyFarmService | undefined;
+  readonly columnImages: DailyColumnImageService | undefined;
 
   constructor(options: LingyeDailyServiceOptions) {
     this.#database = options.database;
@@ -77,6 +83,8 @@ export class LingyeDailyService {
     this.#weather = options.weather;
     this.#voice = options.voice;
     this.columns = options.columns;
+    this.generatedFarm = options.generatedFarm;
+    this.columnImages = options.columnImages;
     this.editor=new LingyeDailyEditorStore(options.database.lingyeDailyStore.database);
     this.#farm=options.farm;
     this.transfers=new DailyReporterTransferService({editor:this.editor,now:this.#now,farm:options.farm,
@@ -136,17 +144,20 @@ export class LingyeDailyService {
   async stage(authorization:string|undefined,input:LingyeDailyPublishRequest) {
     this.authorize(authorization);
     this.editor.receive(input,this.#now());
-    await this.#voice?.groupArrived(input.issue_date);
+    this.generatedFarm?.merge(input.issue_date);
+    if (!this.generatedFarm?.enabled(input.issue_date)) await this.#voice?.groupArrived(input.issue_date);
     await this.columns?.reconcile(input.issue_date);
     return {saved:true,published:false,issue_date:input.issue_date};
   }
 
   async refreshDraft(date:string) {
     const row=this.editor.row(date);
+    void this.columnImages?.process(date);
     if(row.published_version!==null) return this.editor.get(date);
     const edition=JSON.parse(row.edition_json);
     const arrivals:Promise<unknown>[]=[];
-    if(!edition.reporter_articles.length) arrivals.push((async()=>{
+    this.generatedFarm?.merge(date);
+    if(!this.generatedFarm?.enabled(date) && !edition.reporter_articles.length) arrivals.push((async()=>{
       const payload=await this.farmRequest("publication",{issue_date:date});
       if(payload.issue_date!==date || !["pending","ready"].includes(String(payload.status)))
         throw new DailyEditorError(502,"记者来稿读取回执不匹配，原稿未修改。");
@@ -180,6 +191,7 @@ export class LingyeDailyService {
     if(this.editor.database.prepare("SELECT 1 FROM lingye_daily_reporter_transfers WHERE issue_date=? AND status='prepared'").get(date))
       throw new DailyEditorError(409,"记者任务正在转交，请先完成转交再出版。");
     const result=this.editor.publish(date,version,publisher,this.#now());
+    this.columnImages?.cleanupAfterPublication(date);
     const row=this.editor.row(date);
     if(!row.publication_synced) {
       try {
@@ -195,7 +207,7 @@ export class LingyeDailyService {
         await this.#submissionRewards.recordReview(review);
       }
       if(!edition.reporter_articles.length || edition.reporter_articles.every((article:{publication_id:string})=>article.publication_id.startsWith("main:lingye-daily:"))) {
-        const manual=manualFarmPublication({...published,edition:JSON.parse(published.edition_json)},row.published_version!);
+        const manual=manualFarmPublication({...published,edition:JSON.parse(published.edition_json)},row.published_version!,this.generatedFarm?.enabled(date) ?? false);
         const ack=await this.farmRequest("published",manual.request);
         if(ack.publication_id!==manual.article.publication_id || ack.issue_date!==date || ack.published_at!==publishedAt ||
           !["published","already_published"].includes(String(ack.status))) throw new Error("manual_publication_ack_invalid");
@@ -241,11 +253,11 @@ export class LingyeDailyService {
 
   async editorProgress(date:string) {
     const draft=this.editor.get(date);let farmWake:ReporterRelayWake|null=null;let farmUnavailable=false;
-    if(this.#reporterFlow) {
+    if(this.#reporterFlow && !this.generatedFarm?.enabled(date)) {
       try {farmWake=await this.#reporterFlow.pendingIssue(date);} catch {farmUnavailable=true;}
     } else farmUnavailable=true;
     const stageLabels={selection:"等待选题",writing:"等待撰稿",review:"等待农场稿审稿",supplement:"等待修改稿"} as const;
-    const farm=farmWake ? {lane:"farm" as const,status:"pending" as const,label:stageLabels[farmWake.stage],
+    const farm=this.generatedFarm?.enabled(date) ? this.generatedFarm.progress(date) : farmWake ? {lane:"farm" as const,status:"pending" as const,label:stageLabels[farmWake.stage],
       reporterName:this.reporterName(farmWake.recipient_resident_id),resendable:true} :
       farmUnavailable ? {lane:"farm" as const,status:"unavailable" as const,label:"农场稿进度暂时无法读取",resendable:false} :
       draft.readiness.reporter ? {lane:"farm" as const,status:"completed" as const,label:"农场稿已到工作台",resendable:false} :
@@ -253,10 +265,10 @@ export class LingyeDailyService {
     const submission=this.editor.daily.submissionReviewStatus(date);
     const submissions=draft.humanReview ? {lane:"submissions" as const,status:draft.humanReview.decided?"completed" as const:"pending" as const,label:draft.humanReview.decided?"主编已选稿":"由主编人工选稿",resendable:false} : submission.status==="pending" ? {lane:"submissions" as const,status:"pending" as const,
       label:"等待匿名投稿审稿",reporterName:this.reporterName(submission.review.reviewerResidentId),resendable:true} :
-      submission.status==="completed" ? {lane:"submissions" as const,status:"completed" as const,label:"匿名投稿已审",resendable:false} :
+      submission.status==="completed" ? {lane:"submissions" as const,status:"completed" as const,label:"automaticallyIncluded" in submission ? "投稿已全部纳入" : "匿名投稿已审",resendable:false} :
       submission.status==="empty" ? {lane:"submissions" as const,status:"empty" as const,label:"本期没有待审投稿",resendable:false} :
       {lane:"submissions" as const,status:"not_started" as const,label:"匿名投稿尚未派发",resendable:false};
-    const voice=await this.#voice?.progress(date);
+    const voice=this.generatedFarm?.enabled(date) ? undefined : await this.#voice?.progress(date);
     const lanes=await Promise.all([farm,submissions,...(voice?[voice]:[])].map(async lane=>{
       if(!lane.resendable||draft.publishedVersion!==null)return {...lane,resendable:false};
       try {

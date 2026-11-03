@@ -1,3 +1,9 @@
+import { includeSmallSubmissionBatch } from "./daily-submissions/service.js";
+import { DailyColumnImageService } from "./daily-column-images/service.js";
+import { columnImageGenerator } from "./daily-column-images/gateway-client.js";
+import { parseLingyeDailyColumnImagePrompts } from "@doorbell/protocol";
+import { DailyFarmService } from "./daily-farm/service.js";
+import { farmFactSource } from "./daily-farm/farm-client.js";
 import { createTogetherStartup } from "./together/startup.js";
 import { TogetherRewardClient } from "./together/reward-client.js";
 import { SecurityPatrolDeliveryService } from "./security-patrol/service.js";
@@ -61,7 +67,7 @@ import { LingyeDailyService } from "./lingye-daily-service.js";
 import { LingyeDailyVoiceService } from "./lingye-daily-voice-service.js";
 import { DailyColumnService, columnIssueDate } from "./daily-columns/service.js";
 import { DailyColumnFarmClient } from "./daily-columns/farm-client.js";
-import { dailyColumnProfiles } from "./daily-columns/config.js";
+import { dailyColumnProfiles, dailyColumnsStartDate, dailyColumnsEnabledFor } from "./daily-columns/config.js";
 import { dailyColumnCopy } from "./daily-columns/copy.js";
 import { LingyeDailyCommentsService } from "./lingye-daily-comments-service.js";
 import { LingyeDailyRewardClient } from "./lingye-daily-reward-client.js";
@@ -350,6 +356,11 @@ const reporterRelayFarm = new ReporterRelayFarmClient({
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
 });
+const columnsStartDate=dailyColumnsStartDate(process.env);
+const usesDailyColumns=(date:string)=>dailyColumnsEnabledFor(date,columnsStartDate);
+const generatedFarm=new DailyFarmService({database:database.lingyeDailyStore.database,enabled:usesDailyColumns,
+  source:farmFactSource({apiBaseUrl:serverConfig.farmApiBaseUrl,serviceToken:serverConfig.farmServiceToken,
+    requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs})});
 let dailyColumnsService: DailyColumnService | undefined;
 const dailyMaterials = new DailyMaterialService({
   database: database.lingyeDailyStore.database,
@@ -358,6 +369,8 @@ const dailyMaterials = new DailyMaterialService({
   legacyDocument: (edition, issueDate) => dailyDocumentFromEdition(lingyeDailyEditionPublishSchema.parse(edition), issueDate),
 });
 const reporterDailyScheduler = new ReporterDailyScheduler({
+  usesColumns:usesDailyColumns,
+  autoIncludeSubmissions:date=>usesDailyColumns(date) && includeSmallSubmissionBatch(generatedFarm.editor,date,Date.now()),
   farm: reporterRelayFarm,
   relay: reporterRelayService,
   pruneMaterials: () => { dailyMaterials.prune(); dailyColumnsService?.prune(); },
@@ -512,8 +525,14 @@ const careerExamReminderService = new CareerExamReminderService({
 const dailyVoiceService = new LingyeDailyVoiceService({ database, farm: reporterRelayFarm, bell: bellService,
   onSyncError: error => process.stderr.write(`[doorbell-daily-voice] ${error instanceof Error ? error.name : "UnknownError"}\n`),
 });
+const dailyColumnImages=new DailyColumnImageService({database:database.lingyeDailyStore.database,
+  generate:columnImageGenerator({url:process.env.LINGYE_DAILY_COLUMN_IMAGE_URL,token:serverConfig.lingyeDailyPublishToken}),
+  parsePrompts:parseLingyeDailyColumnImagePrompts,
+  onError:error=>process.stderr.write(`[doorbell-daily-image] ${error instanceof Error ? error.name : "UnknownError"}\n`),
+});
+void dailyColumnImages.process(columnIssueDate(Date.now()));
 dailyColumnsService = new DailyColumnService({database:database.lingyeDailyStore.database,
-  profiles:dailyColumnProfiles(process.env), materials:dailyMaterials,
+  profiles:dailyColumnProfiles(process.env), startsOn:columnsStartDate, materials:dailyMaterials, images:dailyColumnImages,
   farm:new DailyColumnFarmClient({apiBaseUrl:serverConfig.farmApiBaseUrl,serviceToken:serverConfig.farmServiceToken,
     requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs}), bell:bellService, copy:dailyColumnCopy,
   onError:error=>process.stderr.write(`[doorbell-daily-column] ${error instanceof Error ? error.name : "UnknownError"}\n`),
@@ -571,6 +590,8 @@ const lingyeDailyRewards=new LingyeDailyRewardClient({
   requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs,
 });
 const lingyeDailyService = new LingyeDailyService({
+  generatedFarm,
+  columnImages:dailyColumnImages,
   database,
   voice: dailyVoiceService,
   columns: dailyColumnsService,

@@ -31,3 +31,12 @@ export function dailyColumnProfiles(env: NodeJS.ProcessEnv): ColumnProfile[] {
   }
   return result;
 }
+
+export function dailyColumnsStartDate(env: NodeJS.ProcessEnv): string | undefined {
+  if (env.LINGYE_DAILY_COLUMNS_ENABLED !== "true") return undefined;
+  const value = z.iso.date().parse(env.LINGYE_DAILY_COLUMNS_START_DATE);
+  return value;
+}
+export function dailyColumnsEnabledFor(issueDate: string, startDate: string | undefined): boolean {
+  return startDate !== undefined && issueDate >= startDate;
+}

@@ -1,3 +1,4 @@
+import { registerDailyFarmRoutes } from "./daily-farm/routes.js";
 import { registerTogetherRoutes, type TogetherBoardPort } from "./together/routes.js";
 import { registerSnowLiveRoutes, type SnowLivePort } from "./together/live-routes.js";
 import {registerResidentProfileRoutes} from "./resident-profile/routes.js";
@@ -798,13 +799,14 @@ function mailboxLetterSummaryResponse(letter: MailboxLetterRecord) {
   };
 }
 
-function lingyeDailyIssueResponse(issue: LingyeDailyIssueRecord) {
+function lingyeDailyIssueResponse(issue: LingyeDailyIssueRecord, generatedImages: {image_id:string}[] = []) {
   const imageUrls = new Map(
     issue.edition.images.map((image) => [
       image.image_id,
       dailyImageUrl(issue.issueDate,issue.revision,image.image_id),
     ]),
   );
+  for(const image of generatedImages) imageUrls.set(image.image_id,dailyImageUrl(issue.issueDate,issue.revision,image.image_id));
   return {
     ...(issue.edition.editor_document ? {editor_document:issue.edition.editor_document,
       editor_image_urls:Object.fromEntries(imageUrls)} : {}),
@@ -843,6 +845,7 @@ function lingyeDailyIssueResponse(issue: LingyeDailyIssueRecord) {
     })),
     quotes: issue.edition.quotes.map(({ text, source_label }) => ({ text, source_label })),
     farm_observation: issue.edition.farm_observation,
+    ...(issue.edition.farm_generated ? {farm_generated:issue.edition.farm_generated}:{}),
     reporter_articles: issue.edition.reporter_articles,
     submissions: issue.edition.submissions,
     ...(issue.edition.submission_reviewer !== undefined ? { submission_reviewer: issue.edition.submission_reviewer } : {}),
@@ -3821,6 +3824,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   const lingyeDailyService = options.lingyeDailyService;
   if (lingyeDailyService) {
+    if(lingyeDailyService.generatedFarm) registerDailyFarmRoutes(app,{
+      service:lingyeDailyService.generatedFarm,
+      authorize:authorization=>lingyeDailyService.authorize(authorization),
+      onSaved:async date=>{await lingyeDailyService.columns?.reconcile(date);},
+    });
     if (options.dailyMaterials) registerDailyMaterialRoutes(app, { service: options.dailyMaterials,
       onSaved: async date => { await lingyeDailyService.columns?.reconcile(date); },
       authorize: (authorization) => lingyeDailyService.authorize(authorization) });
@@ -3865,7 +3873,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         }
         reply.header("cache-control", "no-store");
         return lingyeDailyLatestSuccessSchema.parse({
-          issue: issue ? {...lingyeDailyIssueResponse(issue),
+          issue: issue ? {...lingyeDailyIssueResponse(issue,lingyeDailyService.columnImages?.publishedMetadata(issue.issueDate,issue.revision)),
             ...(options.dailyComments ? {comment_counts:options.dailyComments.counts(issue.issueDate)} : {})} : null,
           reporter_publications: reporterPublications,
         });

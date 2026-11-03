@@ -1,3 +1,5 @@
+import { dailyGeneratedFarmSchema } from "./lingye-daily-farm.js";
+export * from "./lingye-daily-farm.js";
 export * from "./together-board.js";
 export * from "./resident-avatar.js";
 import { z } from "zod";
@@ -1856,6 +1858,7 @@ export const lingyeDailyEditionPublishSchema = z
     behavior_slices: z.array(lingyeDailyBehaviorSlicePublishSchema),
     quotes: z.array(lingyeDailyQuotePublishSchema),
     farm_observation: lingyeDailyFarmObservationSchema.nullable(),
+    farm_generated: dailyGeneratedFarmSchema.optional(),
     reporter_articles: z.array(lingyeDailyReporterArticleSchema).default([]),
     submissions: z.array(lingyeDailySubmissionSchema),
     submission_reviewer: z.string().min(1).nullable().optional(),
@@ -1882,6 +1885,7 @@ export const lingyeDailyPublishRequestSchema = z
     behavior_slices: z.array(lingyeDailyBehaviorSlicePublishSchema),
     quotes: z.array(lingyeDailyQuotePublishSchema),
     farm_observation: lingyeDailyFarmObservationSchema.nullable(),
+    farm_generated: dailyGeneratedFarmSchema.optional(),
     reporter_articles: z.array(lingyeDailyReporterArticleSchema).default([]),
     submissions: z.array(lingyeDailySubmissionSchema),
     tomorrow_question: lingyeDailyTomorrowQuestionPublishSchema.nullable(),
@@ -2008,6 +2012,7 @@ export const lingyeDailyIssueSchema = z
     ),
     quotes: z.array(lingyeDailyQuotePublishSchema.omit({ source_message_ids: true })),
     farm_observation: lingyeDailyFarmObservationSchema.nullable(),
+    farm_generated: dailyGeneratedFarmSchema.optional(),
     voice_article: lingyeDailyVoiceArticleSchema.optional(),
     reporter_articles: z.array(lingyeDailyReporterArticleSchema).default([]),
     submissions: z.array(lingyeDailySubmissionSchema),

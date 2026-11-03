@@ -1,3 +1,4 @@
+import { dailyImageCropSchema } from "@doorbell/protocol";
 import {
   lingyeDailyColumnBlockSchema,
   lingyeDailyColumnKeySchema,
@@ -39,6 +40,15 @@ function readBlock(node: Node): LingyeDailyColumnBlock | null {
       : null;
   }
   if (!(node instanceof HTMLElement)) return null;
+  if (node.dataset.imageId) {
+    const caption = node.querySelector("figcaption");
+    return lingyeDailyColumnBlockSchema.parse({
+      type: "image",
+      runs: caption ? textRuns(caption) : [],
+      imageId: node.dataset.imageId,
+      ...(node.dataset.imageCrop ? { crop: dailyImageCropSchema.parse(JSON.parse(node.dataset.imageCrop)) } : {}),
+    });
+  }
   if (node.dataset.dailyDivider === "true" || node.tagName === "HR") {
     return lingyeDailyColumnBlockSchema.parse({ type: "divider", runs: [] });
   }

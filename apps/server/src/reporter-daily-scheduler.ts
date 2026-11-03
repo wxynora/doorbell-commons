@@ -12,6 +12,8 @@ export interface ReporterDailySchedulerOptions {
   farm: ReporterRelayStarter;
   pruneMaterials?: () => void;
   dispatchColumns?: (issueDate: string) => Promise<void>;
+  usesColumns?: (issueDate: string) => boolean;
+  autoIncludeSubmissions?: (issueDate: string) => boolean | Promise<boolean>;
   relay: Pick<ReporterRelayService, "enqueue" | "enqueueSubmissions">;
   now?: () => number;
   setTimer?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
@@ -55,7 +57,9 @@ function issuePeriod(dayStartUtc: number) {
 
 export class ReporterDailyScheduler {
   readonly #farm: ReporterRelayStarter;
+  readonly #usesColumns: (issueDate: string) => boolean;
   readonly #dispatchColumns: ReporterDailySchedulerOptions["dispatchColumns"];
+  readonly #autoIncludeSubmissions: ReporterDailySchedulerOptions["autoIncludeSubmissions"];
   readonly #pruneMaterials: () => void;
   readonly #relay: ReporterDailySchedulerOptions["relay"];
   readonly #now: () => number;
@@ -71,6 +75,8 @@ export class ReporterDailyScheduler {
     this.#farm = options.farm;
     this.#pruneMaterials = options.pruneMaterials ?? (() => undefined);
     this.#dispatchColumns = options.dispatchColumns;
+    this.#autoIncludeSubmissions = options.autoIncludeSubmissions;
+    this.#usesColumns = options.usesColumns ?? (() => false);
     this.#relay = options.relay;
     this.#now = options.now ?? Date.now;
     this.#setTimer = options.setTimer ?? setTimeout;
@@ -115,6 +121,7 @@ export class ReporterDailyScheduler {
       await Promise.all([
         this.#dispatchColumns?.(period.issueDate).catch(this.#onError),
         (async () => {
+          if (this.#usesColumns(period.issueDate)) return;
           this.#emit({ event: "dispatch_start", issueDate: period.issueDate });
           const current = recoverToday ? await this.#farm.issueState(period.issueDate) : null;
           const wake = current?.status != null
@@ -130,6 +137,10 @@ export class ReporterDailyScheduler {
         })().catch(this.#onError),
         (async () => {
           this.#emit({ event: "submission_dispatch_start", issueDate: period.issueDate });
+          if (await this.#autoIncludeSubmissions?.(period.issueDate)) {
+            this.#emit({ event: "submission_dispatch_complete", issueDate: period.issueDate, status: "completed" });
+            return;
+          }
           const reviewer = await this.#farm.submissionReviewer(period.issueDate);
           const status = reviewer ? this.#relay.enqueueSubmissions({
             issueDate: period.issueDate, reviewerResidentId: reviewer.residentId,

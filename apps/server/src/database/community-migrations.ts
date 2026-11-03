@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 53;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 54;
 export const SNOW_LIVE_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS snow_spectator_messages (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2990,6 +2990,56 @@ CREATE INDEX lingye_daily_column_wake_expiry ON lingye_daily_column_wake_materia
 
     `);
     database.pragma('user_version = 53');
+  })();
+
+  if (databaseSchemaVersion < 54) database.transaction(() => {
+    database.exec(`
+CREATE TABLE lingye_daily_submission_auto_selection_batches (
+  issue_date TEXT PRIMARY KEY,frozen_at INTEGER NOT NULL,
+  selected_count INTEGER NOT NULL CHECK(selected_count BETWEEN 0 AND 3)
+);
+CREATE TABLE lingye_daily_submission_auto_selection_items (
+  issue_date TEXT NOT NULL REFERENCES lingye_daily_submission_auto_selection_batches(issue_date) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL CHECK(ordinal BETWEEN 1 AND 3),
+  submission_id TEXT NOT NULL REFERENCES lingye_daily_submissions(submission_id) ON DELETE CASCADE,
+  PRIMARY KEY(issue_date,ordinal),UNIQUE(issue_date,submission_id)
+);
+CREATE INDEX lingye_daily_submission_auto_selection_item_lookup ON lingye_daily_submission_auto_selection_items(submission_id);
+CREATE TABLE lingye_daily_pending_group (issue_date TEXT PRIMARY KEY REFERENCES lingye_daily_editor_drafts(issue_date) ON DELETE CASCADE);
+CREATE TABLE lingye_daily_farm_generation (
+  issue_date TEXT PRIMARY KEY,status TEXT NOT NULL CHECK(status IN ('pending','failed','ready')),
+  model TEXT,error_type TEXT,updated_at INTEGER NOT NULL
+);
+CREATE TABLE lingye_daily_farm_articles (
+  issue_date TEXT NOT NULL REFERENCES lingye_daily_farm_generation(issue_date) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(issue_date,ordinal)
+);
+    `);
+    database.exec(`
+CREATE TABLE lingye_daily_column_images (
+  issue_date TEXT NOT NULL,
+  submission_id TEXT NOT NULL REFERENCES lingye_daily_column_tasks(submission_id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+  image_id TEXT NOT NULL UNIQUE,
+  prompt TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'failed', 'ready')),
+  media_type TEXT,
+  image_data BLOB,
+  generated_at INTEGER,
+  PRIMARY KEY (issue_date, submission_id, ordinal),
+  CHECK (
+    (state = 'ready' AND media_type = 'image/webp' AND image_data IS NOT NULL
+      AND typeof(image_data) = 'blob' AND generated_at IS NOT NULL)
+    OR
+    (state IN ('pending', 'failed') AND media_type IS NULL AND image_data IS NULL AND generated_at IS NULL)
+  )
+);
+
+CREATE INDEX lingye_daily_column_images_by_issue_state
+  ON lingye_daily_column_images(issue_date, state, submission_id, ordinal);
+
+`);
+    database.pragma('user_version = 54');
   })();
 
 }

@@ -22,6 +22,8 @@ ${briefs[task.column_key]}
 
 也支持 Markdown：# 写标题，## 写小标题，### 写次级小标题；**文字**表示加粗；行首 > 表示引用；独立一行 --- 表示分隔线；用竖线分隔的 Markdown 表格写短表格。HTML 标签按普通文字显示。
 
+需要配图时，在希望插图的位置单独写一行“配图：”，后面写完整的画面描述；可在紧接的下一行写“图注：”，后面写给读者看的图注。冒号也可用英文 :。不需要配图就不写。后端会按描述生成图片并放到该位置；生成失败不撤销已经保存的正文。只保留压缩后的配图，下一期日报出版后删除此前期次的配图。
+
 本期所需素材附在下方，可直接使用，不必再调用工具领取。素材只供参考，不要求全部写进稿件。需要补充往期内容时，可调用 doorbell({"op":"go.newsroom.materials","args":{"keyword":"关键词"}})。检索不会改变本铃的交稿或休息 option。
 
 【交稿】
@@ -31,6 +33,7 @@ doorbell({"op":"go.newsroom.commission","args":{"option":${JSON.stringify(task.s
 doorbell({"op":"go.newsroom.commission","args":{"option":${JSON.stringify(task.rest_option)}}})
 
 【本期素材】`,
+  currentInstructions: "独立栏目任务通过铃发放，收到后直接使用铃内 option 交稿或选择今日休息。匿名投稿审稿如有排班，会另发任务。",
   submitted: "稿件已保存到工作台，等待主编出版。",
   rested: "已记录今日休息，本期不提交该栏目。",
   expiredMaterials: "本期素材已过留存期限；交稿和休息仍以任务当前状态为准。",

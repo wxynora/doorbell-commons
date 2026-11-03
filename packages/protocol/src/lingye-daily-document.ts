@@ -51,7 +51,7 @@ export function dailyDocumentFromEdition(edition: LingyeDailyEditionPublish, iss
     groupChat: {summary: edition.group_chat.summary, topics: edition.group_chat.topics.map(topic => topic.text)},
     behaviorSlices: edition.behavior_slices,
     quotes: edition.quotes.map(quote => ({text:quote.text,sourceLabel:quote.source_label})),
-    reporterArticles: edition.reporter_articles.map(article => ({...article, articleText:article.article_text})),
+    reporterArticles: edition.reporter_articles.filter(article=>!edition.farm_generated || !article.publication_id.startsWith("main:lingye-daily:")).map(article => ({...article, articleText:article.article_text})),
     submissions: edition.submissions.map(sub => ({text:sub.text,
       ...(sub.question_text ? {questionText:sub.question_text} : {}),
       ...(sub.question_issue_date ? {questionIssueDate:sub.question_issue_date} : {})})),
@@ -98,6 +98,12 @@ export function dailyDocumentFromEdition(edition: LingyeDailyEditionPublish, iss
       farm.push(block(heading.test(raw) ? "heading" : "paragraph",raw.replace(heading,"")));
     }
     farm.push(block("byline",`选题：${article.selector}　撰稿：${article.writer}${article.review_kind === "farm_article" ? `　审稿：${article.reviewer}` : ""}`));
+  }
+  if (edition.farm_generated) {
+    for (const article of edition.farm_generated.articles) {
+      farm.push(block("heading", article.title), ...paragraphs(article.body));
+    }
+    if (edition.farm_generated.articles.length) farm.push(block("byline", "选题：Gemini　撰稿：Gemini"));
   }
   section("farm","农场观测站",farm);
   sections.push(...lingyeDailyColumnSectionsFromEdition(edition.column_articles));

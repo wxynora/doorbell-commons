@@ -94,6 +94,14 @@
   text-align: right;
 }
 
+.daily-column-image-caption {
+  margin: 6px 0 0;
+  color: #625747;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
 /* Differ only in the treatment of the article's own content. */
 .daily-column-section[data-section-key="column_gucheng"] .daily-column-quote {
   font-size: 14px;

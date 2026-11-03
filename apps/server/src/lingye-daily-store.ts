@@ -4,6 +4,8 @@ import type Database from "better-sqlite3";
 import { type LingyeDailyEditionPublish, type LingyeDailyPublishRequest, type LingyeDailyWeatherForecast, lingyeDailyEditionPublishSchema } from "@doorbell/protocol";
 import type { ReporterRelayWake } from "@doorbell/protocol";
 import type { ReporterBellWakeCreationStatus } from "./reporter-relay-store.js";
+import { DailyColumnImageStore } from "./daily-column-images/store.js";
+import { DailySubmissionAutoSelectionStore } from "./daily-submissions/auto-selection.js";
 
 export interface LingyeDailyIssueRecord {
   issueDate: string;
@@ -116,6 +118,7 @@ function lingyeDailyEditionFromRequest(
     reporter_articles: input.reporter_articles,
     ...("voice_article" in input && input.voice_article !== undefined ? { voice_article: input.voice_article } : {}),
     ...("column_articles" in input && input.column_articles !== undefined ? { column_articles: input.column_articles } : {}),
+    ...("farm_generated" in input && input.farm_generated !== undefined ? { farm_generated: input.farm_generated } : {}),
     submissions: input.submissions,
     tomorrow_question: input.tomorrow_question,
     images: input.images,
@@ -215,11 +218,17 @@ export class LingyeDailyStore {
   submissionReviewStatus(issueDate:string):
     | {status:"not_started"}
     | {status:"pending";review:DailySubmissionReview}
-    | {status:"completed"|"empty";reviewerResidentId:string} {
+    | {status:"completed"|"empty";reviewerResidentId:string}
+    | {status:"completed"|"empty";reviewerResidentId:null;automaticallyIncluded:true} {
     if(hasHumanSubmissionReview(this.#database,issueDate))return {status:"not_started"};
     const batch=this.#database.prepare("SELECT * FROM lingye_daily_submission_batches WHERE issue_date=?")
       .get(issueDate) as DailySubmissionBatch|undefined;
-    if(!batch) return {status:"not_started"};
+    if(!batch) {
+      const automatic = new DailySubmissionAutoSelectionStore(this.#database).batch(issueDate);
+      if(automatic) return {status:automatic.selected_count ? "completed" : "empty",
+        reviewerResidentId:null,automaticallyIncluded:true};
+      return {status:"not_started"};
+    }
     const review=this.submissionReview(batch);
     if(batch.selected_ids_json===null&&review.items.length) return {status:"pending",review};
     return {status:review.items.length?"completed":"empty",reviewerResidentId:batch.reviewer_resident_id};
@@ -229,6 +238,7 @@ export class LingyeDailyStore {
     persist: (review: DailySubmissionReview) => ReporterBellWakeCreationStatus) {
     if (now < Date.parse(`${issueDate}T05:00:00+08:00`)) return "not_due" as const;
     if(hasHumanSubmissionReview(this.#database,issueDate))return "completed" as const;
+    if(new DailySubmissionAutoSelectionStore(this.#database).batch(issueDate))return "completed" as const;
     return this.#database.transaction(() => {
       if (this.#database.prepare("SELECT 1 FROM lingye_daily_issues WHERE issue_date = ?").get(issueDate)) return "completed" as const;
       const review = this.assignSubmissionReviews(issueDate, reviewerResidentId);
@@ -255,6 +265,7 @@ export class LingyeDailyStore {
 
   submissionReviewer(issueDate: string): { resident_id: string; display_name: string } | null {
     if(hasHumanSubmissionReview(this.#database,issueDate))return null;
+    if(new DailySubmissionAutoSelectionStore(this.#database).batch(issueDate))return null;
     const row = this.#database.prepare(`SELECT b.reviewer_resident_id AS resident_id, r.resident_name AS display_name
       FROM lingye_daily_submission_batches b JOIN residents r ON r.resident_id = b.reviewer_resident_id
       WHERE b.issue_date = ? AND b.selected_ids_json IS NOT NULL AND b.decided_at IS NOT NULL
@@ -264,7 +275,8 @@ export class LingyeDailyStore {
   }
 
   completedSubmissionReview(issueDate: string) {
-    if(hasHumanSubmissionReview(this.#database,issueDate))return undefined;
+    if(hasHumanSubmissionReview(this.#database,issueDate) ||
+      new DailySubmissionAutoSelectionStore(this.#database).batch(issueDate))return undefined;
     return this.#database.prepare(`SELECT issue_date AS issueDate, reviewer_resident_id AS residentId,
       decided_at AS decidedAt, json_array_length(candidate_ids_json) AS candidateCount,
       json_array_length(selected_ids_json) AS selectedCount
@@ -310,6 +322,16 @@ export class LingyeDailyStore {
     const batch = this.#database.prepare("SELECT * FROM lingye_daily_submission_batches WHERE issue_date = ?")
       .get(issueDate) as DailySubmissionBatch | undefined;
     if (!batch) {
+      const automaticIds = new DailySubmissionAutoSelectionStore(this.#database).selectedIds(issueDate);
+      if (automaticIds !== undefined) return automaticIds.map(id => {
+        const row = this.#database.prepare("SELECT * FROM lingye_daily_submissions WHERE submission_id = ?")
+          .get(id) as DailySubmission | undefined;
+        if (!row) throw new DailySubmissionError("selected_submission_missing");
+        return { submission_id: row.submission_id, text: row.body, source_label: row.source_label,
+          question_text: row.question_text, question_issue_date: row.question_issue_date };
+      });
+    }
+    if (!batch) {
       const count = this.#database.prepare("SELECT COUNT(*) AS count FROM lingye_daily_submissions WHERE target_issue_date = ?")
         .get(issueDate) as { count: number };
       if (count.count) throw new DailySubmissionError("submission_review_pending");
@@ -322,6 +344,10 @@ export class LingyeDailyStore {
       return { submission_id: row.submission_id, text: row.body, source_label: row.source_label,
         question_text: row.question_text, question_issue_date: row.question_issue_date };
     });
+  }
+
+  autoSelectSubmissions(issueDate: string, now: number): boolean {
+    return new DailySubmissionAutoSelectionStore(this.#database).freeze(issueDate, now);
   }
 
   pendingSubmissionRewards(issueDate: string) {
@@ -549,11 +575,14 @@ export class LingyeDailyStore {
   }
 
   getPublishedImage(issueDate: string, revision: number, imageId: string, now: number): {mediaType:string;dataBase64:string} | undefined {
-    return this.#database.prepare(`SELECT json_extract(image.value,'$.media_type') AS mediaType,
+    const existing = this.#database.prepare(`SELECT json_extract(image.value,'$.media_type') AS mediaType,
       json_extract(image.value,'$.data_base64') AS dataBase64
       FROM lingye_daily_issues issue, json_each(issue.edition_json,'$.images') image
       WHERE issue.issue_date = ? AND issue.revision = ? AND issue.published_at <= ?
         AND json_extract(image.value,'$.image_id') = ?`).get(issueDate,revision,now,imageId) as {mediaType:string;dataBase64:string} | undefined;
+    if (existing) return existing;
+    const generated = new DailyColumnImageStore(this.#database).publishedImage(issueDate, revision, imageId, now);
+    return generated ? { mediaType: generated.mediaType, dataBase64: generated.data.toString("base64") } : undefined;
   }
 
   /** The editor-written publication notice for an issue; null when the issue uses the built-in default. */

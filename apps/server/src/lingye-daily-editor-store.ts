@@ -6,6 +6,7 @@ import {
 } from "@doorbell/protocol";
 import { LingyeDailyStore, type LingyeDailyIssueRecord } from "./lingye-daily-store.js";
 import {HumanSubmissionEditor} from "./lingye-daily-human-submissions.js";
+import { DailyColumnImageStore } from "./daily-column-images/store.js";
 
 export class DailyEditorError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
@@ -57,8 +58,9 @@ export class LingyeDailyEditorStore {
       document,
       editorModel:(JSON.parse(row.input_json) as LingyeDailyPublishRequest).editor_model,
       issueNumber,activeEditorName:activeEditor?.resident_name ?? null,
-      images:edition.images.map(({image_id,media_type})=>({image_id,media_type})),
-      readiness:{group:true,reporter:edition.reporter_articles.length>0 || hasSavedFarmCopy(document),voice:edition.voice_article!==undefined,
+      images:[...edition.images.map(({image_id,media_type})=>({image_id,media_type})),
+        ...new DailyColumnImageStore(this.database).readyMetadata(date)],
+      readiness:{group:!this.database.prepare("SELECT 1 FROM lingye_daily_pending_group WHERE issue_date=?").get(date),reporter:edition.farm_generated!==undefined || edition.reporter_articles.length>0 || hasSavedFarmCopy(document),voice:edition.voice_article!==undefined,
         submissions:this.reviewReady(date),weather:edition.weather_forecast!==undefined},
       submissions:edition.submissions.map(sub=>({...sub,paid:this.paid(sub.submission_id ?? "")})),
       publicationReward:this.publicationReward(date),
@@ -69,8 +71,10 @@ export class LingyeDailyEditorStore {
   image(date:string,imageId:string) {
     const edition=lingyeDailyEditionPublishSchema.parse(JSON.parse(this.row(date).edition_json));
     const image=edition.images.find(item=>item.image_id===imageId);
-    if(!image)throw new DailyEditorError(404,"这张稿件图片不存在。");
-    return {mediaType:image.media_type,data:Buffer.from(image.data_base64,"base64")};
+    if(image)return {mediaType:image.media_type,data:Buffer.from(image.data_base64,"base64")};
+    const generated=new DailyColumnImageStore(this.database).readyImage(date,imageId);
+    if(!generated)throw new DailyEditorError(404,"这张稿件图片不存在。");
+    return generated;
   }
   reviewReady(date:string):boolean {
     try {this.daily.selectedSubmissions(date);return true;} catch{return false;}
@@ -80,7 +84,17 @@ export class LingyeDailyEditorStore {
       const source=JSON.stringify(input);
       if(!this.database.prepare("SELECT 1 FROM lingye_daily_editor_sources WHERE issue_date=? AND kind='group' AND source_json=?").get(input.issue_date,source))
         this.database.prepare("INSERT INTO lingye_daily_editor_sources(issue_date,kind,source_json,received_at) VALUES (?,'group',?,?)").run(input.issue_date,source,now);
-      if(this.database.prepare("SELECT 1 FROM lingye_daily_editor_drafts WHERE issue_date=?").get(input.issue_date)) return;
+      if(this.database.prepare("SELECT 1 FROM lingye_daily_editor_drafts WHERE issue_date=?").get(input.issue_date)) {
+        if(this.database.prepare("SELECT 1 FROM lingye_daily_pending_group WHERE issue_date=?").get(input.issue_date)
+          && this.row(input.issue_date).published_version===null) {
+          const {front_page,group_chat,behavior_slices,quotes,tomorrow_question,images}=input;
+          this.merge(input.issue_date,{front_page,group_chat,behavior_slices,quotes,tomorrow_question,images},
+            ["front","group","slices","quotes","tomorrow"],now);
+          this.database.prepare("UPDATE lingye_daily_editor_drafts SET input_json=? WHERE issue_date=?").run(source,input.issue_date);
+          this.database.prepare("DELETE FROM lingye_daily_pending_group WHERE issue_date=?").run(input.issue_date);
+        }
+        return;
+      }
       const {front_page,group_chat,behavior_slices,quotes,farm_observation,tomorrow_question,images}=input;
       // The group compiler is not the authority for either reporter workflow.
       // Its complete input stays in sources; reviewed Farm copy and anonymous
@@ -129,6 +143,11 @@ export class LingyeDailyEditorStore {
             .sections.find(section=>section.key==="farm");
           if(added) existingFarm.blocks.push(...added.blocks);
         }
+        if(edition.farm_generated && !previousEdition.farm_generated) {
+          const added=dailyDocumentFromEdition({...edition,farm_observation:null,reporter_articles:[]},date)
+            .sections.find(section=>section.key==="farm");
+          if(added) existingFarm.blocks.push(...added.blocks);
+        }
       }
       const order:DailyDocument["sections"][number]["key"][]=["front","group","slices","farm","column_nain","column_gucheng","column_etincelle","voice","weather","quotes","submissions","tomorrow"];
       for(const section of fresh.sections.filter(section=>keys.includes(section.key)&&!sections.some(current=>current.key===section.key))) {
@@ -152,8 +171,13 @@ export class LingyeDailyEditorStore {
       document=dailyDocumentSchema.parse(document);
       const edition=lingyeDailyEditionPublishSchema.parse(JSON.parse(row.edition_json));
       const imageIds=new Set(edition.images.map(image=>image.image_id));
+      const previousDocument=dailyDocumentSchema.parse(JSON.parse(row.document_json));
+      const previousImageIds=new Set(previousDocument.sections.flatMap(section=>section.blocks.flatMap(block=>
+        block.type==="image"&&block.imageId?[block.imageId]:[])));
+      const columnImages=new DailyColumnImageStore(this.database);
       for(const section of document.sections) for(const block of section.blocks) {
-        if(block.type==="image"&&(!block.imageId||!imageIds.has(block.imageId))) throw new DailyEditorError(400,"正文中有不属于本期的图片。");
+        if(block.type==="image"&&(!block.imageId||(!imageIds.has(block.imageId)&&
+          !columnImages.hasPrompt(date,block.imageId)&&!previousImageIds.has(block.imageId)))) throw new DailyEditorError(400,"正文中有不属于本期的图片。");
       }
       this.database.prepare("UPDATE lingye_daily_editor_drafts SET document_json=?,version=version+1,updated_at=?,updated_by=?,publication_synced=0 WHERE issue_date=?")
         .run(JSON.stringify(document),now,account,date);
@@ -173,7 +197,7 @@ export class LingyeDailyEditorStore {
       if(row.published_version===version && previous) return {duplicate:true};
       const document=dailyDocumentSchema.parse(JSON.parse(row.document_json));
       const edition=lingyeDailyEditionPublishSchema.parse(JSON.parse(row.edition_json));
-      if((!edition.reporter_articles.length && !hasSavedFarmCopy(document)) || !this.reviewReady(date) || edition.weather_forecast===undefined)
+      if((edition.farm_generated===undefined && !edition.reporter_articles.length && !hasSavedFarmCopy(document)) || !this.reviewReady(date) || edition.weather_forecast===undefined)
         throw new DailyEditorError(409,"记者稿、投稿审批或天气尚未到齐，请先更新来稿。");
       const input={...JSON.parse(row.input_json),...edition,revision:previous?previous.revision+1:1,
         revision_note:previous?"主编工作台修订":null};

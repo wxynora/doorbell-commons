@@ -65,6 +65,17 @@ export const lingyeDailyColumnArticlesSchema = z.array(lingyeDailyColumnArticleS
   });
 });
 
+export interface LingyeDailyColumnImagePrompt {
+  ordinal: number;
+  imageId: string;
+  prompt: string;
+}
+
+export function lingyeDailyColumnImageId(submissionId: string, ordinal: number): string {
+  if (!Number.isSafeInteger(ordinal) || ordinal < 0) throw new RangeError("image ordinal must be a non-negative integer");
+  return `daily-column-image:${encodeURIComponent(submissionId)}:${ordinal}`;
+}
+
 export const lingyeDailyColumnProgressStatusSchema = z.enum([
   "waiting_materials",
   "pending",
@@ -193,10 +204,14 @@ function markdownTableBlock(lines: readonly string[], start: number): { block: L
   return { block, next };
 }
 
-export function parseLingyeDailyColumnMarkdown(text: string): LingyeDailyColumnBlock[] {
+function parseLingyeDailyColumnMarkdownDocument(text: string, submissionId: string): {
+  blocks: LingyeDailyColumnBlock[];
+  imagePrompts: LingyeDailyColumnImagePrompt[];
+} {
   const lines = text.split(/\r?\n/u);
-  if (!lines.some(line => line.trim().length > 0)) return [];
+  if (!lines.some(line => line.trim().length > 0)) return { blocks: [], imagePrompts: [] };
   const blocks: LingyeDailyColumnBlock[] = [];
+  const imagePrompts: LingyeDailyColumnImagePrompt[] = [];
   let index = 0;
   let paragraph: string[] = [];
   const flushParagraph = () => {
@@ -211,6 +226,22 @@ export function parseLingyeDailyColumnMarkdown(text: string): LingyeDailyColumnB
     if (!trimmed) {
       flushParagraph();
       index += 1;
+      continue;
+    }
+
+    const imagePrompt = /^[\t ]*配图[:：](.*)$/u.exec(line);
+    if (imagePrompt && (imagePrompt[1] ?? "").length > 0) {
+      flushParagraph();
+      const ordinal = imagePrompts.length;
+      const imageId = lingyeDailyColumnImageId(submissionId, ordinal);
+      imagePrompts.push({ ordinal, imageId, prompt: imagePrompt[1] ?? "" });
+      const caption = /^[\t ]*图注：([\s\S]*)$/u.exec(lines[index + 1] ?? "");
+      blocks.push({
+        type: "image",
+        runs: caption ? parseLingyeDailyColumnInline((caption[1] ?? "").trim()) : [],
+        imageId,
+      });
+      index += caption ? 2 : 1;
       continue;
     }
 
@@ -270,16 +301,25 @@ export function parseLingyeDailyColumnMarkdown(text: string): LingyeDailyColumnB
     index += 1;
   }
   flushParagraph();
-  return blocks;
+  return { blocks, imagePrompts };
+}
+
+export function parseLingyeDailyColumnMarkdown(text: string, submissionId: string): LingyeDailyColumnBlock[] {
+  return parseLingyeDailyColumnMarkdownDocument(text, submissionId).blocks;
+}
+
+export function parseLingyeDailyColumnImagePrompts(text: string, submissionId: string): LingyeDailyColumnImagePrompt[] {
+  return parseLingyeDailyColumnMarkdownDocument(text, submissionId).imagePrompts;
 }
 
 export function lingyeDailyColumnArticleToSection(article: LingyeDailyColumnArticle): LingyeDailyColumnSection {
   const checked = lingyeDailyColumnArticleSchema.parse(article);
+  const parsed = parseLingyeDailyColumnMarkdownDocument(checked.text, checked.submission_id);
   return lingyeDailyColumnSectionSchema.parse({
     key: checked.column_key,
     title: columnTitleByKey[checked.column_key],
     blocks: [
-      ...parseLingyeDailyColumnMarkdown(checked.text),
+      ...parsed.blocks,
       { type: "byline", runs: [{ text: `——${checked.author}` }], submissionId: checked.submission_id },
     ],
   });

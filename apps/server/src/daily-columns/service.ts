@@ -1,3 +1,5 @@
+import { ensureDailyColumnDraft } from "./draft.js";
+import type { DailyColumnImageService } from "../daily-column-images/service.js";
 import type Database from "better-sqlite3";
 import { dailyBlockText, type DailyDocument } from "@doorbell/protocol";
 import type { BellService } from "../bell-service.js";
@@ -16,6 +18,7 @@ export interface DailyColumnCopy {
   submitted: string;
   rested: string;
   expiredMaterials: string;
+  currentInstructions?: string;
 }
 
 export function columnIssueDate(now: number): string {
@@ -30,6 +33,8 @@ export class DailyColumnService {
   constructor(readonly options: {
     database: Database.Database;
     profiles: readonly ColumnProfile[];
+    startsOn?: string | undefined;
+    images?: DailyColumnImageService;
     materials: Pick<DailyMaterialService, "read" | "eligible">;
     farm: ColumnFarm;
     bell: Pick<BellService, "notifyResident" | "notifyWakeCancelled">;
@@ -54,7 +59,9 @@ export class DailyColumnService {
   private async dispatch(issueDate: string) {
     this.prune();
     if (!this.options.profiles.length || issueDate !== columnIssueDate(this.#now())) return;
+    if (this.options.startsOn && issueDate < this.options.startsOn) return;
     if (this.#now() < dailyMaterialWindow(issueDate).end) return;
+    ensureDailyColumnDraft(this.editor,issueDate,this.#now());
     const source = this.options.database.prepare("SELECT published_version FROM lingye_daily_editor_drafts WHERE issue_date=?")
       .get(issueDate) as {published_version: number | null} | undefined;
     if (!source || source.published_version !== null) return;
@@ -81,6 +88,15 @@ export class DailyColumnService {
   }
 
   async commission(residentId: string, args: Record<string, unknown>): Promise<string | undefined> {
+    if (Object.keys(args).length === 0 && this.options.copy.currentInstructions &&
+      this.options.profiles.some(profile=>profile.residentId===residentId) &&
+      (!this.options.startsOn || columnIssueDate(this.#now()) >= this.options.startsOn)) {
+      let eligible:boolean;
+      try {eligible=await this.options.materials.eligible(residentId);}
+      catch {throw new DailyColumnError("qualification_unavailable");}
+      if (!eligible) throw new DailyColumnError("not_reporter");
+      return this.options.copy.currentInstructions;
+    }
     if (typeof args.option !== "string" || !args.option.startsWith("daily-column:")) return undefined;
     try { return await this.decide(residentId, args, args.option); }
     catch (error) {
@@ -126,6 +142,7 @@ export class DailyColumnService {
     }).immediate();
     try { this.options.bell.notifyWakeCancelled(task.resident_id, task.task_id); } catch (error) { this.report(error); }
     if (isSubmission) {
+      void this.options.images?.process(task.issue_date);
       try { await this.syncSubmission(task); } catch (error) { this.report(error); }
     }
     return isSubmission ? this.options.copy.submitted : this.options.copy.rested;
@@ -153,7 +170,7 @@ export class DailyColumnService {
   }
   progress(issueDate: string) {
     const tasks = this.store.tasks(issueDate);
-    const profiles = this.options.profiles;
+    const profiles = this.options.startsOn && issueDate < this.options.startsOn ? [] : this.options.profiles;
     const keys = [...new Set([...profiles.map(profile => profile.key), ...tasks.map(task => task.column_key)])];
     return keys.map(key => {
       const task = tasks.find(candidate => candidate.column_key === key);

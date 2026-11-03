@@ -1,5 +1,6 @@
 import React from "react";
 import type { LingyeDailyColumnBlock, LingyeDailyColumnSection, LingyeDailyColumnTextRun } from "./protocol.js";
+import { DailyImageBlockView, type DailyImageAction } from "./daily-image-block.js";
 import "./daily-columns.css";
 
 function DailyColumnRuns({ runs }: { runs: LingyeDailyColumnTextRun[] }) {
@@ -8,7 +9,11 @@ function DailyColumnRuns({ runs }: { runs: LingyeDailyColumnTextRun[] }) {
     : <React.Fragment key={index}>{run.text}</React.Fragment>)}</>;
 }
 
-export function DailyColumnBlockView({ block }: { block: LingyeDailyColumnBlock }) {
+export function DailyColumnBlockView({ block, images = {}, onImageAction }: {
+  block: LingyeDailyColumnBlock;
+  images?: Record<string, string>;
+  onImageAction?: DailyImageAction | undefined;
+}) {
   if (block.type === "divider") return <hr className="daily-column-divider" data-daily-divider="true" data-block-type="divider" />;
   if (block.type === "table") return <table className="daily-column-table" data-daily-table="true">
     <thead><tr>{block.table.headers.map((cell, index) => <th key={index}><DailyColumnRuns runs={cell} /></th>)}</tr></thead>
@@ -24,14 +29,17 @@ export function DailyColumnBlockView({ block }: { block: LingyeDailyColumnBlock 
   if (block.type === "quote") return <blockquote className="daily-column-quote" data-block-type="quote">{content}</blockquote>;
   if (block.type === "byline") return <p className="daily-column-byline" data-block-type="byline"
     data-submission-id={block.submissionId}>{content}</p>;
-  if (block.type === "image") return null;
+  if (block.type === "image") return <DailyImageBlockView block={block as LingyeDailyColumnBlock & {type:"image"}}
+    images={images} onImageAction={onImageAction} />;
   return <p data-block-type={block.type} data-presentation={block.presentation}
     className={`daily-column-${block.type}`}>{content}</p>;
 }
 
-export function DailyColumnSectionView({ section, editable = false }: {
+export function DailyColumnSectionView({ section, editable = false, images = {}, onImageAction }: {
   section: LingyeDailyColumnSection;
   editable?: boolean;
+  images?: Record<string, string>;
+  onImageAction?: DailyImageAction | undefined;
 }) {
   const tone = section.key === "column_gucheng" ? "green" : section.key === "column_etincelle" ? "red" : "blue";
   return <section className="daily-section daily-document-section daily-column-section"
@@ -40,14 +48,18 @@ export function DailyColumnSectionView({ section, editable = false }: {
     <div className="daily-document-copy daily-column-copy" contentEditable={editable}
       suppressContentEditableWarning role={editable ? "textbox" : undefined}
       aria-label={editable ? section.title : undefined} aria-multiline={editable ? true : undefined}>
-      {section.blocks.map((block, index) => <DailyColumnBlockView block={block} key={`${block.type}:${index}`} />)}
+      {section.blocks.map((block, index) => <DailyColumnBlockView block={block} key={`${block.type}:${index}`}
+        images={images} onImageAction={editable ? onImageAction : undefined} />)}
     </div>
   </section>;
 }
 
-export function DailyColumnSectionsView({ sections, editable = false }: {
+export function DailyColumnSectionsView({ sections, editable = false, images = {}, onImageAction }: {
   sections: readonly LingyeDailyColumnSection[];
   editable?: boolean;
+  images?: Record<string, string>;
+  onImageAction?: DailyImageAction | undefined;
 }) {
-  return <>{sections.map(section => <DailyColumnSectionView key={section.key} section={section} editable={editable} />)}</>;
+  return <>{sections.map(section => <DailyColumnSectionView key={section.key} section={section} editable={editable}
+    images={images} onImageAction={onImageAction} />)}</>;
 }
