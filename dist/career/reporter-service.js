@@ -1089,6 +1089,7 @@ export function listReporterPublicationsForHuman(database, input) {
             credits?.writerResidentId ?? publication.resident_id,
             credits?.reviewerResidentId,
             credits?.submissionReviewerResidentId,
+            ...(credits?.columnResidentIds ?? []),
         ].filter(Boolean);
         const ownHousehold = creditedResidents.some((residentId) => relatedResidentIds.has(residentId));
         const closesAt = reporterEvaluationClosesAt(database, publication);
@@ -1140,6 +1141,7 @@ export function listReporterPublicationsForResident(database, input) {
             credits?.writerResidentId ?? publication.resident_id,
             credits?.reviewerResidentId,
             credits?.submissionReviewerResidentId,
+            ...(credits?.columnResidentIds ?? []),
         ].filter(Boolean).includes(residentId);
         const closesAt = reporterEvaluationClosesAt(database, publication);
         const open = publication.status === "open" &&

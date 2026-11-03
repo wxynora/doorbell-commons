@@ -1,6 +1,7 @@
 import { selectOutcome } from './random-outcome.js';
 import { drawNpcReceiptEntry, npcReceiptKey } from '../../npc/receipt-greeting.js';
-import { glimmerContentEditor } from '../../content.js';
+import { glimmerContentEditor, cookingIngredients, animals, pets } from '../../content.js';
+import { observeNpcEffect, stageNpcSettlement } from '../../reporter-materials/observations.js';
 import { randomBytes } from 'node:crypto';
 import { Rng } from '../../rng.js';
 import { grantReward } from '../../glimmer.js';
@@ -11,6 +12,14 @@ function rewardReceipt(reward, suffix) {
     const name = reward.kind === 'coins' ? '金币' : reward.kind === 'silver' ? '银币'
         : glimmerContentEditor.catalog[reward.kind].find(item => item.id === reward.id)?.name ?? reward.id;
     return `\n🎁 获得「${name}」×${reward.amount}。`;
+}
+
+function npcEffectLabels() {
+    const names = (items) => Object.fromEntries(items.map(({ id, name }) => [id, name]));
+    return {
+        item: names(glimmerContentEditor.catalog.item), bait: names(glimmerContentEditor.catalog.bait),
+        ingredient: names(cookingIngredients), favorite: names([...animals, ...pets]),
+    };
 }
 
 // Content, chance and matching tools all come from the owner's published entry.
@@ -29,9 +38,15 @@ export function triggerNpcMotions(farm, sourceOp, motions, now, context = {}) {
         farm.npcMotions[id] = { entry: structuredClone(entry), createdAt: now };
         result = [{id,entry}];
     } else if (entry) {
-        const settlement = settleEncounterCost(farm, entry, true);
-        const suffix = rewardReceipt(entry.reward, grantReward(farm, entry.reward, rng, now));
-        result = [{entry,text:settlement.text + suffix}];
+        const labels = npcEffectLabels();
+        const cost = observeNpcEffect(farm, 'cost', entry.cost, () => settleEncounterCost(farm, entry, true), labels);
+        const reward = observeNpcEffect(farm, 'reward', entry.reward, () => grantReward(farm, entry.reward, rng, now), labels);
+        const suffix = rewardReceipt(entry.reward, reward.result);
+        const text = cost.result.text + suffix;
+        stageNpcSettlement(farm, { at: now, entryId: entry.id, npcName: entry.npcName, eventName: entry.name,
+            option: null, optionLabel: null, outcomeIndex: null, resultText: text,
+            effects: [...cost.effects, ...reward.effects], unknownEffects: [...cost.unknownEffects, ...reward.unknownEffects] });
+        result = [{entry,text}];
     }
     farm.rngState = rng.state;
     return result;
@@ -42,13 +57,19 @@ export function settleNpcMotion(farm, id, option, now) {
     if (!pending || !Object.hasOwn(pending.entry.options, option)) return null;
     if (pending.result) return { ...pending.result, replay: true };
     const selected = pending.entry.options[option];
-    const settlement = settleEncounterCost(farm, selected);
-    if (!settlement.ok) return { ok: false, text: settlement.text };
+    const labels = npcEffectLabels();
+    const cost = observeNpcEffect(farm, 'cost', selected.cost, () => settleEncounterCost(farm, selected), labels);
+    if (!cost.result.ok) return { ok: false, text: cost.result.text };
     const rng = new Rng(farm.rngState ?? 1);
     const outcome = selectOutcome(selected, rng);
-    const suffix = rewardReceipt(outcome.reward, grantReward(farm, outcome.reward, rng, now));
+    const reward = observeNpcEffect(farm, 'reward', outcome.reward, () => grantReward(farm, outcome.reward, rng, now), labels);
+    const suffix = rewardReceipt(outcome.reward, reward.result);
     farm.rngState = rng.state;
-    const result = { ok: true, text: (selected.outcomes ? outcome.text : settlement.text) + suffix };
+    const result = { ok: true, text: (selected.outcomes ? outcome.text : cost.result.text) + suffix };
+    stageNpcSettlement(farm, { at: now, entryId: pending.entry.id, npcName: pending.entry.npcName,
+        eventName: pending.entry.name, option, optionLabel: selected.label,
+        outcomeIndex: selected.outcomes ? selected.outcomes.indexOf(outcome) : null, resultText: result.text,
+        effects: [...cost.effects, ...reward.effects], unknownEffects: [...cost.unknownEffects, ...reward.unknownEffects] });
     pending.result = result;
     pending.selected = option;
     pending.settledAt = now;

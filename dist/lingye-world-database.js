@@ -2,6 +2,8 @@ import { measureFarmPhase } from "./server/farm-request-timing.js";
 import { manualPerformanceWorkflow, registerManualPublication } from "./career/reporter-manual-publication.js";
 import { installAnnualStatisticsSchema } from "./annual-statistics/schema.js";
 import { PENDING_COUNTERS, flushAnnualCounters } from "./annual-statistics/world-buffer.js";
+import { PENDING_REPORTER_MATERIALS } from "./reporter-materials/observations.js";
+import { installReporterMaterialsSchema, markReporterMaterialsRecording, flushReporterMaterialEvents, pruneExpiredReporterMaterialEvents } from "./reporter-materials/store.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -71,6 +73,7 @@ import {
 } from "./career/reporter-service.js";
 import { reporterWorkflowForJob } from "./career/reporter-newsroom-service.js";
 import { reporterHasCompletedWork } from "./career/reporter-submission-work.js";
+import { reporterColumnJobsForPublication } from "./career/reporter-column-service.js";
 import { advanceReporterBoardSnapshotDay, amendReporterBoardSnapshotsForCommittedFarms, installReporterBoardSnapshotSchema } from "./career/reporter-board-snapshot.js";
 import { installLingyeNpcSchema } from "./npc/schema.js";
 import { installMidAutumnSchema } from "./mid-autumn-orders/schema.js";
@@ -305,6 +308,7 @@ export function installLingyeWorldSchema(database) {
     ensureChefCommerceSchema(database);
     ensureChefStoreSchema(database);
     installAnnualStatisticsSchema(database);
+    installReporterMaterialsSchema(database);
     installReporterBoardSnapshotSchema(database);
     installMidAutumnSchema(database);
 }
@@ -367,7 +371,7 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 ? new Set(persistenceHints.farmIds)
                 : null;
             world.farms = world.farms.map((farm) => {
-                if ((!farm?.doorbellMcpMigration?.migrationId && !farm?.[PENDING_COUNTERS]) ||
+                if ((!farm?.doorbellMcpMigration?.migrationId && !farm?.[PENDING_COUNTERS] && !farm?.[PENDING_REPORTER_MATERIALS]) ||
                     (candidateFarmIds && !candidateFarmIds.has(farm.id)))
                     return farm;
                 const staged = structuredClone(farm);
@@ -496,9 +500,12 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 }
             }
             if (ownsDurableTransaction) {
+                pruneExpiredReporterMaterialEvents(database, now);
+                markReporterMaterialsRecording(database, now);
                 for (const farm of world.farms) {
                     if (candidateFarmIds && !candidateFarmIds.has(farm.id)) continue;
                     if (flushAnnualCounters(database, farm)) persistenceFarmIds.add(farm.id);
+                    if (flushReporterMaterialEvents(database, farm, now)) persistenceFarmIds.add(farm.id);
                 }
             }
             options.beforeWorldWrite?.({ world, context, balanceOperation });
@@ -1226,35 +1233,21 @@ export function createLingyeWorldBackend(database, options) {
             const voiceJobId = workflow ? database.prepare(`SELECT job_id FROM career_reporter_voice_work
               WHERE publication_id = ? AND published_at IS NOT NULL`)
                 .get(quote.publicationId)?.job_id : null;
-            const collaborators = workflow
-                ? [
+            const collaboratorJobs = [
+                ...(workflow ? [
                     ["selector", workflow.selectorJobId],
                     ["reviewer", workflow.reviewerJobId],
                     ...(submissionJobId ? [["submission_reviewer", submissionJobId]] : []),
                     ...(voiceJobId ? [["voice", voiceJobId]] : []),
-                ].filter(([, jobId]) => jobId && jobId !== quote.jobId && reporterHasCompletedWork(database, jobId)).map(([role, jobId]) => {
-                    const collaborator = jobs.quoteReporterLikePerformance(jobId, quote.validLikes);
-                    const idempotencyKey = `reporter-evaluation:${jobId}:credit`;
-                    const sourceReference = `reporter:evaluation:${jobId}`;
-                    if (collaborator.units === 0) {
-                        return {
-                            role,
-                            ...jobs.addReporterLikePerformance({
-                                idempotencyKey,
-                                jobId,
-                                validLikes: quote.validLikes,
-                                sourceReference,
-                            }),
-                        };
-                    }
-                    const credited = economy.creditFromSystem({
-                        residentId: collaborator.residentId,
-                        currency: "gold",
-                        amount: collaborator.performanceGold,
-                        businessType: "career_wage",
-                        businessRef: `career-job:${jobId}:evaluation-performance`,
-                        idempotencyKey,
-                    });
+                ] : []),
+                ...reporterColumnJobsForPublication(database, quote.publicationId)
+                    .map(({ columnKey, jobId }) => [columnKey, jobId]),
+            ].filter(([, jobId]) => jobId && jobId !== quote.jobId && reporterHasCompletedWork(database, jobId));
+            const collaborators = collaboratorJobs.map(([role, jobId]) => {
+                const collaborator = jobs.quoteReporterLikePerformance(jobId, quote.validLikes);
+                const idempotencyKey = `reporter-evaluation:${jobId}:credit`;
+                const sourceReference = `reporter:evaluation:${jobId}`;
+                if (collaborator.units === 0) {
                     return {
                         role,
                         ...jobs.addReporterLikePerformance({
@@ -1262,11 +1255,28 @@ export function createLingyeWorldBackend(database, options) {
                             jobId,
                             validLikes: quote.validLikes,
                             sourceReference,
-                            wageReceipt: credited.financialReceipt,
                         }),
                     };
-                })
-                : [];
+                }
+                const credited = economy.creditFromSystem({
+                    residentId: collaborator.residentId,
+                    currency: "gold",
+                    amount: collaborator.performanceGold,
+                    businessType: "career_wage",
+                    businessRef: `career-job:${jobId}:evaluation-performance`,
+                    idempotencyKey,
+                });
+                return {
+                    role,
+                    ...jobs.addReporterLikePerformance({
+                        idempotencyKey,
+                        jobId,
+                        validLikes: quote.validLikes,
+                        sourceReference,
+                        wageReceipt: credited.financialReceipt,
+                    }),
+                };
+            });
             return { ...writerSettlement, collaborators };
         }),
         settleDueReporterEvaluations: () =>

@@ -1,6 +1,6 @@
 import { runInTransaction } from "./persistence.js";
 
-export const CAREER_SCHEMA_VERSION = 20;
+export const CAREER_SCHEMA_VERSION = 21;
 
 const REPORTER_ARTICLE_COLUMNS = `(
   article_id TEXT PRIMARY KEY,
@@ -742,6 +742,24 @@ export function installCareerSchema(database) {
       publication_id TEXT REFERENCES career_reporter_publications(publication_id),
       published_at INTEGER
     )`);
+    database.exec(`CREATE TABLE IF NOT EXISTS career_reporter_column_work (
+      issue_date TEXT NOT NULL,
+      column_key TEXT NOT NULL CHECK (column_key IN ('column_nain', 'column_gucheng', 'column_etincelle')),
+      resident_id TEXT NOT NULL REFERENCES residents(resident_id),
+      job_id TEXT NOT NULL UNIQUE REFERENCES career_jobs(job_id),
+      submission_id TEXT NOT NULL UNIQUE,
+      submitted_at INTEGER NOT NULL CHECK (submitted_at >= 0),
+      publication_id TEXT,
+      published_at INTEGER,
+      PRIMARY KEY (issue_date, column_key),
+      CHECK (
+        (publication_id IS NULL AND published_at IS NULL)
+        OR (publication_id IS NOT NULL AND published_at >= submitted_at)
+      )
+    );
+    CREATE INDEX IF NOT EXISTS career_reporter_column_publication_index
+      ON career_reporter_column_work(publication_id, column_key)
+      WHERE published_at IS NOT NULL`);
     const reporterRelayColumns = new Set(database.prepare("PRAGMA table_info(career_reporter_relay_issues)")
         .all().map(column => column.name));
     if (!reporterRelayColumns.has("submission_reviewer_job_id"))

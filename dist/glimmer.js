@@ -1,3 +1,4 @@
+import { stageGlimmerFeeding } from "./reporter-materials/observations.js";
 import { selectOutcome } from "./domain/glimmer/random-outcome.js";
 import { settleEncounterCost } from "./domain/glimmer/encounter-cost.js";
 import { ranchSpriteIndexByKind } from "./content-assets.js";
@@ -464,6 +465,11 @@ function catchVariant(farm, world, now, animalQuery, dishQuery) {
     const roll = rng.next();
     const success = guaranteed || roll < chance;
     farm.rngState = rng.state;
+    stageGlimmerFeeding(farm, {
+        at: now, variantId: variant.id, variantName: variant.name, variantType: variant.type,
+        baseKindId: variant.kindId, dishRecipeId: dish.recipeId, dishName: dish.name,
+        success, pityBefore, guaranteed,
+    });
     if (!success) {
         const pityAfter = pityBefore + 1;
         gate.state.capturePity[variant.kindId] = pityAfter;

@@ -2,6 +2,7 @@ import { randomInt as cryptoRandomInt } from "node:crypto";
 import { CareerDomainError } from "./contracts.js";
 import { beijingDate, runInTransaction } from "./persistence.js";
 import { installCareerSchema } from "./schema.js";
+import { reporterColumnJobsForPublication } from "./reporter-column-service.js";
 
 export const REPORTER_DUTY_ROLES = Object.freeze(["selector", "writer", "voice", "submission_reviewer"]);
 const LEGACY_REPORTER_DUTY_ROLES = ["selector", "writer", "reviewer"];
@@ -335,13 +336,29 @@ export function markReporterWorkflowPublished(database, input) {
 
 export function reporterPublicationCredits(database, publicationId) {
     installCareerSchema(database);
+    const columnJobs = reporterColumnJobsForPublication(database, publicationId);
+    const columnCredits = {
+        columnJobIds: columnJobs.map((entry) => entry.jobId),
+        columnResidentIds: [...new Set(columnJobs.map((entry) => entry.residentId))],
+    };
     const manual=database.prepare("SELECT manual.*,publication.job_id,publication.resident_id FROM career_reporter_manual_publications manual LEFT JOIN career_reporter_publications publication ON publication.publication_id=manual.career_publication_id WHERE manual.publication_id=?").get(publicationId);
-    if(manual) return {selectorJobId:manual.job_id,selectorResidentId:manual.resident_id,writerJobId:null,writerResidentId:null,reviewerJobId:null,reviewerResidentId:null,submissionReviewerJobId:null,submissionReviewerResidentId:null};
+    if(manual) return {selectorJobId:manual.job_id,selectorResidentId:manual.resident_id,writerJobId:null,writerResidentId:null,reviewerJobId:null,reviewerResidentId:null,submissionReviewerJobId:null,submissionReviewerResidentId:null,...columnCredits};
     const row = database.prepare(`
       SELECT * FROM career_reporter_story_workflows WHERE publication_id = ?
     `).get(identifier(publicationId, "publication_id"));
-    if (!row)
-        return null;
+    if (!row) {
+        return columnJobs.length > 0 ? {
+            selectorJobId: null,
+            selectorResidentId: null,
+            writerJobId: null,
+            writerResidentId: null,
+            reviewerJobId: null,
+            reviewerResidentId: null,
+            submissionReviewerJobId: null,
+            submissionReviewerResidentId: null,
+            ...columnCredits,
+        } : null;
+    }
     const submissionReview = database.prepare(`
       SELECT job.job_id, job.worker_resident_id
       FROM career_reporter_relay_issues AS issue
@@ -354,5 +371,6 @@ export function reporterPublicationCredits(database, publicationId) {
         ...mapWorkflow(row),
         submissionReviewerJobId: submissionReview?.job_id ?? null,
         submissionReviewerResidentId: submissionReview?.worker_resident_id ?? null,
+        ...columnCredits,
     };
 }
