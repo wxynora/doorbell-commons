@@ -8,7 +8,7 @@ export function createDoorbellInternalHandler(...args) {
     return async (req, res, parts, method) => {
         if (parts.length === 5 && parts[0] === "internal" && parts[1] === "doorbell" &&
             parts[2] === "lingye-daily" && parts[3] === "reporter-materials" &&
-            ["source", "qualification"].includes(parts[4])) {
+            ["source", "qualification", "farm-source"].includes(parts[4])) {
             await handleReporterMaterialsSource(req, res, method, args[3], parts[4]);
             return true;
         }

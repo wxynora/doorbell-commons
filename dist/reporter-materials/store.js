@@ -1,4 +1,5 @@
 import { PENDING_REPORTER_MATERIALS } from "./observations.js";
+import { installReporterFarmFactsSchema, pruneExpiredReporterFarmFacts } from "./farm-facts-store.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TTL_MS = 48 * 60 * 60 * 1000;
@@ -74,11 +75,13 @@ export function installReporterMaterialsSchema(database, now = Date.now()) {
       CREATE INDEX IF NOT EXISTS reporter_material_events_expiry
         ON reporter_material_events(expires_at, event_id);
     `);
+    installReporterFarmFactsSchema(database);
     pruneExpiredReporterMaterialEvents(database, now);
 }
 
 export function pruneExpiredReporterMaterialEvents(database, now) {
-    return Number(database.prepare("DELETE FROM reporter_material_events WHERE expires_at <= ?").run(now).changes ?? 0);
+    const events = Number(database.prepare("DELETE FROM reporter_material_events WHERE expires_at <= ?").run(now).changes ?? 0);
+    return events + pruneExpiredReporterFarmFacts(database, now);
 }
 
 // Start only when the instrumented world coordinator actually commits.

@@ -1,3 +1,4 @@
+import { reporterColumnsDate } from "./reporter-column-workflow.js";
 import { randomInt as cryptoRandomInt } from "node:crypto";
 import { CareerDomainError } from "./contracts.js";
 import { beijingDate, runInTransaction } from "./persistence.js";
@@ -77,7 +78,8 @@ export function ensureReporterDutyRoles(database, now = Date.now(), options = {}
           WHERE duty_date = ? ORDER BY role
         `).all(dutyDate);
         if (existing.length > 0) {
-            const expectedRoles = existing.length === 3 ? LEGACY_REPORTER_DUTY_ROLES
+            const expectedRoles = existing.length === 1 && existing[0].role === "submission_reviewer"
+                ? ["submission_reviewer"] : existing.length === 3 ? LEGACY_REPORTER_DUTY_ROLES
                 : existing.some(row => row.role === "reviewer") ? LEGACY_FOUR_REPORTER_DUTY_ROLES
                     : REPORTER_DUTY_ROLES;
             if (existing.length !== expectedRoles.length ||
@@ -89,6 +91,18 @@ export function ensureReporterDutyRoles(database, now = Date.now(), options = {}
             return existing.map(mapRole);
         }
         const duties = reporterDutyRows(database, dutyDate);
+        if (reporterColumnsDate(dutyDate)) {
+            if (!duties.length) return [];
+            const selected = (options.drawInt ?? cryptoRandomInt)(duties.length);
+            if (!Number.isSafeInteger(selected) || selected < 0 || selected >= duties.length)
+                fail("reporter_duty_random_source_invalid");
+            const duty = duties[selected];
+            database.prepare(`INSERT INTO career_reporter_duty_roles
+                (duty_date,role,duty_id,resident_id,assigned_at) VALUES (?, 'submission_reviewer', ?, ?, ?)`)
+                .run(dutyDate,duty.duty_id,duty.resident_id,assignedAt);
+            return database.prepare("SELECT * FROM career_reporter_duty_roles WHERE duty_date=?")
+                .all(dutyDate).map(mapRole);
+        }
         if (![3, REPORTER_DUTY_ROLES.length].includes(duties.length))
             return [];
         const drawInt = options.drawInt ?? cryptoRandomInt;
