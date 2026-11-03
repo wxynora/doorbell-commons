@@ -1,4 +1,4 @@
-import {dailyDocumentSchema,type DailyDocument} from "@doorbell/protocol";
+import {dailyDocumentSchema,type DailyDocument,type LingyeDailyColumnProgress} from "@doorbell/protocol";
 export interface EditorDraft {
   issueDate:string;version:number;publishedVersion:number|null;updatedAt:number;editorModel:string;issueNumber:number;
   activeEditorName:string|null;
@@ -15,7 +15,7 @@ export interface EditorProgressLane {
   timing?:{sentCount:number;waitingForDelivery:boolean;nextAt:number|null;canResend:boolean;canTransfer:boolean;
     sourceWakeId:string;residentId:string;pendingTransfer:{requestId:string;targetResidentId:string}|null};
 }
-export interface EditorProgress {issueDate:string;lanes:EditorProgressLane[];}
+export interface EditorProgress {issueDate:string;lanes:EditorProgressLane[];columns?:LingyeDailyColumnProgress[];}
 export async function editorRequest<T>(path:string,method="GET",body?:unknown):Promise<T> {
   const response=await fetch(`/api/lingye-daily/editor${path}`,{method,credentials:"same-origin",
     headers:{accept:"application/json",...(body ? {"content-type":"application/json"} : {})},

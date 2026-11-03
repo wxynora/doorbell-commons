@@ -1,3 +1,5 @@
+import { executeReporterMaterialTool } from "./daily-materials/reporter-tool.js";
+import type { DailyMaterialService } from "./daily-materials/material-service.js";
 import type { TogetherActivity } from "./together-activity.js";
 import { recordResidentFarmAction } from "./resident-social/resident-farm-actions.js";
 import { LoungeGachaViewError } from "./lounge-gacha/gacha-view-options.js";
@@ -24,6 +26,8 @@ import { renderLingyeToolText } from "./lingye-tool-result-text.js";
 import { publishedDailyNotice, renderPublishedDaily } from "./lingye-daily-read-op.js";
 import { dailySubmissionErrorText, reviewDailySubmissions, submitDailyObservation } from "./lingye-daily-submission-op.js";
 import { dailyVoiceErrorText, type LingyeDailyVoiceService } from "./lingye-daily-voice-service.js";
+import type { DailyColumnService } from "./daily-columns/service.js";
+import { dailyColumnErrorText } from "./daily-columns/copy.js";
 import { dailyCommentErrorText, type LingyeDailyCommentsService } from "./lingye-daily-comments-service.js";
 import { hashMcpCredential } from "./mcp-access-service.js";
 import {
@@ -133,6 +137,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 function isHalloweenActivityOption(option: unknown): option is string {
   return typeof option === "string" &&
     (option === "万圣节" || option.startsWith("万圣节:"));
+}
+
+function isReporterMaterialCall(params: unknown): boolean {
+  return isPlainObject(params) && params.name === "doorbell" && isPlainObject(params.arguments) &&
+    params.arguments.op === "go.newsroom.materials";
 }
 
 function isHalloweenActivityCall(params: unknown, togetherActivity?: TogetherActivity): boolean {
@@ -353,7 +362,9 @@ export interface DoorbellMcpRuntimeOptions {
   careerExamReminders?: Pick<CareerExamReminderService, "reconcile">;
   reporterRelayService?: Pick<ReporterRelayService, "enqueue">;
   dailyVoice?: Pick<LingyeDailyVoiceService, "commission">;
+  dailyColumns?: Pick<DailyColumnService, "commission">;
   dailyComments?: Pick<LingyeDailyCommentsService, "submit" | "forIssue" | "takeResidentNotifications">;
+  dailyMaterials?: DailyMaterialService;
   mcpEndpoint: string;
   now?: () => number;
   onNotificationDeliveryError?: (error: unknown) => void;
@@ -465,8 +476,10 @@ export class DoorbellMcpRuntime {
   readonly #careerExamReminders: Pick<CareerExamReminderService, "reconcile"> | undefined;
   readonly #reporterRelayService: Pick<ReporterRelayService, "enqueue"> | undefined;
   readonly #dailyVoice: Pick<LingyeDailyVoiceService, "commission"> | undefined;
+  readonly #dailyColumns: DoorbellMcpRuntimeOptions["dailyColumns"];
   readonly #loungeTools: LoungeToolExecutor | undefined;
   readonly #dailyComments: DoorbellMcpRuntimeOptions["dailyComments"];
+  readonly #dailyMaterials: DoorbellMcpRuntimeOptions["dailyMaterials"];
   readonly #allowedOrigin: string;
   readonly #now: () => number;
   readonly #onNotificationDeliveryError: (error: unknown) => void;
@@ -492,7 +505,9 @@ export class DoorbellMcpRuntime {
     this.#careerExamReminders = options.careerExamReminders;
     this.#reporterRelayService = options.reporterRelayService;
     this.#dailyVoice = options.dailyVoice;
+    this.#dailyColumns = options.dailyColumns;
     this.#dailyComments = options.dailyComments;
+    this.#dailyMaterials = options.dailyMaterials;
     this.#loungeTools = options.loungeTools;
     this.#allowedOrigin = new URL(options.mcpEndpoint).origin;
     this.#now = options.now ?? Date.now;
@@ -654,7 +669,7 @@ export class DoorbellMcpRuntime {
         try {
           const result = await this.#callTool(request.params, context);
           try {
-            return jsonRpcSuccess(id, isHalloweenActivityCall(request.params, this.#togetherActivity)
+            return jsonRpcSuccess(id, isHalloweenActivityCall(request.params, this.#togetherActivity) || isReporterMaterialCall(request.params)
               ? result
               : this.#appendResidentNotifications(result, context));
           } catch (error) {
@@ -755,6 +770,8 @@ export class DoorbellMcpRuntime {
     }
     const parsed = registered.operation.argsSchema.safeParse(call.args);
     if (!parsed.success) {
+      if (op === "go.newsroom.materials") return { isError: true, content: textContent(
+        "请使用空参数查看本期素材，或填写 keyword 查找往期内容。") };
       return doorbellToolError("INVALID_ARGS", {
         op,
         message: `参数不符合 ${op} 的要求。请按下面说明修正，不要使用旧式操作参数或身份字段。`,
@@ -810,8 +827,14 @@ export class DoorbellMcpRuntime {
     }
 
     if (registered.kind === "lingye") {
+      if (registered.operation.op === "go.newsroom.materials") {
+        const result = await executeReporterMaterialTool(this.#dailyMaterials, context.residentId, parsed.data as {keyword?: string});
+        return { isError: result.isError, content: textContent(result.text) };
+      }
       try {
         if (op === "go.newsroom.commission") {
+          const column = await this.#dailyColumns?.commission(context.residentId, parsed.data);
+          if (column !== undefined) return { isError: false, content: textContent(column) };
           const voice = await this.#dailyVoice?.commission(context.residentId, parsed.data);
           if (voice !== undefined) return { isError: false, content: textContent(voice) };
           const receipt = reviewDailySubmissions(this.#database.lingyeDailyStore, context.residentId, parsed.data, this.#now());
@@ -866,7 +889,7 @@ export class DoorbellMcpRuntime {
           ),
         );
       } catch (error) {
-        const submissionError = dailyVoiceErrorText(error) ?? dailySubmissionErrorText(error);
+        const submissionError = dailyColumnErrorText(error) ?? dailyVoiceErrorText(error) ?? dailySubmissionErrorText(error);
         if (submissionError) return { isError: true, content: textContent(submissionError) };
         if (
           error instanceof LingyeMcpActionCredentialInvalidError ||

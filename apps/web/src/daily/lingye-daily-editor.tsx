@@ -1,5 +1,7 @@
 import React,{useEffect,useRef,useState} from "react";
-import {dailyDocumentSchema,dailyImageCropSchema,type DailyImageCrop,type DailyBlock,type DailyDocument,type DailyTextRun} from "@doorbell/protocol";
+import {dailyDocumentSchema,dailyImageCropSchema,lingyeDailyColumnKeySchema,type DailyImageCrop,type DailyBlock,type DailyDocument,type DailyTextRun} from "@doorbell/protocol";
+import {DailyColumnProgressList} from "./columns/daily-column-progress";
+import {readDailyColumnEditorSection} from "./columns/editor-dom";
 import {DailyImageEditor} from "./daily-image-editor";
 import {DailyDocumentView} from "./lingye-daily-document-view";
 import {editorRequest,type EditorDraft,type EditorProgress,type EditorProgressLane} from "./lingye-daily-editor-client";
@@ -23,6 +25,7 @@ function textRuns(node:Node,bold=false):DailyTextRun[] {
 export function readEditedDocument(root:HTMLElement):DailyDocument {
   const sections=[...root.querySelectorAll<HTMLElement>("[data-section-key]")].map(section=>{
     const copy=section.querySelector<HTMLElement>(".daily-document-copy")!;
+    if(lingyeDailyColumnKeySchema.safeParse(section.dataset.sectionKey).success) return readDailyColumnEditorSection(section);
     const blocks:DailyBlock[]=[];
     const walk=(node:Node)=>{
       if(node instanceof HTMLElement && node.dataset.imageId) {
@@ -35,8 +38,8 @@ export function readEditedDocument(root:HTMLElement):DailyDocument {
       const runs=textRuns(node);
       if(!runs.some(run=>run.text.trim()))return;
       const element=node instanceof HTMLElement?node:null;
-      const type=element?.tagName==="H3"?"heading":element?.dataset.blockType ?? "paragraph";
-      blocks.push({type:type as DailyBlock["type"],runs,
+      const type=(element?.tagName==="H3"?"heading":element?.dataset.blockType ?? "paragraph") as Exclude<DailyBlock["type"],"divider"|"table">;
+      blocks.push({type,runs,
         ...(element?.dataset.submissionId ? {submissionId:element.dataset.submissionId} : {})});
     };
     [...copy.childNodes].forEach(walk);
@@ -105,7 +108,7 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
     const sectionElement=figure.closest<HTMLElement>("[data-section-key]")!;
     const ordinal=[...sectionElement.querySelectorAll("figure[data-image-id]")].indexOf(figure);
     const section=document.sections.find(item=>item.key===sectionElement.dataset.sectionKey)!;
-    const block=section.blocks.filter(item=>item.type==="image")[ordinal];
+    const block=section.blocks.filter((item):item is DailyBlock & {type:"image"}=>item.type==="image")[ordinal];
     if(!block)return;
     if(action==="delete")section.blocks.splice(section.blocks.indexOf(block),1);
     else if(crop)block.crop=crop;
@@ -168,6 +171,7 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
             date={draft.issueDate} lane={lane} busy={busy} run={run}
             refresh={()=>loadProgress(draft.issueDate)} notify={setNotice}/>
         </div>) ?? <p>正在读取记者进度…</p>}</div>
+        <DailyColumnProgressList columns={progress?.columns ?? []} />
         <h2>本期来稿</h2><p>群聊 {draft.readiness.group?"已到":"待到"} · 记者 {draft.readiness.reporter?"已到":"待到"}<br/>投稿 {draft.readiness.submissions?"已审":"待审"} · 天气 {draft.readiness.weather?"已到":"待到"}{hasVoice?<><br/>小机有话说 {(draft.readiness.voice ?? false)?"已到":"待到"}</>:null}</p>
         <h2>出版审稿奖金</h2><small>{draft.publicationReward
           ? `${draft.publicationReward.recipientName} · ${draft.publicationReward.paid?"已发 5000 金":"5000 金待确认"}`

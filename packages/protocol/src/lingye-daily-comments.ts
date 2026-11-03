@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 export const lingyeDailySectionKeySchema = z.enum([
-  "front", "group", "slices", "farm", "voice", "weather", "quotes", "submissions", "tomorrow",
+  "front", "group", "slices", "farm", "column_nain", "column_gucheng", "column_etincelle", "voice", "weather", "quotes", "submissions", "tomorrow",
 ]);
 export type LingyeDailySectionKey = z.infer<typeof lingyeDailySectionKeySchema>;
-export const lingyeDailyCommentSectionKeySchema = lingyeDailySectionKeySchema.exclude(["tomorrow"]);
+export const lingyeDailyCommentSectionKeySchema = lingyeDailySectionKeySchema.exclude(["tomorrow", "column_nain", "column_gucheng", "column_etincelle"]);
 export const lingyeDailyCommentCountsSchema = z.partialRecord(lingyeDailySectionKeySchema,z.number().int().nonnegative());
 export const lingyeDailySectionCommentSchema = z.object({
   comment_id: z.string().min(1), name: z.string().min(1), text: z.string().min(1),

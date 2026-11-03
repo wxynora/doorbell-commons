@@ -11,6 +11,7 @@ import type { ReporterRelayStarter } from "./reporter-relay-farm-client.js";
 import type { ReporterRelayService } from "./reporter-relay-service.js";
 import type { LingyeDailyWeatherReader } from "./lingye-daily-weather.js";
 import type { LingyeDailyVoiceService } from "./lingye-daily-voice-service.js";
+import type { DailyColumnService } from "./daily-columns/service.js";
 import type {
   CommunityDatabase,
   LingyeDailyIssueRecord,
@@ -27,6 +28,7 @@ export interface LingyeDailyServiceOptions {
   reporterRelay?:Pick<ReporterRelayService,"createResentFarmWake"|"createResentSubmissionWake"|"notifyResentWake">;
   weather?: LingyeDailyWeatherReader;
   voice?: LingyeDailyVoiceService;
+  columns?: DailyColumnService;
   farm?: {apiBaseUrl:string;serviceToken:string;requestTimeoutMs:number;fetchImplementation?:typeof fetch};
 }
 
@@ -62,6 +64,7 @@ export class LingyeDailyService {
   readonly #reporterRelay:LingyeDailyServiceOptions["reporterRelay"];
   readonly #weather: LingyeDailyWeatherReader | undefined;
   readonly #voice: LingyeDailyVoiceService | undefined;
+  readonly columns: DailyColumnService | undefined;
 
   constructor(options: LingyeDailyServiceOptions) {
     this.#database = options.database;
@@ -73,6 +76,7 @@ export class LingyeDailyService {
     this.#reporterRelay=options.reporterRelay;
     this.#weather = options.weather;
     this.#voice = options.voice;
+    this.columns = options.columns;
     this.editor=new LingyeDailyEditorStore(options.database.lingyeDailyStore.database);
     this.#farm=options.farm;
     this.transfers=new DailyReporterTransferService({editor:this.editor,now:this.#now,farm:options.farm,
@@ -133,6 +137,7 @@ export class LingyeDailyService {
     this.authorize(authorization);
     this.editor.receive(input,this.#now());
     await this.#voice?.groupArrived(input.issue_date);
+    await this.columns?.reconcile(input.issue_date);
     return {saved:true,published:false,issue_date:input.issue_date};
   }
 
@@ -163,6 +168,7 @@ export class LingyeDailyService {
     const results=await Promise.allSettled(arrivals);
     const failure=results.find((result):result is PromiseRejectedResult=>result.status==="rejected");
     if(failure) throw failure.reason;
+    await this.columns?.reconcile(date);
     return this.editor.get(date);
   }
 
@@ -202,6 +208,8 @@ export class LingyeDailyService {
           throw new DailyEditorError(502,"正文已出版，记者结算确认尚未完成；再次点出版即可继续，不会重复出版。");
       }
       if(edition.reporter_articles[0]) await this.#voice?.published(date,edition.reporter_articles[0].publication_id,
+        publishedAt,JSON.parse(published.edition_json).editor_document);
+      if(edition.reporter_articles[0]) await this.columns?.published(date,edition.reporter_articles[0].publication_id,
         publishedAt,JSON.parse(published.edition_json).editor_document);
       this.editor.database.prepare("UPDATE lingye_daily_editor_drafts SET publication_synced=1 WHERE issue_date=? AND published_version=?")
         .run(date,version);
@@ -256,7 +264,7 @@ export class LingyeDailyService {
         return {...lane,timing,resendable:timing.canResend&&!timing.pendingTransfer};
       } catch { return {...lane,resendable:false}; }
     }));
-    return {issueDate:date,lanes};
+    return {issueDate:date,lanes,columns:this.columns?.progress(date) ?? []};
   }
 
   async resendEditorWake(date:string,lane:"farm"|"submissions"|"voice",requestId:string,accountId:string) {

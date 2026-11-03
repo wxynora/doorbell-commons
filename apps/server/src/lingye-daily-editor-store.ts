@@ -130,7 +130,7 @@ export class LingyeDailyEditorStore {
           if(added) existingFarm.blocks.push(...added.blocks);
         }
       }
-      const order:DailyDocument["sections"][number]["key"][]=["front","group","slices","farm","voice","weather","quotes","submissions","tomorrow"];
+      const order:DailyDocument["sections"][number]["key"][]=["front","group","slices","farm","column_nain","column_gucheng","column_etincelle","voice","weather","quotes","submissions","tomorrow"];
       for(const section of fresh.sections.filter(section=>keys.includes(section.key)&&!sections.some(current=>current.key===section.key))) {
         const position=sections.findIndex(current=>order.indexOf(current.key)>order.indexOf(section.key));
         sections.splice(position<0?sections.length:position,0,section);

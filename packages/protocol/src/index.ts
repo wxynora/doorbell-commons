@@ -4,7 +4,9 @@ import { z } from "zod";
 import { dailyDocumentSchema } from "./lingye-daily-document.js";
 export * from "./lingye-daily-document.js";
 import { lingyeDailyVoiceArticleSchema } from "./lingye-daily-voice.js";
+import { lingyeDailyColumnArticlesSchema } from "./lingye-daily-columns.js";
 export * from "./lingye-daily-voice.js";
+export * from "./lingye-daily-columns.js";
 export * from "./lingye-daily-comments.js";
 import { lingyeDailyCommentCountsSchema } from "./lingye-daily-comments.js";
 import { lingyeDailyWeatherForecastSchema } from "./lingye-daily-weather.js";
@@ -1847,6 +1849,7 @@ export const lingyeDailyTomorrowQuestionPublishSchema = z
 export const lingyeDailyEditionPublishSchema = z
   .object({
     editor_document: dailyDocumentSchema.optional(),
+    column_articles: lingyeDailyColumnArticlesSchema.optional(),
     voice_article: lingyeDailyVoiceArticleSchema.optional(),
     front_page: lingyeDailyFrontPagePublishSchema.nullable(),
     group_chat: lingyeDailyGroupChatPublishSchema,

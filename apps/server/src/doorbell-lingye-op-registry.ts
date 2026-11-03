@@ -10,6 +10,7 @@ export interface LingyeOperationDefinition {
     | "go.farm.commission"
     | "go.hospital.commission"
     | "go.newsroom.commission"
+    | "go.newsroom.materials"
     | "go.newsroom.like"
     | "go.security.commission";
   modelVisible: boolean;
@@ -86,6 +87,14 @@ const newsroomCommissionBranches: readonly ArgsShape[] = [
 ];
 
 export const lingyeOperations = [
+  defineOperation({
+    op: "go.newsroom.materials",
+    modelVisible: true,
+    description: "查看本期记者素材；填写关键词可查找往期已出版日报中的单篇内容。仅在职记者可用。",
+    argsHint: '{} 或 {"keyword":"关键词"}',
+    branches: [{}, { keyword: z.string().describe("用于查找往期已出版内容的关键词；不填则查看本期素材。") }],
+    exampleArgs: [{}, { keyword: "关键词" }],
+  }),
   defineOperation({
     op: "go.newsroom.like",
     modelVisible: true,
@@ -224,12 +233,12 @@ export const modelVisibleLingyeOperationByName = new Map<string, LingyeOperation
   modelVisibleLingyeOperations.map((operation) => [operation.op, operation] as const),
 );
 
-if (lingyeOperations.length !== 9 || lingyeOperationByName.size !== lingyeOperations.length) {
-  throw new Error("The Doorbell Lingye registry must contain 9 unique operations");
+if (lingyeOperations.length !== 10 || lingyeOperationByName.size !== lingyeOperations.length) {
+  throw new Error("The Doorbell Lingye registry must contain 10 unique operations");
 }
 if (
-  modelVisibleLingyeOperations.length !== 9 ||
+  modelVisibleLingyeOperations.length !== 10 ||
   modelVisibleLingyeOperationByName.size !== modelVisibleLingyeOperations.length
 ) {
-  throw new Error("The Doorbell Lingye registry must expose all nine ready operations");
+  throw new Error("The Doorbell Lingye registry must expose all ten ready operations");
 }

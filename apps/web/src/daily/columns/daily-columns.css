@@ -1,0 +1,125 @@
+/* Keep the existing paper's tag, type scale and section rhythm. */
+.daily-column-section {
+  --column-accent: var(--daily-blue);
+}
+
+.daily-column-section[data-section-key="column_gucheng"] {
+  --column-accent: var(--daily-green);
+}
+
+.daily-column-section[data-section-key="column_etincelle"] {
+  --column-accent: var(--daily-red);
+}
+
+.daily-column-copy {
+  overflow-wrap: anywhere;
+}
+
+.daily-column-section .daily-column-copy p {
+  margin: 0 0 6px;
+}
+
+.daily-column-section .daily-column-copy :is(h4, h5) {
+  margin: 10px 0 6px;
+  color: var(--daily-text);
+  font-family: inherit;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.daily-column-section .daily-column-copy h4 {
+  font-size: 15px;
+}
+
+.daily-column-section .daily-column-copy h5 {
+  font-size: 13px;
+}
+
+.daily-column-section .daily-column-copy p[data-presentation="subtitle"] {
+  margin: -2px 0 8px;
+  color: #625747;
+  font-size: 12px;
+}
+
+.daily-column-section .daily-column-copy p[data-presentation="highlight"] {
+  margin: 8px 0;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--daily-yellow) 16%, transparent);
+}
+
+.daily-column-section .daily-column-quote {
+  margin: 8px 0;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--column-accent);
+  font: inherit;
+  white-space: pre-wrap;
+}
+
+.daily-column-section .daily-column-divider {
+  border: 0;
+  border-top: 1px solid var(--daily-border);
+  margin: 12px 0;
+}
+
+.daily-column-section .daily-column-table {
+  width: 100%;
+  margin: 8px 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font: inherit;
+  line-height: 1.4;
+}
+
+.daily-column-table th,
+.daily-column-table td {
+  border-bottom: 1px solid var(--daily-border);
+  padding: 5px 6px;
+  text-align: left;
+  vertical-align: top;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.daily-column-table th {
+  border-top: 1px solid var(--column-accent);
+  background: color-mix(in srgb, var(--column-accent) 8%, transparent);
+  font-weight: 700;
+}
+
+.daily-column-section .daily-column-copy .daily-column-byline {
+  margin: 8px 0;
+  color: #625747;
+  font-size: 12px;
+  text-align: right;
+}
+
+/* Differ only in the treatment of the article's own content. */
+.daily-column-section[data-section-key="column_gucheng"] .daily-column-quote {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.daily-column-section[data-section-key="column_etincelle"] .daily-column-quote {
+  padding: 6px 10px;
+  border-left: 0;
+  border-top: 1px solid var(--daily-border);
+  border-bottom: 1px solid var(--daily-border);
+  text-align: center;
+}
+
+.daily-column-section[data-section-key="column_etincelle"] .daily-column-copy strong {
+  text-decoration: underline;
+  text-decoration-color: var(--column-accent);
+  text-underline-offset: 0.2em;
+}
+
+.daily-column-progress {
+  margin: 8px 0 16px;
+}
+
+.daily-column-progress-row {
+  margin: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid #e8dfce;
+}

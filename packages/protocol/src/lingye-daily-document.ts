@@ -2,6 +2,7 @@ import { z } from "zod";
 import { presentDailyIssue } from "./lingye-daily-presentation.js";
 import type { LingyeDailyEditionPublish } from "./index.js";
 import { lingyeDailySectionKeySchema } from "./lingye-daily-comments.js";
+import { lingyeDailyColumnBlockSchema, lingyeDailyColumnBlockText, lingyeDailyColumnSectionsFromEdition } from "./lingye-daily-columns.js";
 
 export const dailyTextRunSchema = z.object({ text: z.string(), bold: z.boolean().optional() }).strict();
 // Source-pixel coordinates: the original stays intact; the document owns the crop.
@@ -11,13 +12,7 @@ export const dailyImageCropSchema = z.object({
   sourceWidth:z.number().int().positive(), sourceHeight:z.number().int().positive(),
 }).strict().refine(crop=>crop.x+crop.width<=crop.sourceWidth && crop.y+crop.height<=crop.sourceHeight);
 export type DailyImageCrop = z.infer<typeof dailyImageCropSchema>;
-export const dailyBlockSchema = z.object({
-  type: z.enum(["paragraph", "heading", "quote", "byline", "submission", "question", "image"]),
-  runs: z.array(dailyTextRunSchema),
-  imageId: z.string().optional(),
-  crop: dailyImageCropSchema.optional(),
-  submissionId: z.string().optional(),
-}).strict().refine(block=>!block.crop || (block.type==="image" && !!block.imageId));
+export const dailyBlockSchema = lingyeDailyColumnBlockSchema;
 export const dailyDocumentSchema = z.object({
   version: z.literal(1),
   sections: z.array(z.object({
@@ -31,7 +26,10 @@ export const dailyDocumentSchema = z.object({
 export type DailyDocument = z.infer<typeof dailyDocumentSchema>;
 export type DailyBlock = z.infer<typeof dailyBlockSchema>;
 export type DailyTextRun = z.infer<typeof dailyTextRunSchema>;
-export const dailyBlockText = (block: DailyBlock): string => block.runs.map(run => run.text).join("");
+export const dailyBlockText = (block: DailyBlock): string =>
+  block.type === "divider" || block.type === "table"
+    ? lingyeDailyColumnBlockText(block)
+    : block.runs.map(run => run.text).join("");
 export function dailyDocumentText(document: DailyDocument): string {
   return document.sections.filter(section => section.blocks.length).map(section =>
     [section.title, ...section.blocks.filter(block => block.type !== "image").map(dailyBlockText)]
@@ -62,7 +60,7 @@ export function dailyDocumentFromEdition(edition: LingyeDailyEditionPublish, iss
     ...(edition.tomorrow_question ? {tomorrowQuestion:edition.tomorrow_question.text} : {}),
   });
   const emphasis = [...(shown.emphasisTexts ?? []), ...(shown.emphasisText ? [shown.emphasisText] : [])];
-  const block = (type: DailyBlock["type"], text: string, extra = {}): DailyBlock => {
+  const block = (type: Exclude<DailyBlock["type"], "divider" | "table">, text: string, extra = {}): DailyBlock => {
     let runs: DailyTextRun[] = [{text}];
     for (const phrase of emphasis) runs = runs.flatMap(run => {
       if (run.bold || !phrase) return [run];
@@ -72,7 +70,7 @@ export function dailyDocumentFromEdition(edition: LingyeDailyEditionPublish, iss
     });
     return {type,runs,...extra};
   };
-  const paragraphs = (text: string, type: DailyBlock["type"] = "paragraph") => text.split(/\n+/u)
+  const paragraphs = (text: string, type: Exclude<DailyBlock["type"], "divider" | "table"> = "paragraph") => text.split(/\n+/u)
     .map(line => line.trim()).filter(Boolean).map(line => block(type, line));
   const image = (id: string): DailyBlock => ({type:"image",runs:[],imageId:id});
   const sections: DailyDocument["sections"] = [];
@@ -102,6 +100,7 @@ export function dailyDocumentFromEdition(edition: LingyeDailyEditionPublish, iss
     farm.push(block("byline",`选题：${article.selector}　撰稿：${article.writer}${article.review_kind === "farm_article" ? `　审稿：${article.reviewer}` : ""}`));
   }
   section("farm","农场观测站",farm);
+  sections.push(...lingyeDailyColumnSectionsFromEdition(edition.column_articles));
   if (edition.voice_article) section("voice","小机有话说",[
     ...paragraphs(edition.voice_article.text), block("byline",`——${edition.voice_article.author}`),
   ]);

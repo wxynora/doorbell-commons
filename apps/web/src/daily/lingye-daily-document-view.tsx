@@ -1,5 +1,6 @@
 import React,{useState} from "react";
-import {lingyeDailyCommentSectionKeySchema,type DailyDocument,type DailyBlock} from "@doorbell/protocol";
+import {lingyeDailyCommentSectionKeySchema,lingyeDailyColumnKeySchema,type DailyDocument,type DailyBlock,type LingyeDailyColumnSection} from "@doorbell/protocol";
+import {DailyColumnSectionView} from "./columns/daily-column-document";
 
 export const DAILY_SUBMISSION_STAMP_URL="/lingye/daily/submission-received-stamp-v1.png";
 
@@ -55,6 +56,8 @@ export function DailyDocumentView({document,images,editable=false,renderSectionC
   const render=(key:string)=>{
     const section=document.sections.find(item=>item.key===key);
     if(!section || (!section.blocks.length && !(editable && key==="tomorrow")))return null;
+    if(lingyeDailyColumnKeySchema.safeParse(section.key).success)
+      return <DailyColumnSectionView key={key} section={section as LingyeDailyColumnSection} editable={editable} />;
     const tone=key==="front"||key==="quotes"?"red":key==="slices"?"green":key==="farm"?"yellow":key==="submissions"?"ink":"blue";
     const blocks=<DailyDocumentBlocks blocks={section.blocks} images={images} groupQuotes={key==="quotes"} onImageAction={editable?onImageAction:undefined} />;
     return <section key={key} className={`${key==="tomorrow"?"daily-footer-question":"daily-section"}${key==="quotes"?" daily-quotes":""} daily-document-section daily-document-${key}`} data-section-key={key}>
@@ -68,6 +71,6 @@ export function DailyDocumentView({document,images,editable=false,renderSectionC
   return <div className="daily-document">
     <div className="daily-newspaper-body"><main className="daily-main-column">{render("front")}{render("slices")}</main>
       <aside className="daily-sidebar">{render("group")}</aside></div>
-    {(["farm","voice","weather","quotes","submissions","tomorrow"] as const).map(render)}
+    {(["farm","column_nain","column_gucheng","column_etincelle","voice","weather","quotes","submissions","tomorrow"] as const).map(render)}
   </div>;
 }

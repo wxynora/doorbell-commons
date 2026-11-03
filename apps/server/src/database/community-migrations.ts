@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 51;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 53;
 export const SNOW_LIVE_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS snow_spectator_messages (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2896,6 +2896,100 @@ export function migrateCommunityDatabase(
   if (databaseSchemaVersion < 51) database.transaction(() => {
     database.exec(SNOW_LIVE_SCHEMA_SQL);
     database.pragma('user_version = 51');
+  })();
+
+  if (databaseSchemaVersion < 52) database.transaction(() => {
+    database.exec(`
+      CREATE TABLE lingye_daily_material_snapshots (
+        snapshot_id TEXT PRIMARY KEY, issue_date TEXT NOT NULL, created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL, glimmer_available INTEGER NOT NULL,
+        window_start INTEGER, window_end INTEGER, recording_started_at INTEGER
+      );
+      CREATE INDEX lingye_daily_material_snapshots_expiry ON lingye_daily_material_snapshots(expires_at);
+      CREATE TABLE lingye_daily_material_snapshot_announcements (
+        snapshot_id TEXT NOT NULL REFERENCES lingye_daily_material_snapshots(snapshot_id) ON DELETE CASCADE,
+        position INTEGER NOT NULL, announcement_id TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL,
+        published_at INTEGER NOT NULL, PRIMARY KEY(snapshot_id,position)
+      );
+      CREATE TABLE lingye_daily_material_glimmer_variants (
+        snapshot_id TEXT NOT NULL REFERENCES lingye_daily_material_snapshots(snapshot_id) ON DELETE CASCADE,
+        position INTEGER NOT NULL, variant_name TEXT NOT NULL, variant_type TEXT NOT NULL,
+        feeding_count INTEGER NOT NULL, did_not_follow_count INTEGER NOT NULL, PRIMARY KEY(snapshot_id,position)
+      );
+      CREATE TABLE lingye_daily_material_glimmer_dishes (
+        snapshot_id TEXT NOT NULL, variant_position INTEGER NOT NULL, position INTEGER NOT NULL,
+        name TEXT NOT NULL, quantity INTEGER NOT NULL, PRIMARY KEY(snapshot_id,variant_position,position),
+        FOREIGN KEY(snapshot_id,variant_position) REFERENCES lingye_daily_material_glimmer_variants(snapshot_id,position) ON DELETE CASCADE
+      );
+      CREATE TABLE lingye_daily_material_glimmer_successes (
+        snapshot_id TEXT NOT NULL, variant_position INTEGER NOT NULL, position INTEGER NOT NULL,
+        farm_name TEXT, occurred_at INTEGER NOT NULL, attempt INTEGER NOT NULL, guaranteed INTEGER NOT NULL,
+        PRIMARY KEY(snapshot_id,variant_position,position),
+        FOREIGN KEY(snapshot_id,variant_position) REFERENCES lingye_daily_material_glimmer_variants(snapshot_id,position) ON DELETE CASCADE
+      );
+      CREATE TABLE lingye_daily_materials (
+        material_id TEXT PRIMARY KEY, issue_date TEXT NOT NULL, kind TEXT NOT NULL, has_data INTEGER NOT NULL,
+        last_attempt TEXT NOT NULL CHECK(last_attempt IN ('ready','failed')), updated_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL, source_id TEXT REFERENCES lingye_daily_material_snapshots(snapshot_id),
+        period_start TEXT, period_end TEXT, coverage_status TEXT, coverage_note TEXT, quote_candidates_available INTEGER,
+        window_start INTEGER, window_end INTEGER, recording_started_at INTEGER, unknown_effects_present INTEGER,
+        UNIQUE(issue_date,kind)
+      );
+      CREATE INDEX lingye_daily_materials_expiry ON lingye_daily_materials(expires_at);
+      CREATE TABLE lingye_daily_material_topics (
+        material_id TEXT NOT NULL REFERENCES lingye_daily_materials(material_id) ON DELETE CASCADE,
+        position INTEGER NOT NULL, topic TEXT NOT NULL, summary TEXT NOT NULL, PRIMARY KEY(material_id,position)
+      );
+      CREATE TABLE lingye_daily_material_npc_summaries (
+        material_id TEXT NOT NULL REFERENCES lingye_daily_materials(material_id) ON DELETE CASCADE,
+        position INTEGER NOT NULL, farm_name TEXT, summary TEXT NOT NULL, unknown_effects_present INTEGER NOT NULL,
+        PRIMARY KEY(material_id,position)
+      );
+      CREATE TABLE lingye_daily_material_updates (
+        material_id TEXT NOT NULL REFERENCES lingye_daily_materials(material_id) ON DELETE CASCADE,
+        position INTEGER NOT NULL, announcement_id TEXT NOT NULL, title TEXT NOT NULL, published_at INTEGER NOT NULL,
+        kind TEXT NOT NULL, excerpt TEXT NOT NULL, PRIMARY KEY(material_id,position)
+      );
+    `);
+    database.pragma('user_version = 52');
+  })();
+  if (databaseSchemaVersion < 53) database.transaction(() => {
+    database.exec(`
+CREATE TABLE lingye_daily_column_tasks (
+  task_id TEXT PRIMARY KEY,
+  issue_date TEXT NOT NULL,
+  column_key TEXT NOT NULL CHECK(column_key IN ('column_nain','column_gucheng','column_etincelle')),
+  column_title TEXT NOT NULL,
+  resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+  author TEXT NOT NULL,
+  submit_option TEXT NOT NULL UNIQUE,
+  rest_option TEXT NOT NULL UNIQUE,
+  submission_id TEXT NOT NULL UNIQUE,
+  instruction_text TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','submitted','rested')),
+  body TEXT,
+  decided_at INTEGER,
+  submission_synced INTEGER NOT NULL DEFAULT 0,
+  publication_id TEXT,
+  published_at TEXT,
+  wake_status TEXT NOT NULL DEFAULT 'pending' CHECK(wake_status IN ('pending','acked','blocked','cancelled')),
+  wake_ended_at INTEGER,
+  block_reason TEXT,
+  error_code TEXT,
+  UNIQUE(issue_date,column_key),
+  UNIQUE(issue_date,resident_id)
+);
+CREATE INDEX lingye_daily_column_pending_wakes ON lingye_daily_column_tasks(resident_id,wake_status,created_at);
+CREATE TABLE lingye_daily_column_wake_materials (
+  task_id TEXT PRIMARY KEY REFERENCES lingye_daily_column_tasks(task_id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX lingye_daily_column_wake_expiry ON lingye_daily_column_wake_materials(expires_at);
+
+    `);
+    database.pragma('user_version = 53');
   })();
 
 }

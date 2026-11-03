@@ -14,6 +14,9 @@ import { FarmDecorationClient } from "./farm-decoration-client.js";
 import { MysteryMerchantNightService } from "./mystery-merchant-night-service.js";
 import { MysteryMerchantReminderService } from "./mystery-merchant-reminder-service.js";
 import { buildApp } from "./app.js";
+import { dailyDocumentFromEdition, lingyeDailyEditionPublishSchema } from "@doorbell/protocol";
+import { DailyMaterialService } from "./daily-materials/material-service.js";
+import { FarmMaterialClient } from "./daily-materials/farm-client.js";
 import { BellAccessService } from "./bell-access-service.js";
 import { BellService } from "./bell-service.js";
 import { BrowserPushService } from "./browser-push-service.js";
@@ -56,6 +59,10 @@ import { FarmHumanSmeltingActionClient } from "./farm-smelting-action-client.js"
 import { HomeWeatherEngine } from "./home-weather-engine.js";
 import { LingyeDailyService } from "./lingye-daily-service.js";
 import { LingyeDailyVoiceService } from "./lingye-daily-voice-service.js";
+import { DailyColumnService, columnIssueDate } from "./daily-columns/service.js";
+import { DailyColumnFarmClient } from "./daily-columns/farm-client.js";
+import { dailyColumnProfiles } from "./daily-columns/config.js";
+import { dailyColumnCopy } from "./daily-columns/copy.js";
 import { LingyeDailyCommentsService } from "./lingye-daily-comments-service.js";
 import { LingyeDailyRewardClient } from "./lingye-daily-reward-client.js";
 import { LingyeDailyWeatherClient } from "./lingye-daily-weather.js";
@@ -343,9 +350,18 @@ const reporterRelayFarm = new ReporterRelayFarmClient({
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
   serviceToken: serverConfig.farmServiceToken,
 });
+let dailyColumnsService: DailyColumnService | undefined;
+const dailyMaterials = new DailyMaterialService({
+  database: database.lingyeDailyStore.database,
+  farm: new FarmMaterialClient({apiBaseUrl:serverConfig.farmApiBaseUrl,serviceToken:serverConfig.farmServiceToken,
+    requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs}),
+  legacyDocument: (edition, issueDate) => dailyDocumentFromEdition(lingyeDailyEditionPublishSchema.parse(edition), issueDate),
+});
 const reporterDailyScheduler = new ReporterDailyScheduler({
   farm: reporterRelayFarm,
   relay: reporterRelayService,
+  pruneMaterials: () => { dailyMaterials.prune(); dailyColumnsService?.prune(); },
+  dispatchColumns: async date => { await dailyColumnsService?.reconcile(date); },
   onError: (error) => {
     process.stderr.write(
       `[doorbell-reporter-daily] ${error instanceof Error ? error.name : "UnknownError"}\n`,
@@ -496,6 +512,15 @@ const careerExamReminderService = new CareerExamReminderService({
 const dailyVoiceService = new LingyeDailyVoiceService({ database, farm: reporterRelayFarm, bell: bellService,
   onSyncError: error => process.stderr.write(`[doorbell-daily-voice] ${error instanceof Error ? error.name : "UnknownError"}\n`),
 });
+dailyColumnsService = new DailyColumnService({database:database.lingyeDailyStore.database,
+  profiles:dailyColumnProfiles(process.env), materials:dailyMaterials,
+  farm:new DailyColumnFarmClient({apiBaseUrl:serverConfig.farmApiBaseUrl,serviceToken:serverConfig.farmServiceToken,
+    requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs}), bell:bellService, copy:dailyColumnCopy,
+  onError:error=>process.stderr.write(`[doorbell-daily-column] ${error instanceof Error ? error.name : "UnknownError"}\n`),
+});
+bellService.addWakeSource(dailyColumnsService.wakeSource);
+void dailyColumnsService.reconcile(columnIssueDate(Date.now())).catch(error=>
+  process.stderr.write(`[doorbell-daily-column] ${error instanceof Error ? error.name : "UnknownError"}\n`));
 const dailyCommentsService = new LingyeDailyCommentsService({database,farm:reporterRelayFarm});
 const snowLive = database.createSnowLiveService();
 const togetherStartup = createTogetherStartup({
@@ -512,6 +537,7 @@ const halloweenTogetherActivity = composeHalloweenTogetherActivity(togetherStart
   publishedAt: serverConfig.halloweenPublishedAt,
 });
 const mcpRuntime = new DoorbellMcpRuntime({
+  dailyMaterials,
   ...(loungeRuntime ? { loungeTools: loungeRuntime.tools } : {}),
   ...(faultReports ? { faultReports } : {}),
   database,
@@ -522,6 +548,7 @@ const mcpRuntime = new DoorbellMcpRuntime({
   careerExamReminders: careerExamReminderService,
   reporterRelayService,
   dailyVoice: dailyVoiceService,
+  dailyColumns: dailyColumnsService,
   dailyComments: dailyCommentsService,
   mcpEndpoint: serverConfig.mcpEndpoint,
   onNotificationDeliveryError: reportMcpNotificationError,
@@ -546,6 +573,7 @@ const lingyeDailyRewards=new LingyeDailyRewardClient({
 const lingyeDailyService = new LingyeDailyService({
   database,
   voice: dailyVoiceService,
+  columns: dailyColumnsService,
   publishToken: serverConfig.lingyeDailyPublishToken,
   farm:{apiBaseUrl:serverConfig.farmApiBaseUrl,serviceToken:serverConfig.farmServiceToken,
     requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs},
@@ -578,6 +606,7 @@ const app = buildApp({
   sharedMemeBackendService,
   weatherEngine,
   lingyeDailyService,
+  dailyMaterials,
   dailyComments: dailyCommentsService,
   mailboxService,
   mcpAccessService,

@@ -16,6 +16,8 @@ import { registerHumanBulletinRoutes } from "./human-bulletin-routes.js";
 import { registerHumanNpcRoutes } from "./lingye-npc/routes.js";
 import {dailyImageUrl, registerDailyImageRoutes} from "./lingye-daily-images.js";
 import {registerDailyEditorRoutes} from "./lingye-daily-editor-routes.js";
+import { registerDailyMaterialRoutes } from "./daily-materials/material-routes.js";
+import type { DailyMaterialService } from "./daily-materials/material-service.js";
 import {
   additionalHumanProfileRequestSchema,
   type BellAccessErrorCode,
@@ -586,6 +588,7 @@ export interface BuildAppOptions {
   activityReminderService?: Pick<ActivityReminderService, "cancelResident" | "refreshEligibility">;
   weatherEngine?: HomeWeatherEngine;
   lingyeDailyService?: LingyeDailyService;
+  dailyMaterials?: DailyMaterialService;
   dailyComments?: LingyeDailyCommentsService;
   mailboxService?: MailboxService;
   mcpAccessService?: McpAccessService;
@@ -3818,6 +3821,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   const lingyeDailyService = options.lingyeDailyService;
   if (lingyeDailyService) {
+    if (options.dailyMaterials) registerDailyMaterialRoutes(app, { service: options.dailyMaterials,
+      onSaved: async date => { await lingyeDailyService.columns?.reconcile(date); },
+      authorize: (authorization) => lingyeDailyService.authorize(authorization) });
     if (options.dailyComments) registerDailyCommentRoutes(app,{comments:options.dailyComments,auth:options.registrationAuth});
     registerDailyEditorRoutes(app,{daily:lingyeDailyService,auth:options.registrationAuth});
     app.get("/api/lingye-daily/latest", async (request, reply) => {

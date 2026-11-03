@@ -10,6 +10,8 @@ export interface ReporterDailyEvent {
 
 export interface ReporterDailySchedulerOptions {
   farm: ReporterRelayStarter;
+  pruneMaterials?: () => void;
+  dispatchColumns?: (issueDate: string) => Promise<void>;
   relay: Pick<ReporterRelayService, "enqueue" | "enqueueSubmissions">;
   now?: () => number;
   setTimer?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
@@ -53,6 +55,8 @@ function issuePeriod(dayStartUtc: number) {
 
 export class ReporterDailyScheduler {
   readonly #farm: ReporterRelayStarter;
+  readonly #dispatchColumns: ReporterDailySchedulerOptions["dispatchColumns"];
+  readonly #pruneMaterials: () => void;
   readonly #relay: ReporterDailySchedulerOptions["relay"];
   readonly #now: () => number;
   readonly #setTimer: NonNullable<ReporterDailySchedulerOptions["setTimer"]>;
@@ -65,6 +69,8 @@ export class ReporterDailyScheduler {
 
   constructor(options: ReporterDailySchedulerOptions) {
     this.#farm = options.farm;
+    this.#pruneMaterials = options.pruneMaterials ?? (() => undefined);
+    this.#dispatchColumns = options.dispatchColumns;
     this.#relay = options.relay;
     this.#now = options.now ?? Date.now;
     this.#setTimer = options.setTimer ?? setTimeout;
@@ -104,8 +110,10 @@ export class ReporterDailyScheduler {
   async #run(dayStartUtc: number, recoverToday = false): Promise<void> {
     this.#timer = null;
     try {
+      try { this.#pruneMaterials(); } catch (error) { this.#onError(error); }
       const period = issuePeriod(dayStartUtc);
       await Promise.all([
+        this.#dispatchColumns?.(period.issueDate).catch(this.#onError),
         (async () => {
           this.#emit({ event: "dispatch_start", issueDate: period.issueDate });
           const current = recoverToday ? await this.#farm.issueState(period.issueDate) : null;
