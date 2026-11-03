@@ -14,7 +14,7 @@ export class DailyFarmStore {
       "SELECT title,body FROM lingye_daily_farm_articles WHERE issue_date=? ORDER BY ordinal"
     ).all(date) as DailyGeneratedFarm["articles"]};
   }
-  save(date: string, update: {status:"pending"|"failed"; error_type?:string} |
+  save(date: string, update: {status:"pending"|"failed"; error_type?:string|undefined} |
     {status:"ready";model:string;articles:DailyGeneratedFarm["articles"]}, now:number) {
     this.database.transaction(() => {
       const previous = this.result(date);
