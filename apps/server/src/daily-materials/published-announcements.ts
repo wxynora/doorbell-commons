@@ -103,6 +103,7 @@ export function projectReviewedUpdates(
   reviews: readonly AnnouncementReview[],
 ): UpdateProjection {
   const result: UpdateProjection = { materials: [], unresolved: [] };
+  const shownExcerpts = new Set<string>();
   for (const source of announcements) {
     const candidates = reviews.filter((review) => review.source.id === source.id);
     if (candidates.length === 0) {
@@ -119,6 +120,9 @@ export function projectReviewedUpdates(
       continue;
     }
     for (const finding of review.findings) {
+      // Every source is validated above before identical excerpts are merged for reporters.
+      if (shownExcerpts.has(finding.excerpt)) continue;
+      shownExcerpts.add(finding.excerpt);
       result.materials.push({
         announcementId: source.id, title: source.title, publishedAt: source.publishedAt,
         kind: finding.kind, excerpt: finding.excerpt,
