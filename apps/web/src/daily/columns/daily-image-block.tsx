@@ -1,8 +1,8 @@
 import React from "react";
-import type { DailyBlock, DailyImageCrop, DailyTextRun } from "@doorbell/protocol";
+import type { DailyBlock, DailyTextRun } from "@doorbell/protocol";
 
 export type DailyImageAction = (figure: HTMLElement, action: "crop" | "delete") => void;
-type ImageBlock = DailyBlock & { type: "image"; imageId?: string; crop?: DailyImageCrop };
+type ImageBlock = DailyBlock & { type: "image" };
 
 function DailyImageActions({ onAction, hasImage }: { onAction: DailyImageAction; hasImage: boolean }) {
   const [confirmDelete, setConfirmDelete] = React.useState(false);
