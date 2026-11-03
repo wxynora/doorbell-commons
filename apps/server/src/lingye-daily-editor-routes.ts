@@ -44,6 +44,21 @@ export function registerDailyEditorRoutes(app:FastifyInstance, options:{daily:Li
     return {issues:daily.editor.list()};
   }));
   app.get("/api/lingye-daily/editor/issues/:date",handle(request=>daily.editor.get(date(request))));
+  app.get("/api/lingye-daily/editor/issues/:date/column-images",handle(request=>{
+    const issueDate=date(request);
+    daily.editor.row(issueDate);
+    return {images:daily.columnImages?.store.statuses(issueDate) ?? [],readyImages:daily.columnImages?.metadata(issueDate) ?? []};
+  }));
+  app.post("/api/lingye-daily/editor/issues/:date/column-images/:imageId/retry",handle(request=>{
+    const issueDate=date(request);
+    daily.editor.row(issueDate);
+    const imageId=z.object({imageId:z.string().min(1)}).parse(request.params).imageId;
+    const {attemptCount}=z.object({attemptCount:z.number().int().positive()}).strict().parse(request.body);
+    if(!daily.columnImages) throw new DailyEditorError(503,"配图服务暂时不可用。");
+    if(!daily.columnImages.retry(issueDate,imageId,attemptCount))
+      throw new DailyEditorError(409,"配图状态已变化，请查看结果后再决定是否重试。");
+    return {accepted:true};
+  }));
   app.get("/api/lingye-daily/editor/issues/:date/images/:imageId",handle((request,_community,reply)=>{
     const imageId=z.object({imageId:z.string().min(1)}).parse(request.params).imageId;
     const image=daily.editor.image(date(request),imageId);

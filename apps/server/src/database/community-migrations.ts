@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 54;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 55;
 export const SNOW_LIVE_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS snow_spectator_messages (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3040,6 +3040,19 @@ CREATE INDEX lingye_daily_column_images_by_issue_state
 
 `);
     database.pragma('user_version = 54');
+  })();
+
+  if (databaseSchemaVersion < 55) database.transaction(() => {
+    database.exec(`
+ALTER TABLE lingye_daily_column_images ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0);
+ALTER TABLE lingye_daily_column_images ADD COLUMN attempted_at INTEGER;
+ALTER TABLE lingye_daily_column_images ADD COLUMN error_code TEXT;
+-- Earlier versions did not persist claims. Existing pending rows may already have been sent.
+UPDATE lingye_daily_column_images SET attempt_count=1, attempted_at=generated_at,
+  error_code=CASE WHEN state='pending' THEN 'request_interrupted' WHEN state='failed' THEN 'generation_failed' ELSE NULL END,
+  state=CASE WHEN state='pending' THEN 'failed' ELSE state END;
+    `);
+    database.pragma('user_version = 55');
   })();
 
 }

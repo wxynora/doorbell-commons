@@ -232,10 +232,14 @@ function parseLingyeDailyColumnMarkdownDocument(text: string, submissionId: stri
     const imagePrompt = /^[\t ]*配图[:：](.*)$/u.exec(line);
     if (imagePrompt && (imagePrompt[1] ?? "").length > 0) {
       flushParagraph();
-      const ordinal = imagePrompts.length;
+      const caption = /^[\t ]*图注[:：]([\s\S]*)$/u.exec(lines[index + 1] ?? "");
+      if (imagePrompts.length > 0) {
+        index += caption ? 2 : 1;
+        continue;
+      }
+      const ordinal = 0;
       const imageId = lingyeDailyColumnImageId(submissionId, ordinal);
       imagePrompts.push({ ordinal, imageId, prompt: imagePrompt[1] ?? "" });
-      const caption = /^[\t ]*图注：([\s\S]*)$/u.exec(lines[index + 1] ?? "");
       blocks.push({
         type: "image",
         runs: caption ? parseLingyeDailyColumnInline((caption[1] ?? "").trim()) : [],

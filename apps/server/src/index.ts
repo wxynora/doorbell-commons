@@ -530,6 +530,7 @@ const dailyColumnImages=new DailyColumnImageService({database:database.lingyeDai
   parsePrompts:parseLingyeDailyColumnImagePrompts,
   onError:error=>process.stderr.write(`[doorbell-daily-image] ${error instanceof Error ? error.name : "UnknownError"}\n`),
 });
+dailyColumnImages.store.recoverInterrupted();
 void dailyColumnImages.process(columnIssueDate(Date.now()));
 dailyColumnsService = new DailyColumnService({database:database.lingyeDailyStore.database,
   profiles:dailyColumnProfiles(process.env), startsOn:columnsStartDate, materials:dailyMaterials, images:dailyColumnImages,

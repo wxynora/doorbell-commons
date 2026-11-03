@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState} from "react";
 import {dailyDocumentSchema,dailyImageCropSchema,lingyeDailyColumnKeySchema,type DailyImageCrop,type DailyBlock,type DailyDocument,type DailyTextRun} from "@doorbell/protocol";
 import {DailyColumnProgressList} from "./columns/daily-column-progress";
+import {DailyColumnImageStatusPanel} from "./columns/daily-column-image-status";
 import {readDailyColumnEditorSection} from "./columns/editor-dom";
 import {DailyImageEditor} from "./daily-image-editor";
 import {DailyDocumentView} from "./lingye-daily-document-view";
@@ -172,6 +173,13 @@ export function LingyeDailyEditor({onBack}:{onBack?:()=>void} = {}) {
             refresh={()=>loadProgress(draft.issueDate)} notify={setNotice}/>
         </div>) ?? <p>正在读取记者进度…</p>}</div>
         <DailyColumnProgressList columns={progress?.columns ?? []} />
+        <DailyColumnImageStatusPanel issueDate={draft.issueDate} refreshKey={epoch} onImages={readyImages=>{
+          setDraft(current=>current?.issueDate===draft.issueDate?{
+            ...current,
+            document:dirty&&paper.current?readEditedDocument(paper.current):current.document,
+            images:[...current.images.filter(image=>!image.image_id.startsWith("daily-column-image:")),...readyImages],
+          }:current);
+        }}/>
         <h2>本期来稿</h2><p>群聊 {draft.readiness.group?"已到":"待到"} · 记者 {draft.readiness.reporter?"已到":"待到"}<br/>投稿 {draft.readiness.submissions?((progress?.columns?.length ?? 0)>0?"已齐":"已审"):"待审"} · 天气 {draft.readiness.weather?"已到":"待到"}{hasVoice?<><br/>小机有话说 {(draft.readiness.voice ?? false)?"已到":"待到"}</>:null}</p>
         <h2>出版审稿奖金</h2><small>{draft.publicationReward
           ? `${draft.publicationReward.recipientName} · ${draft.publicationReward.paid?"已发 5000 金":"5000 金待确认"}`

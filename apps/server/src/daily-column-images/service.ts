@@ -36,7 +36,7 @@ export class DailyColumnImageService {
     try { this.#onError(error); } catch { /* A saved column is independent of image generation. */ }
   }
 
-  /** Re-read saved submissions, then process pending/failed image jobs once. Call only from existing submission/startup paths. */
+  /** Automatic triggers only claim images that have never been attempted. */
   async process(issueDate: string): Promise<void> {
     try {
       const latestPublished = this.store.latestPublishedIssueDate();
@@ -61,6 +61,23 @@ export class DailyColumnImageService {
   private processOne(row: DailyColumnImagePromptRow): Promise<void> {
     const existing = this.#inFlight.get(row.imageId);
     if (existing) return existing;
+    const claimed = this.store.claim(row.issue_date, row.imageId, 0, this.#now());
+    if (!claimed) return Promise.resolve();
+    return this.start(claimed);
+  }
+
+  /** Each explicit approval targets one failed attempt; replaying it cannot start another. */
+  retry(issueDate: string, imageId: string, expectedAttempt: number): boolean {
+    if (!Number.isSafeInteger(expectedAttempt) || expectedAttempt < 1 || this.#inFlight.has(imageId)) return false;
+    const latestPublished = this.store.latestPublishedIssueDate();
+    if (latestPublished && issueDate < latestPublished) return false;
+    const row = this.store.claim(issueDate, imageId, expectedAttempt, this.#now());
+    if (!row) return false;
+    void this.start(row);
+    return true;
+  }
+
+  private start(row: DailyColumnImagePromptRow): Promise<void> {
     const operation = this.generateOne(row).finally(() => this.#inFlight.delete(row.imageId));
     this.#inFlight.set(row.imageId, operation);
     return operation;
@@ -74,7 +91,11 @@ export class DailyColumnImageService {
       }
       this.store.saveGenerated(row, image, this.#now());
     } catch (error) {
-      try { this.store.markFailed(row); } catch (storeError) { this.report(storeError); }
+      const message = error instanceof Error ? error.message : "";
+      const errorCode = /^daily_column_image_gateway_failed_\d{3}$/u.test(message)
+        || message === "daily_column_image_gateway_not_configured"
+        || message === "daily_column_image_generator_must_return_webp_buffer" ? message : "generation_failed";
+      try { this.store.markFailed(row, errorCode); } catch (storeError) { this.report(storeError); }
       this.report(error);
     }
   }
