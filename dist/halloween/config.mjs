@@ -3,6 +3,7 @@ import { drawCollectionClearReward as drawReward } from './collection-reward.mjs
 const PRICE = Object.freeze({ N: 60, R: 160, SR: 360, SSR: 700, SP: 700 });
 export const HALLOWEEN_ECONOMY = Object.freeze({
   unitsPerCell: 1, unitsPerBatch: 3, candiesPerBatch: 6,
+  materialCloseoutGoldByTier: Object.freeze({ N: 100, R: 200, SR: 500, SSR: 1000, SP: 2000 }),
   shopByMaterial: Object.freeze(Object.fromEntries(Object.entries(MATERIALS).flatMap(([tier, names]) =>
     names.map(name => [name, Object.freeze({ price: PRICE[tier], quantity: 3 })])))),
   rarityByTier: Object.freeze({ N: 'ordinary', R: 'rare', SR: 'precious', SSR: 'legendary', SP: 'legendary' }),

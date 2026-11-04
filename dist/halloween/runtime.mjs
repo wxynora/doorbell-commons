@@ -4,6 +4,7 @@ import { createHalloweenFarmAuthorityAdapter } from './authority-adapter.mjs';
 import { createHalloweenTogetherActivity } from './together-activity.mjs';
 import { createHalloweenFarmEffectHooks } from './action-effects.mjs';
 import { createHalloweenNpcDeliveryRuntime } from './npc-delivery-runtime.mjs';
+import { createHalloweenMaterialCloseout } from './material-closeout.mjs';
 
 // The Farm entrypoint supplies its one existing Lingye SQLite connection,
 // economy backend, Farm persistence port, and verified Farm catalogues here.
@@ -32,6 +33,8 @@ export function createHalloweenFarmRuntime({ database, backend, persistence, get
   const npcDelivery = createHalloweenNpcDeliveryRuntime({ service, listFarmIds, now, onError: onNpcError });
   const reportRewardError = onRewardError ?? (detail =>
     console.error('[halloween-reward] recovery pending', detail.farmId, detail.code));
+  const materialCloseout = createHalloweenMaterialCloseout({ service, authority,
+    rates: economy.materialCloseoutGoldByTier, now, onError: reportRewardError });
   const pendingForFarm = database.prepare(`SELECT 1 FROM halloween_reward_outbox
     WHERE event_id=? AND farm_id=? AND status='pending' LIMIT 1`);
   const recoverPendingRewards = ({ farmId, side, requestId, now: recoveryTime }) => {
@@ -46,7 +49,10 @@ export function createHalloweenFarmRuntime({ database, backend, persistence, get
   const actionAuthority = Object.freeze({ ...authority,
     withAuthorityAction(input, operation) {
       const result = authority.withAuthorityAction(input, operation);
-      if (input.op && input.op !== 'gift') recoverPendingRewards(input);
+      if (input.op && input.op !== 'gift') {
+        recoverPendingRewards(input);
+        materialCloseout.settleFarm(input.farmId, input.now);
+      }
       return result;
     },
   });
@@ -68,8 +74,9 @@ export function createHalloweenFarmRuntime({ database, backend, persistence, get
       const recoveryTime = now();
       for (const row of pendingFarms) recoverPendingRewards({ farmId: row.farm_id, side: 'human',
         requestId: 'startup', now: recoveryTime });
+      materialCloseout.start();
       npcDelivery.start();
     },
-    stopNpcDelivery() { npcDelivery.stop(); },
+    stopNpcDelivery() { npcDelivery.stop(); materialCloseout.stop(); },
   });
 }
