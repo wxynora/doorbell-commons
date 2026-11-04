@@ -1129,7 +1129,8 @@ function commissionText(op: string, result: LingyeSuccess): string {
         lines.push(...commissionItemLines(op, job, index));
     }
   } else if (op === "go.security.commission") {
-    const jobs = commissionJobs(data);
+    const jobs = commissionJobs(data).filter((job) =>
+      !["completed", "cancelled", "transferred", "expired"].includes(String(job.status)));
     const reportJobIds = data.reportJobIds ?? current?.reportJobIds;
     const assignedCaseJobIds = data.assignedCaseJobIds ?? current?.assignedCaseJobIds;
     const reports = jobs.filter((job) => Array.isArray(reportJobIds) && reportJobIds.includes(job.jobId));
