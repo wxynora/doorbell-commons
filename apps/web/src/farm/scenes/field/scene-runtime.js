@@ -1,4 +1,5 @@
 import { canMirrorDecoration, applyDecorationMirror, decorationMirrorPose } from "./models/decoration-mirror.js";
+import {expiredDecorationIds,withoutExpiredLeaseData} from "./decoration-leases.js";
 import { planSharedLayout } from "./layout-sharing-plan.js";
 import * as T from "three";
 import { createDoorstepBoxController } from "../../../halloween/doorstep-model.mjs";
@@ -180,6 +181,7 @@ export function createFieldRuntime(host, options) {
     modelOutline?.refresh();
   }
   function setDecorations(value) {
+    value=withoutExpiredLeaseData(value);
     if(editing){pendingData=value;return;}
     data=value;committed=structuredClone(value.layout);applyLayout(committed);
   }
@@ -400,9 +402,19 @@ export function createFieldRuntime(host, options) {
   }
   const visibilityChanged=()=>{down=null;syncActivity();};
   document.addEventListener("visibilitychange",visibilityChanged);
+  function expireLeases(){
+    const expired=new Set(expiredDecorationIds(data));if(!expired.size)return;
+    const current=currentPlacement();if(expired.has(current?.object?.userData.itemId))current.cancel();
+    data=withoutExpiredLeaseData(data);
+    if(committed)committed={...committed,decorations:committed.decorations.filter(item=>!expired.has(item.item_id))};
+    if(pendingData)pendingData=withoutExpiredLeaseData(pendingData);
+    for(const object of [...world.decorations])if(expired.has(object.userData.itemId)){object.removeFromParent();world.decorations.splice(world.decorations.indexOf(object),1);disposeDecoration(object);}
+    modelOutline?.refresh();environment.refreshRainSurfaces();emit();
+  }
   function animate(now){
     frame=null;
     if(disposed||!active||document.hidden)return;
+    expireLeases();
     const dt=Math.min((now-last)/1000,.08);last=now;if(!reduce.matches)time+=dt;
     light=T.MathUtils.damp(light,nature.night,3,dt);
     const overcast=["cloudy","fog","heavy_rain","thunderstorm","blizzard"].includes(nature.weather);

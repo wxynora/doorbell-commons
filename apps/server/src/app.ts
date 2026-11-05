@@ -1,5 +1,8 @@
 import { registerDailyFarmRoutes } from "./daily-farm/routes.js";
 import { registerTogetherRoutes, type TogetherBoardPort } from "./together/routes.js";
+import { registerSnowTournamentRoutes, type SnowTournamentBattleRead } from "./together/tournament/routes.js";
+import type { SnowTournamentService } from "./together/tournament/service.js";
+import { startSseKeepalive as startSnowTournamentSseKeepalive } from "./sse-keepalive.js";
 import { registerSnowLiveRoutes, type SnowLivePort } from "./together/live-routes.js";
 import {registerResidentProfileRoutes} from "./resident-profile/routes.js";
 import { registerResidentAvatarRoutes } from "./resident-avatar/routes.js";
@@ -573,6 +576,8 @@ import {
 
 export interface BuildAppOptions {
   togetherBoard?: TogetherBoardPort;
+  snowTournament?: Pick<SnowTournamentService, "readPublic">;
+  snowTournamentBattle?: SnowTournamentBattleRead;
   snowLive?: SnowLivePort;
   faultReports?: FaultReports;
   groupId: string;
@@ -2080,6 +2085,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   });
   installFaultReports(app, options.faultReports);
   if (options.togetherBoard) registerTogetherRoutes(app, { registrationAuth: options.registrationAuth, board: options.togetherBoard, secureCookies: options.secureCookies });
+  if (options.snowTournament) registerSnowTournamentRoutes(app, {
+    registrationAuth: options.registrationAuth, service: options.snowTournament,
+    secureCookies: options.secureCookies,
+    keepalive: startSnowTournamentSseKeepalive,
+    ...(options.snowTournamentBattle ? { battleRead: options.snowTournamentBattle } : {}),
+  });
   if (options.snowLive) registerSnowLiveRoutes(app, { registrationAuth: options.registrationAuth, live: options.snowLive, secureCookies: options.secureCookies });
   registerMidAutumnRoutes(app, { registrationAuth: options.registrationAuth, secureCookies: options.secureCookies });
   if (options.halloweenClient) {

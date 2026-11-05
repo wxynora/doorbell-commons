@@ -30,7 +30,7 @@ export const farmDecorationsDataSchema = z.object({
   inventory: z.array(z.object({
     item_id: itemId, owned_quantity: z.number().int().nonnegative(),
     placed_quantity: z.number().int().nonnegative(),
-    available_quantity: z.number().int().nonnegative().nullable(), unlocked: z.boolean(),
+    available_quantity: z.number().int().nonnegative().nullable(), unlocked: z.boolean(), expires_at: z.iso.datetime().optional(),
   }).strict()),
   layout: farmDecorationLayoutSchema,
   coins: z.number().int().nonnegative(),

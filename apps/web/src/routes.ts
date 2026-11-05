@@ -1,7 +1,8 @@
 export const DOORBELL_FARM_PATH = "/lingye/farm" as const;
-export const SNOW_LIVE_PATH = "/lingye/snow-fort-live" as const;
+export const SNOW_LIVE_PATH = "/lingye/snow-tournament" as const;
 export function isSnowLivePath(pathname: string): boolean {
-  return pathname === SNOW_LIVE_PATH || pathname === `${SNOW_LIVE_PATH}/`;
+  return pathname === SNOW_LIVE_PATH || pathname === `${SNOW_LIVE_PATH}/` ||
+    pathname === "/lingye/snow-fort-live" || pathname === "/lingye/snow-fort-live/";
 }
 export const MID_AUTUMN_PATH = "/lingye/mid-autumn" as const;
 export const HALLOWEEN_PATH = "/lingye/halloween" as const;

@@ -2,7 +2,16 @@
 
 ## 铃野共行与限时活动：雪堡工具交互
 
-- 人类直播入口为Web snow-live/{entry,snow-live-page,battle-canvas}，在铃野日报下方；公开合同packages/protocol/src/snow-live.ts。together/live-projection仅投影原可见单位，live-store共用社区SQLite连接并分隔snow_spectator_messages；live-service连接持久权威更新与观众订阅，live-routes保护Cookie／实时群资格及弹幕作者身份。观看不推进／控制比赛，弹幕不进入小机／队内频道／铃。固定检查入口output/snow-human-live-20261023/{backend.test,typecheck,browser-check}.mjs，核对只读／隐蔽、鉴权、幂等、SSE、观众隔离及统一画布／入口。
+### 月度锦标赛
+
+- Main的together/tournament按store、team-service／registration、competition／results、match-host／scheduler、settlement分工；同一社区SQLite连接保存届次、队伍、逐局状态和幂等事实，迁移集中在database/community-migrations.ts。原限时共行不迁移、不复发奖。
+- tool-registry／tools／resident-facade绑定连接居民，选择能力绑定届、队、场、局和当前业务轮次。可直接执行的编号附完整call；需要name／text／members或commands／waitTicks的编号只声明所需字段。旧成功结果精确重放；普通回执不附规则、全频道或无关信箱。固定检查为tournament/{tools,tools-receipts,team-flow}.test.ts及output/snow-tournament-20261102/formal-tool-check.mjs。
+- registration-bell、team-signals、player-signals、result-bell复用原Bell来源，报名／组队／邀请／当前行动和实际到账按领域事实失效与去重。发言铃只带本人尚未确认接收的新前文，完整频道按需读取，不跟随操作反复追加。
+- 原日报下方雪人通过snow-live/entry.ts消息桥和routes.ts进入snow-tournament-page；像素界面、赛程和积分共享公开协议packages/protocol/src/snow-tournament.ts。routes／stream-wire及shared/{engine,replica}在服务端和浏览器共用公开战斗计算，隐藏／私有事实不入传输，断线冻结、重连重建，权威终局不由浏览器猜测。固定检查为tournament/{watch,stream-wire}.test.ts、tournament/shared/replica.test.ts及Web snow-tournament下的直接检查。
+- 冠军雪王4×3造型灯由farm-furniture/champion-snow-king.js和原装修工厂承接；Farm champion-lease.js／tournament-furniture.js负责唯一库存、同届重放、续冠及到期，Main settlement只认真实Farm回执。库存名称显示实际使用权截止时间；原永久装饰不受影响。固定检查入口output/snow-champion-furniture-20261104/checks/{furniture,integration,web}.test.mjs。
+
+
+- 原限时赛的只读直播保留在Web snow-live/{snow-live-page,battle-canvas}；原日报下方入口改由上述月赛赛事站承接。公开合同packages/protocol/src/snow-live.ts。together/live-projection仅投影原可见单位，live-store共用社区SQLite连接并分隔snow_spectator_messages；live-service连接持久权威更新与观众订阅，live-routes保护Cookie／实时群资格及弹幕作者身份。观看不推进／控制比赛，弹幕不进入小机／队内频道／铃。固定检查入口output/snow-human-live-20261023/{backend.test,typecheck,browser-check}.mjs，核对只读／隐蔽、鉴权、幂等、SSE、观众隔离及统一画布／入口。
 
 - 共行身份由apps/server/src/together/community.ts复用lounge-display-name.ts的显示合同，仅展示小机名，不改账号或同户分队身份。
 - snow-fort/snow-war-composed-options.mjs是本期组合option的代号／解析入口；snow-war-together.mjs绑定本人、serial及场／局并原子执行，snow-war-presentation.mjs只投影当前权限内的格式与事实。排阵复用submitLineup验证，战斗交原runtime／engine；公开工具定义、参数和长期说明不增加本期专用action。

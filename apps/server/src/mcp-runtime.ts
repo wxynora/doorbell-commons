@@ -1,3 +1,4 @@
+import type { SnowTournamentToolPort } from "./together/tournament/tool-registry.js";
 import { executeReporterMaterialTool } from "./daily-materials/reporter-tool.js";
 import type { DailyMaterialService } from "./daily-materials/material-service.js";
 import type { TogetherActivity } from "./together-activity.js";
@@ -55,6 +56,10 @@ import {
 import type { ReporterRelayService } from "./reporter-relay-service.js";
 
 const MCP_PROTOCOL_VERSION = "2025-06-18";
+function isSnowTournamentCall(params: unknown): boolean {
+  return isPlainObject(params) && params.name === "doorbell" && isPlainObject(params.arguments) &&
+    typeof params.arguments.op === "string" && findDoorbellOperation(params.arguments.op)?.kind === "snow";
+}
 const FARM_STATUS_IDLE_MS = 10 * 60 * 1000;
 const MCP_CREDENTIAL_PATTERN = /^dbm_[A-Za-z0-9_-]{43}$/;
 
@@ -352,6 +357,7 @@ function protocolVersionError(
 }
 
 export interface DoorbellMcpRuntimeOptions {
+  snowTools?: SnowTournamentToolPort;
   loungeTools?: LoungeToolExecutor;
   faultReports?: FaultReports;
   database: CommunityDatabase;
@@ -478,6 +484,7 @@ export class DoorbellMcpRuntime {
   readonly #dailyVoice: Pick<LingyeDailyVoiceService, "commission"> | undefined;
   readonly #dailyColumns: DoorbellMcpRuntimeOptions["dailyColumns"];
   readonly #loungeTools: LoungeToolExecutor | undefined;
+  readonly #snowTools: SnowTournamentToolPort | undefined;
   readonly #dailyComments: DoorbellMcpRuntimeOptions["dailyComments"];
   readonly #dailyMaterials: DoorbellMcpRuntimeOptions["dailyMaterials"];
   readonly #allowedOrigin: string;
@@ -509,6 +516,7 @@ export class DoorbellMcpRuntime {
     this.#dailyComments = options.dailyComments;
     this.#dailyMaterials = options.dailyMaterials;
     this.#loungeTools = options.loungeTools;
+    this.#snowTools = options.snowTools;
     this.#allowedOrigin = new URL(options.mcpEndpoint).origin;
     this.#now = options.now ?? Date.now;
     this.#onNotificationDeliveryError = options.onNotificationDeliveryError ?? (() => undefined);
@@ -661,7 +669,7 @@ export class DoorbellMcpRuntime {
       case "ping":
         return isNotification ? undefined : jsonRpcSuccess(id, {});
       case "tools/list":
-        return isNotification ? undefined : jsonRpcSuccess(id, { tools: [doorbellDefinitionForRuntime(this.#loungeTools !== undefined)] });
+        return isNotification ? undefined : jsonRpcSuccess(id, { tools: [doorbellDefinitionForRuntime(this.#loungeTools !== undefined, this.#snowTools !== undefined)] });
       case "tools/call":
         if (isNotification) {
           return undefined;
@@ -669,7 +677,7 @@ export class DoorbellMcpRuntime {
         try {
           const result = await this.#callTool(request.params, context);
           try {
-            return jsonRpcSuccess(id, isHalloweenActivityCall(request.params, this.#togetherActivity) || isReporterMaterialCall(request.params)
+            return jsonRpcSuccess(id, isSnowTournamentCall(request.params) || isHalloweenActivityCall(request.params, this.#togetherActivity) || isReporterMaterialCall(request.params)
               ? result
               : this.#appendResidentNotifications(result, context));
           } catch (error) {
@@ -806,6 +814,16 @@ export class DoorbellMcpRuntime {
       }
     }
 
+    if (registered.kind === "snow") {
+      if (!this.#snowTools) return doorbellToolError("UNKNOWN_OP", { op });
+      try {
+        const result = await this.#snowTools.execute(context.residentId, op, parsed.data);
+        return { content: textContent(JSON.stringify(result)),
+          isError: Boolean(result && typeof result === "object" && "ok" in result && result.ok === false) };
+      } catch (error) {
+        return this.#faultToolError("INTERNAL_ERROR", { op }, error);
+      }
+    }
     if (registered.kind === "daily") {
       try {
         let text: string;

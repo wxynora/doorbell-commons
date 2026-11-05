@@ -1,4 +1,5 @@
 import { createCommunityTogether, togetherIdentity } from "./together/community.js";
+import { createSnowTournamentDomain } from "./together/tournament/assembly.js";
 import { SnowLiveService } from "./together/live-service.js";
 import { queueTogetherControl, togetherControls } from "./together/control-store.js";
 import { takeResidentMailboxNotifications as takeMailboxNotifications } from "./mailbox-notification-store.js";
@@ -4646,6 +4647,10 @@ export class CommunityDatabase {
 
   createTogetherActivity(options: Parameters<typeof createCommunityTogether>[1]) {
     return createCommunityTogether(this.#database, options);
+  }
+
+  createSnowTournamentDomain(dependencies: Parameters<typeof createSnowTournamentDomain>[1]) {
+    return createSnowTournamentDomain(this.#database, dependencies);
   }
 
   createSnowLiveService() {

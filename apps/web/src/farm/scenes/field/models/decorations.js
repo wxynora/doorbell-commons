@@ -1,4 +1,5 @@
 import { batchStaticMeshes } from "./batch-static-meshes.js";
+import {createSnowKing,updateSnowKing} from "./farm-furniture/champion-snow-king.js";
 import * as T from "three";
 import { box, mesh, beam, branch, palette, leafGeometry } from "./primitives.js";
 import { buildGardenFurniture, updatePondFish } from "./garden-furniture.js";
@@ -10,6 +11,7 @@ import { FARM_FURNITURE_IDS, SEASONAL_FURNITURE_IDS, createFarmFurniture } from 
 // First six IDs match ranch-items; new furniture IDs are local design candidates only.
 export const DECORATIONS = {
   snow_fort: { name: "团团雪堡", cells: [3, 2] },
+  snow_king: { name: "雪王", cells: [4, 3] },
   small_snow_fort: { name: "团团小雪堡", cells: [1, 1] },
   ...GARDEN_TRIO,
   flowerbed: { name: "花圃", cells: [1, 1] },
@@ -112,7 +114,9 @@ export function createDecoration(id, season = "summer") {
     }
     beam(fruit, mat("#738048"), [0, size * 1.12, 0], [0.025, size * 1.55, 0.015], 0.022);
   }
-  if (FARM_FURNITURE_IDS.has(id)) {
+  if (id === "snow_king") {
+    root.add(createSnowKing());
+  } else if (FARM_FURNITURE_IDS.has(id)) {
     root.add(createFarmFurniture(id, season));
   } else if (id === "flowerbed") {
     buildFlowerbed(root, id, mat);
@@ -369,18 +373,21 @@ export function updateDecorationLights(objects, night) {
 }
 
 export function updateDecorationMotion(objects, time) {
-  for (const object of objects)
+  for (const object of objects) {
+    if (object.userData.decorationId === "snow_king") updateSnowKing(object.getObjectByName("snow-king"),time,animationNodes.get(object)?.night??0);
     for (const o of animationNodes.get(object)?.motion ?? []) {
       if (o.userData.spinSpeed) o.rotation.z = time * o.userData.spinSpeed;
       if (o.userData.pondFish !== undefined) updatePondFish(o, time);
       if (o.userData.gardenSwing) o.rotation.x=Math.sin(time*.85)*.035;
     }
+  }
 }
 
 export function disposeDecoration(object) {
   const geometries = new Set(),
     materials = new Set(),
     textures = new Set();
+  for (const texture of object.getObjectByName("snow-king")?.userData.snowKingTextures??[]) textures.add(texture);
   object.traverse((o) => {
     if (o.geometry) geometries.add(o.geometry);
     for (const m of o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [])

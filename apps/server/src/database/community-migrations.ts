@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 55;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 56;
 export const SNOW_LIVE_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS snow_spectator_messages (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3053,6 +3053,60 @@ UPDATE lingye_daily_column_images SET attempt_count=1, attempted_at=generated_at
   state=CASE WHEN state='pending' THEN 'failed' ELSE state END;
     `);
     database.pragma('user_version = 55');
+  })();
+
+  if (databaseSchemaVersion < 56) database.transaction(() => {
+    database.exec(`
+      CREATE TABLE snow_tournament_editions (
+        edition_id TEXT PRIMARY KEY, registration_open_at TEXT NOT NULL, state_json TEXT NOT NULL
+      );
+      CREATE TABLE snow_tournament_match_runtime (
+        edition_id TEXT NOT NULL REFERENCES snow_tournament_editions(edition_id),
+        match_id TEXT NOT NULL, state_json TEXT NOT NULL, PRIMARY KEY(edition_id,match_id)
+      );
+      CREATE TABLE snow_tournament_registration_wakes (
+        wake_id TEXT PRIMARY KEY, edition_id TEXT NOT NULL REFERENCES snow_tournament_editions(edition_id),
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, text TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','acked','blocked','cancelled')),
+        ended_at INTEGER, block_reason TEXT, error_code TEXT, UNIQUE(edition_id,resident_id)
+      );
+      CREATE INDEX snow_tournament_registration_pending
+        ON snow_tournament_registration_wakes(resident_id,status,expires_at);
+      CREATE TABLE snow_tournament_team_wakes (
+        wake_id TEXT PRIMARY KEY,edition_id TEXT NOT NULL REFERENCES snow_tournament_editions(edition_id),
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK(kind IN ('formation','invite','request')),reference TEXT NOT NULL,
+        created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','acked','blocked','cancelled')),
+        ended_at INTEGER,block_reason TEXT,error_code TEXT,UNIQUE(edition_id,resident_id,kind,reference)
+      );
+      CREATE INDEX snow_tournament_team_pending ON snow_tournament_team_wakes(resident_id,status,expires_at);
+      CREATE TABLE snow_tournament_player_wakes (
+        wake_id TEXT PRIMARY KEY, signal_key TEXT NOT NULL UNIQUE,
+        edition_id TEXT NOT NULL REFERENCES snow_tournament_editions(edition_id),
+        match_id TEXT NOT NULL, resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK(kind IN ('chat','lineup','prepare','started','action')),
+        created_at INTEGER NOT NULL, context_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','acked','blocked','cancelled')),
+        ended_at INTEGER, block_reason TEXT, error_code TEXT
+      );
+      CREATE INDEX snow_tournament_player_pending
+        ON snow_tournament_player_wakes(resident_id,status);
+      CREATE TABLE snow_tournament_options (
+        option_id TEXT PRIMARY KEY, edition_id TEXT NOT NULL REFERENCES snow_tournament_editions(edition_id),
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        binding_json TEXT NOT NULL, input_json TEXT, result_json TEXT
+      );
+      CREATE TABLE snow_tournament_result_wakes (
+        wake_id TEXT PRIMARY KEY, edition_id TEXT NOT NULL REFERENCES snow_tournament_editions(edition_id),
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL, text TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','acked','blocked','cancelled')),
+        ended_at INTEGER, block_reason TEXT, error_code TEXT, UNIQUE(edition_id,resident_id)
+      );
+      CREATE INDEX snow_tournament_result_pending ON snow_tournament_result_wakes(resident_id,status);
+    `);
+    database.pragma('user_version = 56');
   })();
 
 }

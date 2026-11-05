@@ -1,3 +1,4 @@
+import { snowTournamentOperations, snowTournamentOperationByName, type SnowTournamentOperation } from "./together/tournament/tool-registry.js";
 import { loungeOperations, loungeOperationByName, type LoungeOperationDefinition } from "./lounge-tool-registry.js";
 import type { z } from "zod";
 import { dailyReadOperation } from "./lingye-daily-read-op.js";
@@ -22,14 +23,16 @@ export type { DoorbellCallExample };
 export { DOORBELL_INITIALIZE_INSTRUCTIONS };
 
 type DailyOperationDefinition = typeof dailyReadOperation | typeof dailySubmissionOperation | typeof dailyCommentOperation;
-export type DoorbellOperationDefinition = FarmOperationDefinition | LingyeOperationDefinition | DailyOperationDefinition | LoungeOperationDefinition;
+export type DoorbellOperationDefinition = FarmOperationDefinition | LingyeOperationDefinition | DailyOperationDefinition | LoungeOperationDefinition | SnowTournamentOperation;
 export type DoorbellRegisteredOperation =
+  | { kind: "snow"; operation: SnowTournamentOperation }
   | { kind: "farm"; operation: FarmOperationDefinition }
   | { kind: "lingye"; operation: LingyeOperationDefinition }
   | { kind: "daily"; operation: DailyOperationDefinition }
   | { kind: "lounge"; operation: LoungeOperationDefinition };
 
 export const doorbellOperationNames = [
+  ...snowTournamentOperations.map(operation => operation.op),
   ...loungeOperations.map(operation => operation.op),
   ...farmOperationNames,
   ...modelVisibleLingyeOperationNames,
@@ -38,7 +41,7 @@ export const doorbellOperationNames = [
   dailyCommentOperation.op,
 ] as readonly string[];
 
-const expectedOperationCount = farmOperationNames.length + modelVisibleLingyeOperationNames.length + 3 + loungeOperations.length;
+const expectedOperationCount = farmOperationNames.length + modelVisibleLingyeOperationNames.length + 3 + loungeOperations.length + snowTournamentOperations.length;
 if (
   doorbellOperationNames.length !== expectedOperationCount ||
   new Set(doorbellOperationNames).size !== expectedOperationCount
@@ -47,6 +50,8 @@ if (
 }
 
 export function findDoorbellOperation(op: string): DoorbellRegisteredOperation | undefined {
+  const snow = snowTournamentOperationByName.get(op);
+  if (snow) return { kind: "snow", operation: snow };
   const lounge = loungeOperationByName.get(op);
   if (lounge) return { kind: "lounge", operation: lounge };
   if (op === dailyCommentOperation.op) return { kind: "daily", operation: dailyCommentOperation };
@@ -60,7 +65,7 @@ export function findDoorbellOperation(op: string): DoorbellRegisteredOperation |
   return lingye ? { kind: "lingye", operation: lingye } : undefined;
 }
 
-const LINGYE_OPERATION_INDEX = [...loungeOperations, ...modelVisibleLingyeOperations, dailyReadOperation, dailySubmissionOperation, dailyCommentOperation]
+const LINGYE_OPERATION_INDEX = [...snowTournamentOperations, ...loungeOperations, ...modelVisibleLingyeOperations, dailyReadOperation, dailySubmissionOperation, dailyCommentOperation]
   .map((operation) => `${operation.op} args ${operation.argsHint} — ${operation.description}`)
   .join("\n");
 
@@ -128,17 +133,19 @@ export function examplesForDoorbellInvalidArgs(
 }
 
 /** Only advertise lounge actions after their real runtime has been assembled. */
-export function doorbellDefinitionForRuntime(loungeReady: boolean) {
-  if (loungeReady) return doorbellToolDefinition;
+export function doorbellDefinitionForRuntime(loungeReady: boolean, snowReady = false) {
+  if (loungeReady && snowReady) return doorbellToolDefinition;
   return {
     ...doorbellToolDefinition,
-    description: doorbellToolDefinition.description.split("\n").filter(line => !line.startsWith("go.lounge.")).join("\n"),
+    description: doorbellToolDefinition.description.split("\n").filter(line =>
+      (loungeReady || !line.startsWith("go.lounge.")) && (snowReady || !line.startsWith("game.snow."))).join("\n"),
     inputSchema: {
       ...doorbellToolDefinition.inputSchema,
       properties: {
         ...doorbellToolDefinition.inputSchema.properties,
         op: { ...doorbellToolDefinition.inputSchema.properties.op,
-          enum: doorbellOperationNames.filter(op => !loungeOperationByName.has(op)) },
+          enum: doorbellOperationNames.filter(op => (loungeReady || !loungeOperationByName.has(op)) &&
+            (snowReady || !snowTournamentOperationByName.has(op))) },
       },
     },
   };

@@ -1,3 +1,4 @@
+import {decorationLeaseLabel} from "../../scenes/field/decoration-leases.js";
 import { lazy, Suspense, useState } from "react";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
 import type { BoundFarmDecorationsRead } from "../../../auth/farm-decoration-client";
@@ -205,7 +206,7 @@ export function FarmBackpackPanel({
                   const unlimited = definition.purchase_mode === "unlock";
                   return (
                     <li key={item.item_id}>
-                      <span>{definition.name}</span>
+                      <span>{definition.name}{decorationLeaseLabel(item.expires_at)}</span>
                       <small>
                         {unlimited
                           ? "永久解锁 · 无限摆放"

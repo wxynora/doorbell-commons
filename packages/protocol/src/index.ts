@@ -3208,3 +3208,5 @@ export type HumanAuthenticationError = z.infer<typeof humanAuthenticationErrorSc
 export type FarmHumanUiError = z.infer<typeof farmHumanUiErrorSchema>;
 export * from "./farm-decoration.js";
 export * from "./snow-live.js";
+
+export * from "./snow-tournament.js";

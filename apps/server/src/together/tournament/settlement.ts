@@ -1,0 +1,176 @@
+import { refundId, type RegistrationRound, type TournamentPayment } from "./registration.js";
+import type { SnowTournamentTerminal } from "./results.js";
+import type { SnowTournamentStore } from "./store.js";
+import type { SnowTournamentTeamService } from "./team-service.js";
+
+type SettlementEdition = {
+  id: string; phase: string; registrationOpenAt:string; registrationCloseAt: string; teamFormationCloseAt:string; registrationRounds: RegistrationRound[];
+  teams: {id:string; status:string; members:{id:string}[]}[];
+  matches: { games?: {
+    battleId:string; attackerTeamId:string; defenderTeamId:string; winnerTeamId:string;
+    endReason?:SnowTournamentTerminal["endReason"]; participants?:SnowTournamentTerminal["participants"];
+  }[] }[];
+  bracket: { championTeamId:string|null };
+  settledGrants?: Record<string,GrantResult>;
+  settledFurniture?:Record<string,FurnitureReceipt>;
+};
+type Charge = {paymentId:string;residentId:string;gold:number};
+type ChargeResult = Charge & { outcome:"paid"|"failed"; journalId?:string };
+type Refund = Charge & { refundId:string };
+type Grant = { id:string; residentId:string; kind:"match"|"attendance"|"champion"; gold:number; silver:number };
+type GrantResult = Grant & { journalIds:string[] };
+export type FurnitureGrant={id:string;editionId:string;residentId:string;itemId:"farm_decor:snow_king"};
+export type FurnitureReceipt=FurnitureGrant & {quantity:1;grantedAt:number;expiresAt:number};
+export interface SnowTournamentEconomy {
+  charge(input:Charge):Promise<ChargeResult|null>;
+  /** Read-only: a cancelled or expired signup must never issue a new charge. */
+  findCharge(input:Charge):Promise<ChargeResult|null>;
+  refund(input:Refund):Promise<(Refund & {journalId:string})|null>;
+  grant(input:Grant):Promise<GrantResult|null>;
+  grantFurniture?(input:FurnitureGrant):Promise<FurnitureReceipt|null>;
+}
+const gold = 10_000;
+const roles = ["attack","defend"] as const;
+const grantKey = (...parts:string[]) => JSON.stringify(["snow-tournament",...parts]);
+
+export function planSnowTournamentGrants(edition: SettlementEdition): Grant[] {
+  const grants:Grant[] = [];
+  const members = new Map<string,{valid:number;expected:number;team:string}>();
+  const naturalTeams = new Set<string>();
+  for (const match of edition.matches) for (const game of match.games ?? []) {
+    if (!game.participants || !game.endReason) continue;
+    for (const role of roles) {
+      const person = game.participants[role];
+      const team = role==="attack"?game.attackerTeamId:game.defenderTeamId;
+      const attendance = members.get(person.residentId) ?? {valid:0,expected:0,team};
+      attendance.expected++;
+      members.set(person.residentId,attendance);
+      if (!person.human || (game.endReason==="surrender" && game.winnerTeamId!==team)) continue;
+      attendance.valid++;
+      if (game.endReason!=="surrender") naturalTeams.add(team);
+      grants.push({id:grantKey(edition.id,game.battleId,person.residentId),residentId:person.residentId,kind:"match",gold:30_000,silver:30});
+    }
+  }
+  if (edition.phase!=="completed") return grants;
+  for (const [residentId,attendance] of members) {
+    if (attendance.valid && attendance.valid===attendance.expected && edition.teams.find(t=>t.id===attendance.team)?.status!=="withdrawn") {
+      grants.push({id:grantKey(edition.id,"attendance",residentId),residentId,kind:"attendance",gold:50_000,silver:50});
+    }
+  }
+  const champion=edition.bracket.championTeamId;
+  if (champion && naturalTeams.has(champion)) for (const member of edition.teams.find(t=>t.id===champion)?.members ?? []) {
+    const residentId=member.id;
+    grants.push({id:grantKey(edition.id,"champion",residentId),residentId,kind:"champion",gold:100_000,silver:100});
+  }
+  return grants;
+}
+
+export function planSnowTournamentFurniture(edition:SettlementEdition):FurnitureGrant[] {
+  return planSnowTournamentGrants(edition).filter(grant=>grant.kind==="champion").map(grant=>({
+    id:grantKey(edition.id,"furniture",grant.residentId),editionId:edition.id,residentId:grant.residentId,itemId:"farm_decor:snow_king",
+  }));
+}
+
+/** Cash journals and furniture world receipts confirm their own authority independently. */
+export class SnowTournamentSettlement {
+  private readonly inflight = new Map<string,Promise<{id:string;error:unknown}[]>>();
+  private readonly requested=new Set<string>();
+  constructor(private readonly store:SnowTournamentStore,private readonly teams:SnowTournamentTeamService,
+    private readonly economy:SnowTournamentEconomy,private readonly now:()=>number=Date.now) {}
+
+  reconcile(editionId:string) {
+    const active=this.inflight.get(editionId);
+    if (active) {this.requested.add(editionId);return active;}
+    const operation=(async()=>{
+      let failures:{id:string;error:unknown}[];
+      do {this.requested.delete(editionId);failures=await this.advance(editionId);} while(this.requested.has(editionId));
+      return failures;
+    })().finally(()=>this.inflight.delete(editionId));
+    this.inflight.set(editionId,operation);
+    return operation;
+  }
+
+  private edition(id:string) { return this.store.read(id) as SettlementEdition | null; }
+  private async advance(editionId:string) {
+    const failures:{id:string;error:unknown}[]=[];
+    const edition=this.edition(editionId);
+    if (!edition) return failures;
+    for (const row of edition.registrationRounds) for (const item of row.payments) {
+      try { await this.payment(editionId,row.id,item.paymentId); }
+      catch (error) { failures.push({id:item.paymentId,error}); }
+    }
+    for (const grant of planSnowTournamentGrants(this.edition(editionId)!)) {
+      if (this.edition(editionId)?.settledGrants?.[grant.id]) continue;
+      try {
+        const receipt=await this.economy.grant(grant);
+        if (!receipt) throw new Error("snow_grant_unconfirmed");
+        if (receipt.id!==grant.id || receipt.residentId!==grant.residentId || receipt.gold!==grant.gold ||
+            receipt.silver!==grant.silver || receipt.kind!==grant.kind ||
+            receipt.journalIds.length!==Number(grant.gold>0)+Number(grant.silver>0) ||
+            new Set(receipt.journalIds).size!==receipt.journalIds.length ||
+            receipt.journalIds.some(id=>typeof id!=="string" || !id)) {
+          throw new Error("snow_grant_receipt_mismatch");
+        }
+        this.store.transaction(()=>{
+          const latest=this.edition(editionId)!;
+          const grants=latest.settledGrants??={};
+          grants[grant.id]=receipt;
+          this.store.save(editionId,latest.registrationOpenAt,latest);
+        });
+      } catch (error) { failures.push({id:grant.id,error}); }
+    }
+    for(const grant of planSnowTournamentFurniture(this.edition(editionId)!)) {
+      if(this.edition(editionId)?.settledFurniture?.[grant.id]) continue;
+      try {
+        const receipt=await this.economy.grantFurniture?.(grant);
+        if(!receipt) throw new Error("snow_furniture_unconfirmed");
+        if(receipt.id!==grant.id || receipt.editionId!==grant.editionId || receipt.residentId!==grant.residentId || receipt.itemId!==grant.itemId ||
+          receipt.quantity!==1 || !Number.isSafeInteger(receipt.grantedAt) || !Number.isSafeInteger(receipt.expiresAt) ||
+          receipt.expiresAt<receipt.grantedAt+30*24*60*60*1000) throw new Error("snow_furniture_receipt_mismatch");
+        this.store.transaction(()=>{
+          const latest=this.edition(editionId)!;(latest.settledFurniture??={})[grant.id]=receipt;
+          this.store.save(editionId,latest.registrationOpenAt,latest);
+        });
+      } catch(error) {failures.push({id:grant.id,error});}
+    }
+    return failures;
+  }
+
+  private async payment(editionId:string,roundId:string,paymentId:string) {
+    const snapshot=()=>{
+      const edition=this.edition(editionId)!;
+      const round=edition.registrationRounds.find(r=>r.id===roundId)!;
+      return {edition,round,payment:round.payments.find(p=>p.paymentId===paymentId)!};
+    };
+    const open=(state:ReturnType<typeof snapshot>)=>state.edition.phase==="team_formation" &&
+      state.round.status==="paying" && this.now()<Date.parse(state.edition.teamFormationCloseAt);
+    let current=snapshot();
+    const input={paymentId,residentId:current.payment.residentId,gold};
+    if (current.payment.charge==="not_started" && open(current)) {
+      this.teams.paymentTransition(editionId,roundId,{kind:"dispatch",residentId:input.residentId});
+      current=snapshot();
+    }
+    if (current.payment.charge==="unknown") {
+      const receipt=open(current)?await this.economy.charge(input):await this.economy.findCharge(input);
+      if (!receipt) throw new Error("snow_payment_unconfirmed");
+      if (receipt) {
+        if (!this.matches(input,receipt) || (receipt.outcome==="paid" && !receipt.journalId)) throw new Error("snow_payment_receipt_mismatch");
+        this.teams.paymentTransition(editionId,roundId,{kind:"charge_result",paymentId,outcome:receipt.outcome,receivedAt:this.now()});
+      }
+    }
+    const payment:TournamentPayment=snapshot().payment;
+    if (payment.refund==="pending") {
+      const request={...input,refundId:refundId(payment)};
+      const receipt=await this.economy.refund(request);
+      if (!receipt) throw new Error("snow_refund_unconfirmed");
+      if (receipt) {
+        if (!this.matches(input,receipt) || receipt.refundId!==request.refundId || !receipt.journalId) throw new Error("snow_refund_receipt_mismatch");
+        this.teams.paymentTransition(editionId,roundId,{kind:"refund_confirmed",paymentId});
+      }
+    }
+  }
+
+  private matches(input:Charge,receipt:Charge) {
+    return input.paymentId===receipt.paymentId && input.residentId===receipt.residentId && input.gold===receipt.gold;
+  }
+}

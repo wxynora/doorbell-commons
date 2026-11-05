@@ -18,7 +18,7 @@ export interface SceneDecorationData {
   saved_layouts?: readonly {slot:1|2|3;name?:string|undefined;decoration_count:number}[] | undefined;
   house?: {level: 1 | 2 | 3 | 4; classic_level?: 1|2|3|undefined; style?: "classic"|"pumpkin"|"stump"|"mushroom"|"rose_cottage"|"witch_pumpkin"|undefined; unlocked_styles?: readonly string[]|undefined; canopy_unlocked: boolean; blocked_rects: readonly (readonly number[])[]};
   catalog: readonly { item_id: string; model_id: string; name: string; cells: readonly number[]; layer: string; purchase_mode: string; price_farm_coins: number; sale_description?: string|undefined }[];
-  inventory: readonly { item_id: string; owned_quantity: number; placed_quantity: number; available_quantity: number | null; unlocked: boolean }[];
+  inventory: readonly { item_id: string; owned_quantity: number; placed_quantity: number; available_quantity: number | null; unlocked: boolean; expires_at?:string|undefined }[];
   layout: SceneDecorationLayout;
   grid: { cell_size: number; z_origin: number; land_cells: readonly (readonly number[])[]; river_cells: readonly (readonly number[])[] };
   environment?: { status: string; season: {id:string;name:string} | null; weather: {condition:string} | null; night: number; disaster: {type:string;phase:string} | null; flood?: SceneFlood | undefined };

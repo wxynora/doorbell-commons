@@ -109,9 +109,9 @@ const MidAutumnPage = lazy(async () => {
   return { default: module.MidAutumnEntry };
 });
 
-const SnowLivePage = lazy(async () => {
-  const module = await import("./snow-live/snow-live-page");
-  return { default: module.SnowLivePage };
+const SnowTournamentPage = lazy(async () => {
+  const module = await import("./snow-tournament/snow-tournament-page");
+  return { default: module.SnowTournamentPage };
 });
 
 const candidateTwoFarmPreviewSeedTypes = [
@@ -1597,8 +1597,8 @@ function LiveApp() {
   }
 
   if (appState.stage === "authenticated" && isSnowLivePath(window.location.pathname)) {
-    return <Suspense fallback={<FarmLazyLoading label="正在打开雪堡直播" mode="page" />}>
-      <SnowLivePage onBack={() => window.location.assign("/")} />
+    return <Suspense fallback={<FarmLazyLoading label="正在打开雪堡赛事站" mode="page" />}>
+      <SnowTournamentPage onBack={() => window.location.assign("/")} />
     </Suspense>;
   }
 

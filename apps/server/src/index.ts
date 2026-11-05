@@ -5,6 +5,10 @@ import { parseLingyeDailyColumnImagePrompts } from "@doorbell/protocol";
 import { DailyFarmService } from "./daily-farm/service.js";
 import { farmFactSource } from "./daily-farm/farm-client.js";
 import { createTogetherStartup } from "./together/startup.js";
+import { snowTournamentResponseSchema } from "@doorbell/protocol";
+import { loungeDisplayName } from "./lounge-display-name.js";
+import { tournamentEngine, projectTournamentBattle } from "./together/tournament/engine-adapter.js";
+import { SnowTournamentFarmEconomy } from "./together/tournament/farm-economy-client.js";
 import { TogetherRewardClient } from "./together/reward-client.js";
 import { SecurityPatrolDeliveryService } from "./security-patrol/service.js";
 import { FarmSecurityPatrolClient } from "./security-patrol/client.js";
@@ -542,6 +546,39 @@ bellService.addWakeSource(dailyColumnsService.wakeSource);
 void dailyColumnsService.reconcile(columnIssueDate(Date.now())).catch(error=>
   process.stderr.write(`[doorbell-daily-column] ${error instanceof Error ? error.name : "UnknownError"}\n`));
 const dailyCommentsService = new LingyeDailyCommentsService({database,farm:reporterRelayFarm});
+const snowTournamentEligible = (residentId: string) => Boolean(database.findTogetherIdentity(residentId));
+const snowTournamentFirstOpenAt = process.env.SNOW_TOURNAMENT_FIRST_REGISTRATION_OPEN_AT;
+const snowTournament = database.createSnowTournamentDomain({
+  identity: { requireActive: async (residentId) => {
+    const identity = database.findTogetherIdentity(residentId);
+    if (!identity) throw new Error("resident_not_eligible");
+    return { id: residentId, name: identity.residentName };
+  } },
+  displayName: loungeDisplayName,
+  parsePublic: (value) => snowTournamentResponseSchema.parse(value),
+  economy: new SnowTournamentFarmEconomy({
+    apiBaseUrl: serverConfig.farmApiBaseUrl, serviceToken: serverConfig.farmServiceToken,
+    requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  }),
+  runtime: {
+    ...(snowTournamentFirstOpenAt ? { season: {
+      firstRegistrationOpenAt: snowTournamentFirstOpenAt, rulesVersion: tournamentEngine.rulesVersion, title: "雪堡锦标赛",
+    } } : {}),
+    engine: tournamentEngine,
+    projectBattle: projectTournamentBattle,
+    isEligible: snowTournamentEligible,
+    registrationBell: { isEligible: snowTournamentEligible, notify: (residentId) => bellService.notifyResident(residentId) },
+    playerSignals: {
+      eligible: snowTournamentEligible,
+      notify: (residentId) => bellService.notifyResident(residentId),
+      cancelled: (residentId, wakeId) => bellService.notifyWakeCancelled(residentId, wakeId),
+    },
+  },
+});
+if (snowTournament.registrationWakeSource) bellService.addWakeSource(snowTournament.registrationWakeSource);
+if (snowTournament.teamWakeSource) bellService.addWakeSource(snowTournament.teamWakeSource);
+if (snowTournament.playerWakeSource) bellService.addWakeSource(snowTournament.playerWakeSource);
+if (snowTournament.resultWakeSource) bellService.addWakeSource(snowTournament.resultWakeSource);
 const snowLive = database.createSnowLiveService();
 const togetherStartup = createTogetherStartup({
   database, registrationAuth, mailbox: mailboxService, bell: bellService,
@@ -557,6 +594,7 @@ const halloweenTogetherActivity = composeHalloweenTogetherActivity(togetherStart
   publishedAt: serverConfig.halloweenPublishedAt,
 });
 const mcpRuntime = new DoorbellMcpRuntime({
+  ...(snowTournament.tools ? { snowTools: snowTournament.tools } : {}),
   dailyMaterials,
   ...(loungeRuntime ? { loungeTools: loungeRuntime.tools } : {}),
   ...(faultReports ? { faultReports } : {}),
@@ -611,6 +649,8 @@ const lingyeDailyService = new LingyeDailyService({
 });
 const app = buildApp({
   togetherBoard: togetherStartup,
+  snowTournament: snowTournament.publicService,
+  ...(snowTournament.battleRead ? { snowTournamentBattle: snowTournament.battleRead } : {}),
   snowLive,
   ...(faultReports ? { faultReports } : {}),
   groupId: serverConfig.qqGroupId,
@@ -655,7 +695,9 @@ if (loungeRuntime) registerLoungeGameRoutes(app, {
   waitingSeatPresence: loungeRuntime.waitingSeatPresence,
   secureCookies: process.env.NODE_ENV === "production",
 });
+let snowTournamentClock: ReturnType<typeof snowTournament.start> = null;
 app.addHook("onClose", async () => {
+  snowTournamentClock?.stop();
   process.off("SIGUSR2", refreshTogetherControl);
   await togetherStartup.stop();
   loungeRuntime?.close();
@@ -686,6 +728,7 @@ process.once("SIGTERM", () => {
 
 try {
   await app.listen({ host, port });
+  snowTournamentClock = snowTournament.start((_id, error) => reportBellError(error));
 } catch (error) {
   app.log.error(error);
   process.exitCode = 1;
