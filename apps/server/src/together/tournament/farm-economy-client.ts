@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { SnowTournamentEconomy } from "./settlement.js";
+import type { HarvestGrant, SnowTournamentEconomy } from "./settlement.js";
 
 const journal=z.string().min(1);
 const payment=z.object({ok:z.literal(true),payment_id:journal,resident_id:journal,gold:z.literal(10000),journal_id:journal}).strict();
@@ -11,6 +11,8 @@ const award=z.object({ok:z.literal(true),grant_id:journal,resident_id:journal,go
 const rejected=z.object({error:z.object({code:z.literal("registration_balance_insufficient")}).strict()}).strict();
 const furniture=z.object({ok:z.literal(true),grant_id:journal,edition_id:journal,resident_id:journal,item_id:z.literal("farm_decor:snow_king"),
   quantity:z.literal(1),granted_at:z.number().int().nonnegative(),expires_at:z.number().int().positive()}).strict();
+const harvest=z.object({ok:z.literal(true),grant_id:journal,edition_id:journal,resident_id:journal,
+  bonus_percent:z.literal(15),granted_at:z.number().int().nonnegative(),expires_at:z.number().int().positive()}).strict();
 
 /** Only the original service-authenticated Farm ledger owns these balances. */
 export class SnowTournamentFarmEconomy implements SnowTournamentEconomy {
@@ -71,5 +73,12 @@ export class SnowTournamentFarmEconomy implements SnowTournamentEconomy {
     if(value.grant_id!==input.id || value.edition_id!==input.editionId || value.resident_id!==input.residentId || value.item_id!==input.itemId ||
       value.expires_at<value.granted_at+30*24*60*60*1000) throw new Error("snow_furniture_receipt_mismatch");
     return {...input,quantity:value.quantity,grantedAt:value.granted_at,expiresAt:value.expires_at};
+  }
+  async grantHarvest(input:HarvestGrant) {
+    const result=await this.post("harvest",{grant_id:input.id,edition_id:input.editionId,resident_id:input.residentId});
+    if (result.status!==200) return null;
+    const value=harvest.parse(result.data);
+    return {id:value.grant_id,editionId:value.edition_id,residentId:value.resident_id,bonusPercent:value.bonus_percent,
+      grantedAt:value.granted_at,expiresAt:value.expires_at};
   }
 }

@@ -13,6 +13,7 @@ type SettlementEdition = {
   bracket: { championTeamId:string|null };
   settledGrants?: Record<string,GrantResult>;
   settledFurniture?:Record<string,FurnitureReceipt>;
+  settledHarvest?:Record<string,HarvestReceipt>;
 };
 type Charge = {paymentId:string;residentId:string;gold:number};
 type ChargeResult = Charge & { outcome:"paid"|"failed"; journalId?:string };
@@ -21,6 +22,9 @@ type Grant = { id:string; residentId:string; kind:"match"|"attendance"|"champion
 type GrantResult = Grant & { journalIds:string[] };
 export type FurnitureGrant={id:string;editionId:string;residentId:string;itemId:"farm_decor:snow_king"};
 export type FurnitureReceipt=FurnitureGrant & {quantity:1;grantedAt:number;expiresAt:number};
+export type HarvestGrant={id:string;editionId:string;residentId:string};
+export type HarvestReceipt=HarvestGrant & {bonusPercent:15;grantedAt:number;expiresAt:number};
+export const CHAMPION_HARVEST_MS=7*24*60*60*1000;
 export interface SnowTournamentEconomy {
   charge(input:Charge):Promise<ChargeResult|null>;
   /** Read-only: a cancelled or expired signup must never issue a new charge. */
@@ -28,6 +32,7 @@ export interface SnowTournamentEconomy {
   refund(input:Refund):Promise<(Refund & {journalId:string})|null>;
   grant(input:Grant):Promise<GrantResult|null>;
   grantFurniture?(input:FurnitureGrant):Promise<FurnitureReceipt|null>;
+  grantHarvest?(input:HarvestGrant):Promise<HarvestReceipt|null>;
 }
 const gold = 10_000;
 const roles = ["attack","defend"] as const;
@@ -71,7 +76,13 @@ export function planSnowTournamentFurniture(edition:SettlementEdition):Furniture
   }));
 }
 
-/** Cash journals and furniture world receipts confirm their own authority independently. */
+export function planSnowTournamentHarvest(edition:SettlementEdition):HarvestGrant[] {
+  return planSnowTournamentGrants(edition).filter(grant=>grant.kind==="champion").map(grant=>({
+    id:grantKey(edition.id,"harvest",grant.residentId),editionId:edition.id,residentId:grant.residentId,
+  }));
+}
+
+/** Each reward is confirmed by its own authoritative Farm receipt. */
 export class SnowTournamentSettlement {
   private readonly inflight = new Map<string,Promise<{id:string;error:unknown}[]>>();
   private readonly requested=new Set<string>();
@@ -95,6 +106,7 @@ export class SnowTournamentSettlement {
     const failures:{id:string;error:unknown}[]=[];
     const edition=this.edition(editionId);
     if (!edition) return failures;
+    const harvest=this.settleHarvest(edition);
     for (const row of edition.registrationRounds) for (const item of row.payments) {
       try { await this.payment(editionId,row.id,item.paymentId); }
       catch (error) { failures.push({id:item.paymentId,error}); }
@@ -133,7 +145,29 @@ export class SnowTournamentSettlement {
         });
       } catch(error) {failures.push({id:grant.id,error});}
     }
-    return failures;
+    return failures.concat(await harvest);
+  }
+
+  private async settleHarvest(edition:SettlementEdition) {
+    if (!this.economy.grantHarvest) return [];
+    const pending=planSnowTournamentHarvest(edition).filter(grant=>!edition.settledHarvest?.[grant.id]);
+    const results=await Promise.all(pending.map(async grant=>{
+      try {
+        const receipt=await this.economy.grantHarvest!(grant);
+        if (!receipt) throw new Error("snow_harvest_unconfirmed");
+        if (receipt.id!==grant.id || receipt.editionId!==grant.editionId || receipt.residentId!==grant.residentId ||
+          receipt.bonusPercent!==15 || !Number.isSafeInteger(receipt.grantedAt) || receipt.grantedAt<0 ||
+          !Number.isSafeInteger(receipt.expiresAt) || receipt.expiresAt!==receipt.grantedAt+CHAMPION_HARVEST_MS)
+          throw new Error("snow_harvest_receipt_mismatch");
+        this.store.transaction(()=>{
+          const latest=this.edition(edition.id)!;
+          (latest.settledHarvest??={})[grant.id]=receipt;
+          this.store.save(edition.id,latest.registrationOpenAt,latest);
+        });
+        return null;
+      } catch (error) { return {id:grant.id,error}; }
+    }));
+    return results.filter(result=>result!==null);
   }
 
   private async payment(editionId:string,roundId:string,paymentId:string) {
