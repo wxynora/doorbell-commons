@@ -86,7 +86,6 @@ import { DoorbellMcpRuntime } from "./mcp-runtime.js";
 import { FarmHumanQixiMemorialClient } from "./qixi-memorial-client.js";
 import { FarmMidAutumnClient } from "./mid-autumn-client.js";
 import { FarmHalloweenClient } from "./halloween/client.js";
-import { composeHalloweenTogetherActivity } from "./halloween/together-composition.js";
 import { OneBotGroupMembershipClient } from "./qq-group-membership.js";
 import { RegistrationAuthService } from "./registration-auth.js";
 import { ReporterDailyScheduler } from "./reporter-daily-scheduler.js";
@@ -590,9 +589,6 @@ const togetherStartup = createTogetherStartup({
 bellService.addWakeSource(togetherStartup.bell);
 const refreshTogetherControl = () => { void togetherStartup.reconcile().catch(reportBellError); };
 process.on("SIGUSR2", refreshTogetherControl);
-const halloweenTogetherActivity = composeHalloweenTogetherActivity(togetherStartup.tool, {
-  publishedAt: serverConfig.halloweenPublishedAt,
-});
 const mcpRuntime = new DoorbellMcpRuntime({
   ...(snowTournament.tools ? { snowTools: snowTournament.tools } : {}),
   dailyMaterials,
@@ -600,7 +596,7 @@ const mcpRuntime = new DoorbellMcpRuntime({
   ...(faultReports ? { faultReports } : {}),
   database,
   registrationAuth,
-  togetherActivity: halloweenTogetherActivity,
+  togetherActivity: togetherStartup.tool,
   farmActions: farmMcpActions,
   lingyeActions: lingyeMcpActions,
   careerExamReminders: careerExamReminderService,

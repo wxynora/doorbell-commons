@@ -77,10 +77,8 @@ import {
 } from "./preview/candidate-two-preview";
 import {
   DOORBELL_FARM_PATH,
-  HALLOWEEN_PATH,
   isConstableInterviewPath,
   isDoorbellFarmPath,
-  isHalloweenPath,
   isMidAutumnPath,
   isSnowLivePath,
   MID_AUTUMN_PATH,
@@ -101,8 +99,6 @@ const FarmPage = lazy(async () => {
   const module = await import("./farm/farm-page");
   return { default: module.FarmPage };
 });
-
-const HalloweenPage = lazy(() => import("./halloween/halloween-entry").then(module => ({ default: module.HalloweenEntry })));
 
 const MidAutumnPage = lazy(async () => {
   const module = await import("./mid-autumn/mid-autumn-entry");
@@ -433,17 +429,12 @@ function authenticatedViewState(
 function LiveApp() {
   const [appState, setAppState] = useState<AppState>({ stage: "checking-session" });
   const [activeInternalPage, setActiveInternalPage] = useState<
-    "community" | "daily" | "farm" | "lounge" | "mid-autumn" | "halloween"
-  >(
-    () =>
-      isHalloweenPath(window.location.pathname)
-        ? "halloween"
-        : isDoorbellFarmPath(window.location.pathname)
-        ? "farm"
-        : isMidAutumnPath(window.location.pathname)
-          ? "mid-autumn"
-          : "community",
-  );
+    "community" | "daily" | "farm" | "lounge" | "mid-autumn"
+  >(() => isDoorbellFarmPath(window.location.pathname)
+    ? "farm"
+    : isMidAutumnPath(window.location.pathname)
+      ? "mid-autumn"
+      : "community");
   const [candidateTwoScreenCommand, setCandidateTwoScreenCommand] =
     useState<CandidateTwoScreenCommand | null>(null);
   const [showMcpAfterPermit, setShowMcpAfterPermit] = useState(false);
@@ -494,15 +485,13 @@ function LiveApp() {
   useEffect(() => {
     const syncInternalPageFromLocation = () => {
       setActiveInternalPage(
-        isHalloweenPath(window.location.pathname)
-          ? "halloween"
-          : isDoorbellFarmPath(window.location.pathname)
-            ? "farm"
+        isDoorbellFarmPath(window.location.pathname)
+          ? "farm"
           : isMidAutumnPath(window.location.pathname)
             ? "mid-autumn"
-          : window.history.state?.doorbellInternalPage === "daily"
-            ? "daily"
-            : "community",
+            : window.history.state?.doorbellInternalPage === "daily"
+              ? "daily"
+              : "community",
       );
     };
     window.addEventListener("popstate", syncInternalPageFromLocation);
@@ -552,16 +541,6 @@ function LiveApp() {
   const openLoungePage = useCallback(() => {
     setCandidateTwoScreenCommand(null);
     setActiveInternalPage("lounge");
-  }, []);
-
-  const openHalloweenPage = useCallback((page: "home" | "candies" = "home") => {
-    window.history.pushState({ doorbellInternalPage: "halloween" }, "", HALLOWEEN_PATH + (page === "candies" ? "?page=candies" : ""));
-    setActiveInternalPage("halloween");
-  }, []);
-  const closeHalloweenPage = useCallback(() => {
-    if (window.history.state?.doorbellInternalPage === "halloween") { window.history.back(); return; }
-    window.history.replaceState({ doorbellInternalPage: "farm" }, "", DOORBELL_FARM_PATH);
-    setActiveInternalPage("farm");
   }, []);
 
   const openMidAutumnPage = useCallback(() => {
@@ -1161,11 +1140,6 @@ function LiveApp() {
         return;
       }
 
-      if (action.type === "lingye-halloween-open") {
-        if (appState.stage === "authenticated") openHalloweenPage();
-        return;
-      }
-
       if (action.type === "lingye-mid-autumn-open") {
         if (appState.stage === "authenticated") openMidAutumnPage();
         return;
@@ -1509,7 +1483,7 @@ function LiveApp() {
           setShowMcpAfterPermit(false);
           setLingyeScreenActive(false);
           setLingyeMapActive(false);
-          if (isHalloweenPath(window.location.pathname) || isDoorbellFarmPath(window.location.pathname) || isMidAutumnPath(window.location.pathname)) {
+          if (isDoorbellFarmPath(window.location.pathname) || isMidAutumnPath(window.location.pathname)) {
             window.history.replaceState({}, "", "/");
           }
           setActiveInternalPage("community");
@@ -1536,7 +1510,6 @@ function LiveApp() {
       openDailyPage,
       openFarmPage,
       openLoungePage,
-      openHalloweenPage,
       openMidAutumnPage,
     ],
   );
@@ -1625,9 +1598,6 @@ function LiveApp() {
           </Suspense>
         </FarmLazyBoundary>
       ) : null}
-      {appState.stage === "authenticated" && activeInternalPage === "halloween" ? (
-        <Suspense fallback={null}><HalloweenPage onBack={closeHalloweenPage} /></Suspense>
-      ) : null}
       {appState.stage === "authenticated" && activeInternalPage === "mid-autumn" ? (
         <Suspense fallback={<FarmLazyLoading label="正在打开中秋活动" mode="page" />}>
           <MidAutumnPage
@@ -1652,7 +1622,7 @@ function LiveApp() {
           }
         >
           <Suspense fallback={<FarmLazyLoading label="正在打开农场" mode="page" />}>
-            <FarmPage active={farmOpen} onBack={closeFarmPage} onOpenHalloween={openHalloweenPage} />
+            <FarmPage active={farmOpen} onBack={closeFarmPage} />
           </Suspense>
         </FarmLazyBoundary>
         </div>

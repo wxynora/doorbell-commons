@@ -21,7 +21,7 @@ import type {
   RanchDecorationActionExecutor,
 } from "./types";
 
-const HalloweenCandyBackpack = lazy(() => import("../../../halloween/doorstep-dialog").then(module => ({default:module.HalloweenCandyBackpack})));
+const CandyBackpack = lazy(() => import("../../../candy/backpack").then(module => ({default:module.CandyBackpack})));
 
 const KitchenInventoryPanelContent = lazy(async () => {
   const module = await import("../kitchen-inventory-panel");
@@ -190,7 +190,7 @@ export function FarmBackpackPanel({
           ))}
         </nav>
         {activeTab === "糖果" ? (
-          <Suspense fallback={<p role="status">正在读取糖果…</p>}><HalloweenCandyBackpack /></Suspense>
+          <Suspense fallback={<p role="status">正在读取糖果…</p>}><CandyBackpack /></Suspense>
         ) : activeTab === "装饰" ? (
           !farmDecorations ? (
             <FarmUnavailablePanel iconKey="panel.tool.backpack" label="装饰库存暂不可用" />

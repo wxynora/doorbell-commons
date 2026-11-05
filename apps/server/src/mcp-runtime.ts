@@ -139,9 +139,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isHalloweenActivityOption(option: unknown): option is string {
-  return typeof option === "string" &&
-    (option === "万圣节" || option.startsWith("万圣节:"));
+function isHalloweenCandyEatOption(option: unknown): option is string {
+  return typeof option === "string" && /^万圣节:eat:[^:]+:/u.test(option);
 }
 
 function isReporterMaterialCall(params: unknown): boolean {
@@ -149,7 +148,7 @@ function isReporterMaterialCall(params: unknown): boolean {
     params.arguments.op === "go.newsroom.materials";
 }
 
-function isHalloweenActivityCall(params: unknown, togetherActivity?: TogetherActivity): boolean {
+function isHalloweenCandyEatCall(params: unknown): boolean {
   if (!isPlainObject(params) || params.name !== "doorbell" || !isPlainObject(params.arguments))
     return false;
   const call = params.arguments;
@@ -159,9 +158,8 @@ function isHalloweenActivityCall(params: unknown, togetherActivity?: TogetherAct
   if (!registered || registered.kind !== "farm") return false;
   const parsed = registered.operation.argsSchema.safeParse(call.args);
   if (!parsed.success || !isPlainObject(parsed.data)) return false;
-  if (call.op === "farm.together.view")
-    return togetherActivity?.isHalloweenStatusView?.(parsed.data.section) === true;
-  return parsed.data.action !== "chat" && isHalloweenActivityOption(parsed.data.option);
+  return call.op === "farm.together.choose" && parsed.data.action !== "chat" &&
+    isHalloweenCandyEatOption(parsed.data.option);
 }
 
 function jsonRpcSuccess(id: JsonRpcId, result: unknown): JsonRpcSuccess {
@@ -677,7 +675,7 @@ export class DoorbellMcpRuntime {
         try {
           const result = await this.#callTool(request.params, context);
           try {
-            return jsonRpcSuccess(id, isSnowTournamentCall(request.params) || isHalloweenActivityCall(request.params, this.#togetherActivity) || isReporterMaterialCall(request.params)
+            return jsonRpcSuccess(id, isSnowTournamentCall(request.params) || isHalloweenCandyEatCall(request.params) || isReporterMaterialCall(request.params)
               ? result
               : this.#appendResidentNotifications(result, context));
           } catch (error) {
@@ -943,7 +941,8 @@ export class DoorbellMcpRuntime {
     try {
       if (
         this.#togetherActivity &&
-        (op === "farm.together.view" || op === "farm.together.choose")
+        (op === "farm.together.view" || op === "farm.together.choose") &&
+        !(op === "farm.together.choose" && isHalloweenCandyEatOption(businessArgs.option))
       ) {
         // Identity and the existing strict registry have already been checked.
         // The adapter never receives the private Farm key or caller-chosen identity.
@@ -978,11 +977,9 @@ export class DoorbellMcpRuntime {
         op === "farm.status" && result.ok
           ? this.#decorateActivityStatus(result.text, context)
           : result.text;
-      const halloweenChoice = op === "farm.together.choose" &&
-        isHalloweenActivityOption(businessArgs.option);
-      const halloweenStatusView = op === "farm.together.view" &&
-        this.#togetherActivity?.isHalloweenStatusView?.(businessArgs.section) === true;
-      if (shouldAppendStatus && op !== "farm.status" && !halloweenChoice && !halloweenStatusView) {
+      const halloweenCandyEat = op === "farm.together.choose" &&
+        isHalloweenCandyEatOption(businessArgs.option);
+      if (shouldAppendStatus && op !== "farm.status" && !halloweenCandyEat) {
         text = await this.#appendStatusWhenAvailable(text, context);
       }
       return farmToolResult(text, result.ok, result.farm);

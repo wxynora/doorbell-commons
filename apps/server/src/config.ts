@@ -1,5 +1,3 @@
-import { halloweenReleaseWindow } from "./halloween/published-window.js";
-
 /** Non-production fixture retained for existing tests; runtime uses deployment config. */
 export const COMMUNITY_QQ_GROUP_ID = "1";
 
@@ -17,7 +15,6 @@ export interface DoorbellServerConfig extends QqGroupEligibilityConfig {
   farmApiBaseUrl: string;
   farmHumanUiBaseUrl: string;
   farmServiceToken: string;
-  halloweenPublishedAt: number | null;
   lingyeDailyPublishToken: string;
   mcpEndpoint: string;
   mcpRuntimeReady: boolean;
@@ -177,13 +174,6 @@ export function readMcpRuntimeReady(environment: NodeJS.ProcessEnv = process.env
   throw new Error("DOORBELL_MCP_RUNTIME_READY must be true or false");
 }
 
-export function readHalloweenPublishedAt(environment: NodeJS.ProcessEnv = process.env): number | null {
-  const value = environment.DOORBELL_HALLOWEEN_PUBLISHED_AT?.trim();
-  if (!value || !/^[1-9][0-9]*$/u.test(value)) return null;
-  const publishedAt = Number(value);
-  return halloweenReleaseWindow(publishedAt) ? publishedAt : null;
-}
-
 export function readLingyeDailyPublishToken(environment: NodeJS.ProcessEnv = process.env): string {
   return readRequiredEnvironmentValue(environment, "DOORBELL_LINGYE_DAILY_PUBLISH_TOKEN");
 }
@@ -238,7 +228,6 @@ export function readDoorbellServerConfig(
     farmApiBaseUrl: readFarmApiBaseUrl(environment),
     farmHumanUiBaseUrl: readFarmHumanUiBaseUrl(environment),
     farmServiceToken: readRequiredEnvironmentValue(environment, "DOORBELL_FARM_SERVICE_TOKEN"),
-    halloweenPublishedAt: readHalloweenPublishedAt(environment),
     lingyeDailyPublishToken: readLingyeDailyPublishToken(environment),
     mcpEndpoint: readMcpEndpoint(environment),
     mcpRuntimeReady: readMcpRuntimeReady(environment),

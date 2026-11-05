@@ -1,5 +1,3 @@
-import { useHalloweenAvailability } from "../../halloween/activity-shortcut";
-import { HalloweenCandyBoxDialog } from "../../halloween/doorstep-dialog";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   getBoundFarmField,
@@ -108,9 +106,7 @@ interface LiveFarmPageProps extends FarmPageProps {
   actionListLauncher?: ReactNode;
 }
 
-export function LiveFarmPage({ active = true, actionListLauncher, onBack, previewData, onOpenHalloween }: LiveFarmPageProps) {
-  const halloweenAvailable=useHalloweenAvailability(Boolean(onOpenHalloween)&&!previewData);
-  const [candyBoxOpen,setCandyBoxOpen]=useState(false);
+export function LiveFarmPage({ active = true, actionListLauncher, onBack, previewData }: LiveFarmPageProps) {
   const visible = useFarmVisibility(active);
   const wasVisibleRef = useRef(visible);
   const [state, setState] = useState<FarmPageState>(
@@ -1247,11 +1243,9 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
           </section>
         ) : null}
 
-        {candyBoxOpen && <HalloweenCandyBoxDialog onClose={()=>setCandyBoxOpen(false)} />}
         {state.stage === "ready" ? (
           <FarmFieldContent
-            onOpenCandyBox={halloweenAvailable?()=>setCandyBoxOpen(true):undefined}
-            active={visible&&!candyBoxOpen}
+            active={visible}
             cookingShopOpenFeedback={cookingShopOpenFeedback}
             data={state.data}
             farmShopOpenFeedback={farmShopOpenFeedback}

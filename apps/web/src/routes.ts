@@ -5,7 +5,6 @@ export function isSnowLivePath(pathname: string): boolean {
     pathname === "/lingye/snow-fort-live" || pathname === "/lingye/snow-fort-live/";
 }
 export const MID_AUTUMN_PATH = "/lingye/mid-autumn" as const;
-export const HALLOWEEN_PATH = "/lingye/halloween" as const;
 export const CONSTABLE_INTERVIEW_PATH = "/lingye/constable-interview" as const;
 
 export function isConstableInterviewPath(pathname: string): boolean {
@@ -18,8 +17,4 @@ export function isDoorbellFarmPath(pathname: string): boolean {
 
 export function isMidAutumnPath(pathname: string): boolean {
   return pathname === MID_AUTUMN_PATH || pathname === `${MID_AUTUMN_PATH}/`;
-}
-
-export function isHalloweenPath(pathname: string): boolean {
-  return pathname === HALLOWEEN_PATH || pathname === `${HALLOWEEN_PATH}/`;
 }

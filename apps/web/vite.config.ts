@@ -94,7 +94,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         community: resolve(import.meta.dirname, "index.html"),
-        halloween: resolve(import.meta.dirname, "halloween/index.html"),
         dailyEditor: resolve(import.meta.dirname, "daily-editor/index.html"),
         glimmerEditor: resolve(import.meta.dirname, "glimmer-editor/index.html"),
       },
