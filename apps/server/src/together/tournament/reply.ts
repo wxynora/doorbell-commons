@@ -153,6 +153,11 @@ export function renderSnowReply(value:unknown,context:{names:Map<string,string>;
   out.push(...payments(data.registration));
   for(const m of rows(data.matches)){
    out.push(`第${m.matchNumber}场${m.gameIndex!==null&&m.gameIndex!==undefined?` · 第${Number(m.gameIndex)+1}局`:''} · ${role(m.role)} · ${time(m.scheduledAt)}`);
+   if(Array.isArray(m.attackers))out.push('本队攻守：'+items(m.attackers).map((id,i)=>`第${i+1}局${id===team.id?'进攻':'防守'}`).join('、'));
+   if(typeof m.gameIndex==='number')for(const revealed of Object.values(row(m.revealedLineups))){
+    const opponent=rows(row(revealed).entries)[m.gameIndex];
+    if(opponent&&!rows(team.members).some(member=>member.id===opponent.member))out.push(`本局对手：${name(opponent.member)}；指挥技能：${items(opponent.skills).map(skillName).join('、')}`);
+   }
    if(m.canLineup)out.push('排阵队员编号',...items(m.members).map(id=>`${name(id)}：${id}`));
    out.push(...lineup(m.lineup,name),...renderSnowBattle(m.battle));
    if(!m.canReady&&!m.canCommand&&!m.canLineup&&!m.canChooseSide)out.push('当前还没轮到你上场。');

@@ -33,5 +33,5 @@ export const snowTournamentOperationByName=new Map<string,SnowTournamentOperatio
 export interface SnowTournamentToolPort {
   execute(residentId:string,op:string,args:Record<string,unknown>):Promise<unknown>;
   decorateFarmStatus?(residentId:string,text:string):string;
-  renderReply?(result:unknown,op:string,args:Record<string,unknown>):string;
+  renderReply(result:unknown,op:string,args:Record<string,unknown>):string;
 }

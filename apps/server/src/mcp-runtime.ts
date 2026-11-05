@@ -818,7 +818,7 @@ export class DoorbellMcpRuntime {
       if (!this.#snowTools) return doorbellToolError("UNKNOWN_OP", { op });
       try {
         const result = await this.#snowTools.execute(context.residentId, op, parsed.data);
-        return { content: textContent(this.#snowTools.renderReply?.(result, op, parsed.data) ?? JSON.stringify(result)),
+        return { content: textContent(this.#snowTools.renderReply(result, op, parsed.data)),
           isError: Boolean(result && typeof result === "object" && "ok" in result && result.ok === false) };
       } catch (error) {
         return this.#faultToolError("INTERNAL_ERROR", { op }, error);
