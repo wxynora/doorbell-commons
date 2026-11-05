@@ -1,17 +1,8 @@
 import type { SnowPlayerSignal, SnowTournamentMatchHost } from "./match-host.js";
+import {renderSnowBattle} from './battle-text.js';
+export {snowPlayerGrid} from './battle-text.js';
 
 type View=ReturnType<SnowTournamentMatchHost["playerState"]>;
-type BattleView={visibleUnits:{lane:number;pos:number;side:"attack"|"defend";id:string}[]};
-export function snowPlayerGrid(battle:BattleView) {
-  const rows=[
-    "| 格位 | "+Array.from({length:12},(_,i)=>i+1).join(" | ")+" |",
-    "| --- | "+Array.from({length:12},()=>"---").join(" | ")+" |",
-  ];
-  for(let lane=1;lane<=3;lane++) rows.push("| 第"+lane+"路 | "+Array.from({length:12},(_,index)=>
-    battle.visibleUnits.filter(unit=>unit.lane===lane && unit.pos===index+1)
-      .map(unit=>(unit.side==="attack"?"攻:":"守:")+unit.id).join("、")||"空").join(" | ")+" |");
-  return rows.join("\n");
-}
 export function renderSnowPlayerSignal(signal:SnowPlayerSignal,name:(id:string)=>string) {
   const facts=signal.facts as View,lines:string[]=[];
   switch(signal.kind) {
@@ -27,7 +18,7 @@ export function renderSnowPlayerSignal(signal:SnowPlayerSignal,name:(id:string)=
     case "action":lines.push("轮到你继续指挥雪堡战了。");break;
   }
   if ((signal.kind==="started" || signal.kind==="action") && facts.battle) {
-    lines.push(snowPlayerGrid(facts.battle as BattleView),JSON.stringify({role:facts.role,...facts.battle as object}));
+    lines.push(`本方：${facts.role==='attack'?'进攻':'防守'}`,...renderSnowBattle(facts.battle));
   }
   lines.push('使用 doorbell：{"op":"game.snow.view","args":{}} 查看。');
   return lines.join("\n");

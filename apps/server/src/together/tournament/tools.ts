@@ -7,6 +7,8 @@ import type { SnowTournamentService } from "./service.js";
 import { snowTournamentForResident } from "./resident-facade.js";
 import { snowTournamentOperationByName, type SnowTournamentToolPort } from "./tool-registry.js";
 import {snowTeamOptionLabel,snowTeamReceipt} from "./tool-presentation.js";
+import {decorateRegistrationStatus} from './registration-status.js';
+import {renderSnowReply} from './reply.js';
 
 type Ref={editionId:string;matchId:string};
 type TeamCommand=Parameters<SnowTournamentTeamService["execute"]>[0];
@@ -37,6 +39,16 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
     if ((await this.options.identity.requireActive(actor)).id!==actor) throw new Error("identity_mismatch");
   }
   private state() {return this.options.store.latest() as State|null;}
+  decorateFarmStatus(actor:string,text:string) {return decorateRegistrationStatus(text,this.state(),actor,this.now());}
+  renderReply(result:unknown,_op:string,args:Record<string,unknown>) {return renderSnowReply(result,{names:new Map(this.options.residents().map(member=>[member.id,member.name])),args});}
+  registrationCall(actor:string,editionId:string) {
+    const state=this.options.store.read(editionId) as State|null;
+    if(!state)return null;
+    const binding=this.candidates(actor,state).find(binding=>binding.kind==='register');
+    if(!binding)return null;
+    const option=this.issue(actor,binding);
+    return 'call' in option?option.call:null;
+  }
   private facade(actor:string) {return snowTournamentForResident(actor,{...this.options,now:()=>this.now()});}
   private candidates(actor:string,state:State):Binding[] {
     const now=this.now(),own=state.teams.find(t=>t.status!=="withdrawn" && t.members.some(m=>m.id===actor)),result:Binding[]=[];

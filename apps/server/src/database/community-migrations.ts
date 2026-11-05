@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 56;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 57;
 export const SNOW_LIVE_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS snow_spectator_messages (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3107,6 +3107,29 @@ UPDATE lingye_daily_column_images SET attempt_count=1, attempted_at=generated_at
       CREATE INDEX snow_tournament_result_pending ON snow_tournament_result_wakes(resident_id,status);
     `);
     database.pragma('user_version = 56');
+  })();
+
+  if (databaseSchemaVersion < 57) database.transaction(() => {
+    database.exec(`
+      CREATE TABLE snow_tournament_registration_wakes_v57 (
+        wake_id TEXT PRIMARY KEY, edition_id TEXT NOT NULL REFERENCES snow_tournament_editions(edition_id),
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, text TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','acked','blocked','cancelled')),
+        ended_at INTEGER, block_reason TEXT, error_code TEXT,
+        notice_revision INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(edition_id,resident_id,notice_revision)
+      );
+      INSERT INTO snow_tournament_registration_wakes_v57
+        (wake_id,edition_id,resident_id,created_at,expires_at,text,status,ended_at,block_reason,error_code)
+        SELECT wake_id,edition_id,resident_id,created_at,expires_at,text,status,ended_at,block_reason,error_code
+        FROM snow_tournament_registration_wakes;
+      DROP TABLE snow_tournament_registration_wakes;
+      ALTER TABLE snow_tournament_registration_wakes_v57 RENAME TO snow_tournament_registration_wakes;
+      CREATE INDEX snow_tournament_registration_pending
+        ON snow_tournament_registration_wakes(resident_id,status,expires_at);
+    `);
+    database.pragma('user_version = 57');
   })();
 
 }

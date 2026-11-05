@@ -59,7 +59,10 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
     }).catch(error=>reportSettlement(id,error));
   };
   const registrationBell=runtime?.season && runtime.registrationBell
-    ? new SnowTournamentRegistrationBell(db,runtime.registrationBell.isEligible,runtime.registrationBell.notify,now) : null;
+    ? new SnowTournamentRegistrationBell(db,runtime.registrationBell.isEligible,runtime.registrationBell.notify,now,{
+      call:(residentId,editionId)=>tools?.registrationCall(residentId,editionId)??null,
+      ...(runtime.playerSignals?{cancelled:runtime.playerSignals.cancelled}:{}),
+    }) : null;
   let tools:SnowTournamentTools|null=null;
   const teamSignals=runtime?.season&&runtime.registrationBell?new SnowTournamentTeamSignals(db,store,{
     eligible:runtime.registrationBell.isEligible,notify:runtime.registrationBell.notify,now,
@@ -119,6 +122,7 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
     start: (report: (id:string,error:unknown)=>void) => {
       if (!scheduler) return null;
       reportSettlement=report;
+      registrationBell?.repairLegacy();
       for (const entry of store.all() as {id:string}[]) reconcileSettlement(entry.id);
       const clock=startSnowTournamentClock(scheduler,report);
       matchHost?.bindClock(clock.wake);

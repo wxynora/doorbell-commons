@@ -32,4 +32,6 @@ export type SnowTournamentOperation=(typeof snowTournamentOperations)[number];
 export const snowTournamentOperationByName=new Map<string,SnowTournamentOperation>(snowTournamentOperations.map(operation=>[operation.op,operation]));
 export interface SnowTournamentToolPort {
   execute(residentId:string,op:string,args:Record<string,unknown>):Promise<unknown>;
+  decorateFarmStatus?(residentId:string,text:string):string;
+  renderReply?(result:unknown,op:string,args:Record<string,unknown>):string;
 }

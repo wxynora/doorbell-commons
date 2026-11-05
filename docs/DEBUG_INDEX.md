@@ -4,6 +4,8 @@
 
 ### 月度锦标赛
 
+- registration-status.ts只读当前报名期与本人登记，在两条status链持续显示报名信息，截止即撤下；不消费Bell或普通信箱。reply.ts与battle-text.ts将内部事实投影为中文回执、兵种／技能表与可见格子图，JSON仅用于真实工具调用；MCP不再序列化整份内部结果。registration-bell.ts按通知版本保存首次与本次漏调用修复，原ACK保留，修复后从当前登记排除已报名者，直接附本人有效报名能力；新届仍只发首次通知。集中迁移维护notice_revision和对应唯一键，不新增铃通道或催报时钟。固定检查为registration-status.test.ts及output/snow-tournament-status-20261105/check-{mcp,migration}.mjs。
+
 - Main的together/tournament按store、team-service／registration、competition／results、match-host／scheduler、settlement分工；同一社区SQLite连接保存届次、队伍、逐局状态和幂等事实，迁移集中在database/community-migrations.ts。原限时共行不迁移、不复发奖。
 - tool-registry／tools／resident-facade绑定连接居民，选择能力绑定届、队、场、局和当前业务轮次。可直接执行的编号附完整call；需要name／text／members或commands／waitTicks的编号只声明所需字段。旧成功结果精确重放；普通回执不附规则、全频道或无关信箱。固定检查为tournament/{tools,tools-receipts,team-flow}.test.ts及output/snow-tournament-20261102/formal-tool-check.mjs。
 - registration-bell、team-signals、player-signals、result-bell复用原Bell来源，报名／组队／邀请／当前行动和实际到账按领域事实失效与去重。发言铃只带本人尚未确认接收的新前文，完整频道按需读取，不跟随操作反复追加。

@@ -818,7 +818,7 @@ export class DoorbellMcpRuntime {
       if (!this.#snowTools) return doorbellToolError("UNKNOWN_OP", { op });
       try {
         const result = await this.#snowTools.execute(context.residentId, op, parsed.data);
-        return { content: textContent(JSON.stringify(result)),
+        return { content: textContent(this.#snowTools.renderReply?.(result, op, parsed.data) ?? JSON.stringify(result)),
           isError: Boolean(result && typeof result === "object" && "ok" in result && result.ok === false) };
       } catch (error) {
         return this.#faultToolError("INTERNAL_ERROR", { op }, error);
@@ -976,8 +976,7 @@ export class DoorbellMcpRuntime {
       });
       let text =
         op === "farm.status" && result.ok
-          ? (this.#togetherActivity?.decorateFarmStatus?.(context.residentId, result.text) ??
-            result.text)
+          ? this.#decorateActivityStatus(result.text, context)
           : result.text;
       const halloweenChoice = op === "farm.together.choose" &&
         isHalloweenActivityOption(businessArgs.option);
@@ -1050,7 +1049,12 @@ export class DoorbellMcpRuntime {
 
   #decorateFarmStatus(text: string, context: DoorbellFarmContext): string {
     const published = this.#appendDailyPublicationNotice(text);
-    return this.#togetherActivity?.decorateFarmStatus?.(context.residentId, published) ?? published;
+    return this.#decorateActivityStatus(published, context);
+  }
+
+  #decorateActivityStatus(text: string, context: DoorbellFarmContext): string {
+    const together = this.#togetherActivity?.decorateFarmStatus?.(context.residentId, text) ?? text;
+    return this.#snowTools?.decorateFarmStatus?.(context.residentId, together) ?? together;
   }
 
   #appendDailyPublicationNotice(text: string): string {
