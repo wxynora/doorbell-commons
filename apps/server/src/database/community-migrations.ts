@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 57;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 58;
 export const SNOW_LIVE_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS snow_spectator_messages (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3130,6 +3130,19 @@ UPDATE lingye_daily_column_images SET attempt_count=1, attempted_at=generated_at
         ON snow_tournament_registration_wakes(resident_id,status,expires_at);
     `);
     database.pragma('user_version = 57');
+  })();
+
+  if (databaseSchemaVersion < 58) database.transaction(() => {
+    database.exec(`
+      CREATE TABLE snow_tournament_snapshot_expiries (
+        edition_id TEXT NOT NULL REFERENCES snow_tournament_editions(edition_id),
+        match_id TEXT NOT NULL, expires_at INTEGER NOT NULL,
+        PRIMARY KEY (edition_id, match_id)
+      );
+      CREATE INDEX snow_tournament_snapshot_expiries_due
+        ON snow_tournament_snapshot_expiries(expires_at);
+    `);
+    database.pragma('user_version = 58');
   })();
 
 }

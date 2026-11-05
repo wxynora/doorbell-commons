@@ -13,7 +13,7 @@ type State = { id:string; phase:string; rulesVersion:string; registrationOpenAt:
 export type SnowTournamentTerminal = {
   battleId:string; rulesVersion:string; attackSideId:string; defendSideId:string;
   status:"attack_win"|"defend_win"; endReason:"core_broken"|"time_limit"|"surrender";
-  tick:number; coreHp:number; surrenderedBy?:"attack"|"defend";
+  tick:number; coreHp:number; surrenderedBy?:"attack"|"defend"; finishedAt?:number;
   participants?:Record<"attack"|"defend",{residentId:string;human:boolean}>;
 };
 
@@ -26,8 +26,14 @@ export interface SnowTournamentEnginePort {
 }
 
 export class SnowTournamentResults {
-  constructor(private readonly store:SnowTournamentStore, private readonly engine:SnowTournamentEnginePort) {}
+  constructor(private readonly store:SnowTournamentStore, private readonly engine:SnowTournamentEnginePort,
+    private readonly now:()=>number=Date.now) {}
   private state(id:string):State { const state=this.store.read(id) as State|null; if (!state) throw new Error("edition_not_found"); return state; }
+
+  private finish(editionId:string,match:Match,status:"completed"|"forfeit"|"cancelled",at:number) {
+    if (match.status==="scheduled" || match.status==="in_progress") this.store.scheduleSnapshotExpiry(editionId,match.id,at);
+    match.status=status;
+  }
 
   /** Called by the trusted host, never by a player; there is no winner argument. */
   consumeTerminal(editionId:string,matchId:string,gameIndex:0|1|2):void {
@@ -70,8 +76,11 @@ export class SnowTournamentResults {
       match.games=games; state.battleStarted=true; match.status="in_progress";
       if (games[2]) {
         const a=games.filter(g=>g.winnerTeamId===match.teamAId).length;
-        match.score=[a,3-a]; match.winnerTeamId=a>=2?match.teamAId:match.teamBId; match.status="completed";
-        this.advance(state);
+        const now=this.now(), terminalAt=battle.finishedAt;
+        const at=terminalAt!==undefined && Number.isSafeInteger(terminalAt) && terminalAt>=0 && terminalAt<=now ? terminalAt : now;
+        match.score=[a,3-a]; match.winnerTeamId=a>=2?match.teamAId:match.teamBId;
+        this.finish(state.id,match,"completed",at);
+        this.advance(state,now);
       }
       state.revision++; this.store.save(state.id,state.registrationOpenAt,state);
     });
@@ -115,11 +124,12 @@ export class SnowTournamentResults {
   }
 
   private applyWithdrawals(state:State,teamIds:string[]):void {
+      const now=this.now();
       for (const teamId of teamIds) state.teams.find(t=>t.id===teamId)!.status="withdrawn";
       if (!state.battleStarted) for (const round of state.registrationRounds.filter(r=>teamIds.includes(r.teamId))) cancelRegistration(round);
       if (!state.battleStarted && state.teams.filter(t=>t.drawOrder!==null && t.status!=="withdrawn").length<2) {
         for (const round of state.registrationRounds) cancelRegistration(round);
-        for (const match of state.matches) { match.status="cancelled"; match.winnerTeamId=null; match.score=null; }
+        for (const match of state.matches) { this.finish(state.id,match,"cancelled",now); match.winnerTeamId=null; match.score=null; }
         state.phase="cancelled"; return;
       }
       for (const match of state.matches) {
@@ -128,14 +138,14 @@ export class SnowTournamentResults {
         if (match.stage!=="round_robin" && ["completed","forfeit","cancelled"].includes(match.status)) continue;
         const a=state.teams.find(t=>t.id===match.teamAId)?.status==="withdrawn";
         const b=state.teams.find(t=>t.id===match.teamBId)?.status==="withdrawn";
-        match.status=a&&b?"cancelled":"forfeit";
+        this.finish(state.id,match,a&&b?"cancelled":"forfeit",now);
         match.winnerTeamId=a&&b?null:a?match.teamBId:match.teamAId;
         match.score=match.stage==="round_robin" && !(a&&b) ? a?[0,3]:[3,0] : null;
       }
-      this.advance(state);
+      this.advance(state,now);
   }
 
-  private advance(state:State):void {
+  private advance(state:State,now:number):void {
     if (state.phase==="round_robin") {
       const rr=state.matches.filter(m=>m.stage==="round_robin");
       if (rr.some(m=>!["completed","forfeit","cancelled"].includes(m.status))) return;
@@ -168,7 +178,7 @@ export class SnowTournamentResults {
       else { final.teamAId=semis[0]!.winnerTeamId; final.teamBId=semis[1]!.winnerTeamId; }
       const a=final.teamAId && state.teams.find(t=>t.id===final.teamAId)?.status!=="withdrawn" ? final.teamAId : null;
       const b=final.teamBId && state.teams.find(t=>t.id===final.teamBId)?.status!=="withdrawn" ? final.teamBId : null;
-      if (!a || !b) { final.status=a||b?"forfeit":"cancelled"; final.winnerTeamId=a||b; }
+      if (!a || !b) { this.finish(state.id,final,a||b?"forfeit":"cancelled",now); final.winnerTeamId=a||b; }
     }
     if (["completed","forfeit","cancelled"].includes(final.status)) { state.phase="completed"; state.bracket.championTeamId=final.winnerTeamId; }
   }

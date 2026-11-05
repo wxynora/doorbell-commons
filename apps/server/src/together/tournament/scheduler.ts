@@ -63,6 +63,7 @@ const minutes = 60_000;
 
 export class SnowTournamentScheduler {
   private readonly recovery:SnowTournamentRecovery;
+  private seededSnapshotExpiries=false;
   private running: Promise<{ nextAt: number; failures: { id: string; error: unknown }[] }> | null = null;
 
   constructor(
@@ -180,6 +181,17 @@ export class SnowTournamentScheduler {
         }));
         watch(this.recovery.boundary(initial.id,now));
       }
+    }
+    try {
+      if (!this.seededSnapshotExpiries) {
+        this.store.seedLegacySnapshotExpiries(now);
+        this.seededSnapshotExpiries=true;
+      }
+      const expired=this.store.expireSnapshots(now);
+      watch(expired.nextAt);
+      for (const ref of expired.removed) this.host.invalidateMatch?.(ref);
+    } catch (error) {
+      failures.push({id:"snow-tournament-snapshot-retention",error});
     }
     return { nextAt, failures };
   }

@@ -83,18 +83,21 @@ export class SnowTournamentRecovery {
     edition.revision++;
     this.store.save(edition.id,edition.registrationOpenAt,edition);
   }
-  private cancel(edition:Edition,reason:string) {
+  private cancel(edition:Edition,reason:string,now:number) {
     edition.phase="cancelled";
     edition.bracket.championTeamId=null;
     this.technical(edition).cancelledReason=reason;
-    for (const match of edition.matches) if (!done(match.status)) match.status="cancelled";
+    for (const match of edition.matches) if (!done(match.status)) {
+      match.status="cancelled";
+      this.store.scheduleSnapshotExpiry(edition.id,match.id,now);
+    }
     for (const round of edition.registrationRounds) cancelRegistration(round);
   }
 
-  cancelCorruptEdition(editionId:string) {
+  cancelCorruptEdition(editionId:string,now:number) {
     const edition=this.read(editionId);
     if (!edition || !["round_robin","knockout"].includes(edition.phase)) return;
-    this.cancel(edition,"technical_round_replay_exhausted");
+    this.cancel(edition,"technical_round_replay_exhausted",now);
     this.save(edition);
   }
 
@@ -104,7 +107,7 @@ export class SnowTournamentRecovery {
       const edition=this.read(editionId);
       if (!edition || !["round_robin","knockout"].includes(edition.phase) ||
           !edition.technical || now<edition.technical.expiresAt) return false;
-      this.cancel(edition,"technical_makeup_expired");this.save(edition);return true;
+      this.cancel(edition,"technical_makeup_expired",now);this.save(edition);return true;
     });
   }
   boundary(editionId:string,now:number):number|null {
@@ -133,7 +136,7 @@ export class SnowTournamentRecovery {
         const runtime=this.runtime(ref);
         technical.pending[ref.matchId]=Math.min(now,runtime?.lastSeenAt??Date.parse(match.scheduledAt!)-lead(match));
       }
-      if (now>=technical.expiresAt) this.cancel(edition,"technical_makeup_expired");
+      if (now>=technical.expiresAt) this.cancel(edition,"technical_makeup_expired",now);
       this.save(edition);
     });
   }
@@ -146,7 +149,7 @@ export class SnowTournamentRecovery {
       const changed=()=>edition.matches.filter(m=>before.get(m.id)!==JSON.stringify([m.status,m.scheduledAt])).map(m=>m.id);
       const technical=this.technical(edition);
       if (now>=technical.expiresAt) {
-        this.cancel(edition,"technical_makeup_expired");this.save(edition);return changed();
+        this.cancel(edition,"technical_makeup_expired",now);this.save(edition);return changed();
       }
       const recovered=technical.recoveredThrough??={};
       const effectiveFrom=Math.max(from,Object.hasOwn(recovered,ref.matchId)?recovered[ref.matchId]!:from);
@@ -159,7 +162,7 @@ export class SnowTournamentRecovery {
       const runtime=this.runtime(ref);
       const makeupWindowStart=technical.makeupAt-(runtime?.active?0:lead(match));
       if (onMakeup && exceedsDailyLimit(technical.pauses,makeupWindowStart,now,makeupWindowStart)) {
-        this.cancel(edition,"technical_makeup_pause_exceeded");this.save(edition);return changed();
+        this.cancel(edition,"technical_makeup_pause_exceeded",now);this.save(edition);return changed();
       }
       const oldAt=Date.parse(match.scheduledAt!);
       let target=oldAt+pause;

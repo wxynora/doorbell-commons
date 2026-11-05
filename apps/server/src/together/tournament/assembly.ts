@@ -46,7 +46,7 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
   if(configuredSeason) monthlyWindow(configuredSeason,now());
   const matchHost=runtime ? new SnowTournamentMatchHost(store,runtime.engine,now) : null;
   const engine=matchHost ?? dependencies.schedule?.host ?? dependencies.engine;
-  const results=engine ? new SnowTournamentResults(store,engine) : null;
+  const results=engine ? new SnowTournamentResults(store,engine,now) : null;
   const settlement=dependencies.economy ? new SnowTournamentSettlement(store,teams,dependencies.economy,now) : null;
   const resultBell=runtime?.season && runtime.playerSignals && settlement
     ? new SnowTournamentResultBell(db,store,{...runtime.playerSignals,render:renderSnowResult}) : null;

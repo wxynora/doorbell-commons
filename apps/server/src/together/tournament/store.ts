@@ -1,5 +1,15 @@
 import type Database from "better-sqlite3";
 
+const SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
+const terminalStatus = (status: string) => ["completed", "forfeit", "cancelled"].includes(status);
+export const snowRoundRecoveryKey = (matchId:string,index:number) => JSON.stringify([matchId,index]);
+const recoveryKeys = (matchId:string) => [0,1,2].map(index=>snowRoundRecoveryKey(matchId,index));
+type SnapshotEdition = {
+  id:string; registrationOpenAt:string; matches:{id:string;status:string}[];
+  roundRecovery?:Record<string,unknown>;
+};
+type SnapshotRef = {editionId:string;matchId:string};
+
 /** Uses the community connection; the owning migration creates snow_tournament_editions. */
 export class SnowTournamentStore {
   private readonly listeners=new Set<()=>void>();
@@ -53,6 +63,63 @@ export class SnowTournamentStore {
       ON CONFLICT(edition_id,match_id) DO UPDATE SET state_json=excluded.state_json`)
       .run(editionId, matchId, JSON.stringify(state));
     this.changed();
+  }
+
+  /** Queued in the same transaction as the authoritative terminal match status. */
+  scheduleSnapshotExpiry(editionId:string,matchId:string,finishedAt:number):void {
+    this.db.prepare(`INSERT OR IGNORE INTO snow_tournament_snapshot_expiries (edition_id,match_id,expires_at)
+      VALUES (?,?,?)`).run(editionId,matchId,finishedAt+SNAPSHOT_TTL_MS);
+  }
+
+  /** Legacy completed hosts have the final save time. For older cancellations
+   * without a verified end time, give them one full retention window from upgrade. */
+  seedLegacySnapshotExpiries(now:number):void {
+    this.transaction(()=>{
+      const queued=this.db.prepare("SELECT 1 FROM snow_tournament_snapshot_expiries WHERE edition_id=? AND match_id=?");
+      for (const edition of this.all() as SnapshotEdition[]) for (const match of edition.matches) {
+        if (!terminalStatus(match.status) || queued.get(edition.id,match.id)) continue;
+        const text=this.readMatchRuntimeText(edition.id,match.id);
+        if (text===null && !recoveryKeys(match.id).some(key=>Object.hasOwn(edition.roundRecovery??{},key))) continue;
+        let finishedAt=now;
+        if (match.status==="completed" && text!==null) {
+          try {
+            const runtime=JSON.parse(text);
+            const at=runtime?.rounds?.[2]?.finishedAt??runtime?.lastSeenAt;
+            if (Number.isSafeInteger(at) && at>=0 && at<=now) finishedAt=at;
+          } catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+        }
+        this.scheduleSnapshotExpiry(edition.id,match.id,finishedAt);
+      }
+    });
+  }
+
+  expireSnapshots(now:number):{nextAt:number|null; removed:SnapshotRef[]} {
+    const next=this.db.prepare("SELECT expires_at FROM snow_tournament_snapshot_expiries ORDER BY expires_at LIMIT 1");
+    const nextAt=()=> (next.get() as {expires_at:number}|undefined)?.expires_at??null;
+    const first=nextAt();
+    if (first===null || first>now) return {nextAt:first,removed:[]};
+    return this.transaction(()=>{
+      const due=this.db.prepare(`SELECT edition_id AS editionId,match_id AS matchId
+        FROM snow_tournament_snapshot_expiries WHERE expires_at<=?`).all(now) as SnapshotRef[];
+      const deleteRuntime=this.db.prepare("DELETE FROM snow_tournament_match_runtime WHERE edition_id=? AND match_id=?");
+      const deleteDeadline=this.db.prepare("DELETE FROM snow_tournament_snapshot_expiries WHERE edition_id=? AND match_id=?");
+      const removed:SnapshotRef[]=[];
+      for (const ref of due) {
+        const {editionId,matchId}=ref, edition=this.read(editionId) as SnapshotEdition|null;
+        const match=edition?.matches.find(value=>value.id===matchId);
+        if (edition && match && terminalStatus(match.status)) {
+          let changed=false;
+          for (const key of recoveryKeys(matchId)) if (edition.roundRecovery && Object.hasOwn(edition.roundRecovery,key)) {
+            delete edition.roundRecovery[key]; changed=true;
+          }
+          if (changed) this.save(edition.id,edition.registrationOpenAt,edition);
+          if (deleteRuntime.run(editionId,matchId).changes) this.changed();
+          removed.push({editionId,matchId});
+        }
+        deleteDeadline.run(editionId,matchId);
+      }
+      return {nextAt:nextAt(),removed};
+    });
   }
 
   /** Caller runs its entire domain state transition in one shared-connection transaction. */

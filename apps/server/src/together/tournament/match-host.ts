@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import type { SnowTournamentScheduleHost } from "./scheduler.js";
-import type { SnowTournamentStore } from "./store.js";
+import { snowRoundRecoveryKey, type SnowTournamentStore } from "./store.js";
 import { SnowTournamentRecovery } from "./recovery.js";
 import type { SnowSignalSink, SignalChanges } from "./player-signals.js";
 
@@ -44,7 +44,7 @@ type Team = { id: string; captainId: string | null; drawOrder: number | null; me
 type Match = { id: string; stage: "round_robin" | "semifinal" | "final";
   teamAId: string | null; teamBId: string | null; attackerTeamId: string | null;
   scheduledAt: string | null; status: string;replays?:{gameIndex:number;voidedBattleId:string;replayBattleId:string;randomSeed:number;reason:"invalid_save";at:string}[] };
-type Edition = { id: string; rulesVersion: string; phase: string; registrationOpenAt:string; teams: Team[]; matches: Match[];
+type Edition = { id: string; rulesVersion: string; phase: string; registrationOpenAt:string; teams: Team[]; matches: Match[]; battleStarted?:boolean;
   standings: {teamId: string; rank: number}[]; roundRecovery?:Record<string,RoundRecovery> };
 type Line = { member: string; skills: string[] };
 type Lineup = { entries: Line[]; confirmed: boolean; revision?:number };
@@ -120,7 +120,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
   }
   hasStarted(editionId: string) {
     const edition = this.store.read(editionId) as Edition | null;
-    try { return edition ? edition.matches.some(m => {
+    try { return edition ? !!edition.battleStarted || edition.matches.some(m => {
       const state = this.read({editionId, matchId:m.id});
       return state?.active?.battle.runtime?.started || state?.rounds.some(Boolean);
     }) : null; } catch (error) { if(error instanceof SyntaxError) return null; throw error; }
@@ -131,14 +131,14 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
     catch(error) { if(error instanceof SyntaxError) return null; throw error; }
   }
 
-  private recoveryKey(ref:MatchRef,index:number) {return JSON.stringify([ref.matchId,index]);}
+  private recoveryKey(ref:MatchRef,index:number) {return snowRoundRecoveryKey(ref.matchId,index);}
   private retryCorrupt(input:HostInput):Runtime|null {
     const {edition}=this.match(input),entry=edition.roundRecovery?.[this.recoveryKey(input,input.gameIndex)];
     if (!entry) throw new Error("snow_round_recovery_setup_missing");
     entry.voided.push({battleId:entry.battleId,at:input.now,runtime:this.store.readMatchRuntimeText(input.editionId,input.matchId)});
     if (entry.attempt===1) {
       this.store.save(edition.id,edition.registrationOpenAt,edition);
-      this.recovery.cancelCorruptEdition(edition.id);
+      this.recovery.cancelCorruptEdition(edition.id,input.now);
       // Preserve the unreadable bytes in the void audit, while leaving a safe,
       // inactive runtime so the cancellation can invalidate existing wakes.
       this.store.saveMatchRuntime(input.editionId,input.matchId,{...entry.context,
@@ -303,7 +303,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       saved.rounds[round.index] = {
         battleId: battle.battleId, rulesVersion: battle.rulesVersion, attackSideId: battle.attackSideId,
         defendSideId: battle.defendSideId, status: battle.status, endReason: battle.endReason, tick: battle.tick, coreHp: battle.coreHp,
-        participants: this.participants(round),
+        participants: this.participants(round), finishedAt:round.nextTickAt-second,
       };
       return finish(null);
       };
@@ -469,7 +469,8 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
   }
 
   surrender(ref: MatchRef, actor: string, battleId: string) {
-    this.advanceBeforeAction(ref,this.now());
+    const now=this.now();
+    this.advanceBeforeAction(ref,now);
     this.mutate(ref, state => {
       const round = state.active, side = roles.find(role => round?.members[role] === actor);
       if (!round || !side || round.battle.battleId !== battleId || round.npc.includes(actor) ||
@@ -482,7 +483,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       round.waitAt = {};
       state.rounds[round.index] = {battleId, rulesVersion:battle.rulesVersion, attackSideId:battle.attackSideId,
         defendSideId:battle.defendSideId,status:battle.status,endReason:"surrender",tick:battle.tick,coreHp:battle.coreHp,
-        surrenderedBy:side,participants:this.participants(round)};
+        surrenderedBy:side,participants:this.participants(round),finishedAt:now};
     });
     this.notify(ref);
     this.wakeAfterAction();
