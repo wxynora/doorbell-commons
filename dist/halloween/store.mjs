@@ -9,10 +9,7 @@ export function canonical(value) {
 }
 
 export function emptyHousehold() {
-  return { version: 1, materials: {}, purchases: [], exploration: null,
-    lastExplorationDay: null, lastCollectionDay: null, eatenEffects: [], deliveredTotal: 0,
-    deliveredByDay: {}, deliveredToByDay: {}, npcDeliveryDays: [], npcMissedDays: [], npcArrivals: {}, collection: null,
-    collectionRewardClaimsVersion: 1, collectionRewardClaims: {} };
+  return { version: 1, eatenEffects: [] };
 }
 
 export class HalloweenStore {
@@ -109,21 +106,5 @@ export class HalloweenStore {
     return this.db.prepare(`UPDATE halloween_candies SET hidden_effect_json=?
       WHERE candy_id=? AND event_id=? AND owner_farm_id=? AND status='available'`)
       .run(JSON.stringify(effects), candyId, this.eventId, farmId).changes;
-  }
-  insertCandy({ id, owner, source, senderName = null, appearance, effect, rarity, image, now }) {
-    this.db.prepare(`INSERT INTO halloween_candies
-      (candy_id,event_id,owner_farm_id,source_json,appearance_json,hidden_effect_json,rarity,image,sender_name,status,created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,'available',?)`)
-      .run(id, this.eventId, owner, JSON.stringify(source), JSON.stringify(appearance), JSON.stringify(effect), rarity, image, senderName, now);
-  }
-  rewards(farmId) {
-    return this.db.prepare(`SELECT reward_id,reward_json,status,paid_at FROM halloween_reward_outbox
-      WHERE event_id=? AND farm_id=? ORDER BY reward_id`).all(this.eventId, farmId).map(row => ({
-        id: row.reward_id, reward: JSON.parse(row.reward_json), status: row.status, paidAt: row.paid_at,
-      }));
-  }
-  queueReward(farmId, key, reward) {
-    this.db.prepare(`INSERT INTO halloween_reward_outbox VALUES (?,?,?,?, 'pending',NULL)
-      ON CONFLICT(reward_id) DO NOTHING`).run(`${this.eventId}:${farmId}:${key}`, this.eventId, farmId, JSON.stringify(reward));
   }
 }

@@ -71,12 +71,13 @@ import { configureTogetherSeason3Authority, isTogetherSeason3, runStoredTogether
 import { TOGETHER_STORY_ENV, readTogetherSeason3StartupSelection, applyTogetherSeason3StartupSelection } from "./together-season3/activation.js";
 import { buyAndPersistLingyeNpcSeed, recordPendingLingyeNpcFarmBusiness } from "./npc/farm-business.js";
 import { createHalloweenFarmIntegration } from "./halloween/integration.mjs";
-import { isHalloweenMutationOption, isHalloweenOption } from "./halloween/together-activity.mjs";
+import { createHalloweenCandyTool, isHalloweenCandyEatOption } from "./halloween/candy-tool.mjs";
 import { withHalloweenFarmAction, currentHalloweenFarmAction } from "./halloween/action-effects.mjs";
 let activeLingyeWorldDatabase = null;
 let activeLingyeWorldBackend = null;
 let activeMysteryMerchantRuntime = null;
 let activeHalloweenFarmRuntime = null;
+let activeHalloweenCandyTool = null;
 configureTogetherSeason3Authority({getDatabase:()=>activeLingyeWorldDatabase,getBackend:()=>activeLingyeWorldBackend});
 function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     const detention = activeDetentionForFarm(farm, now);
@@ -84,8 +85,9 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
         return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: detentionBlockedFarmActionText(detention) } };
     if (action === 'decorate') return handleFarmDecorationAction(farm, params);
     if (isNpcMotionChoice(action, params)) return npcMotionChoiceReceipt(farm, params.option, now, {save, view: farmView, detail});
-    if (action === "together" && isHalloweenOption(params.option)) {
-        return activeHalloweenFarmRuntime.activity.execute({ farmId: farm.id, option: params.option, now });
+    if (action === "together" && isHalloweenCandyEatOption(params.option)) {
+        return activeHalloweenCandyTool?.execute({ farmId: farm.id, option: params.option, now }) ??
+            { status: 503, json: { ok: false, code: "service_unavailable", text: "小屋的门暂时没敲开，过会儿再来试试吧。" } };
     }
     if (action === 'together' && isMidAutumnOption(params.option)) {
         return runMidAutumnTogether(activeLingyeWorldDatabase, farm.id, params.option, now, null, (database, options) => createMidAutumnRuntime(database, {...options, backend: activeLingyeWorldBackend}));
@@ -126,28 +128,13 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     const injected = social
         ? { ...body, by: farm.id, token: farm.token, targetRef: String(resolved.number) }
         : { ...body, ...(mysteryMerchantBuy ? { by: farm.id } : {}), token: farm.token };
-    const suppressTogetherNotices = ["bag", "status", "visit"].includes(action) &&
-        activeHalloweenFarmRuntime?.service.phase(now) === "open";
+    const suppressTogetherNotices = ["bag", "status", "visit"].includes(action);
     const result = runFarm(target, action, injected, social ? farm.id : body.id, now,
         { detail, careerBenefits, suppressTogetherNotices });
-    if ((action === "bag" || action === "status") && result.status === 200 &&
+    if (action === "bag" && result.status === 200 &&
         result.json?.ok === true && typeof result.json.text === "string") {
-        const entries = action === "bag"
-            ? [activeHalloweenFarmRuntime?.activity.bagEntry({ farmId: farm.id, now })]
-            : [
-                activeHalloweenFarmRuntime?.activity.statusEntry({ farmId: farm.id, now }),
-                activeHalloweenFarmRuntime?.activity.receivedEntry({ farmId: farm.id, now }),
-            ];
-        const entry = entries.filter(Boolean).join("\n\n");
+        const entry = activeHalloweenCandyTool?.bagEntry({ farmId: farm.id });
         if (entry) result.json.text = `${result.json.text}\n\n${entry}`;
-    }
-    if (action === "visit" && resolved && resolved.farm.id !== farm.id &&
-        result.status === 200 && result.json?.ok === true && typeof result.json.text === "string") {
-        const doorstepEntry = activeHalloweenFarmRuntime?.activity.visitEntry({
-            farmId: farm.id, targetDoorplate: resolved.farm.id, now,
-        });
-        if (doorstepEntry)
-            result.json.text = `${result.json.text}\n\n${doorstepEntry}`;
     }
     if (action === 'together' && body.option === undefined && result.json?.ok === true) {
         const entry = midAutumnEntryText(now, farm);
@@ -161,18 +148,12 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     return result;
 }
 function executeDoorbellFarmAction(farm, action, params, detail, now, sourceOp) {
-    const halloweenActivityChoice = action === "together" && isHalloweenOption(params.option);
-    const halloweenActivityView = action === "together" &&
-        params.option === undefined && params.view !== "history" &&
-        activeHalloweenFarmRuntime?.service.phase(now) === "open";
-    const halloweenActivityRequest = halloweenActivityChoice || halloweenActivityView;
+    const halloweenCandyEat = action === "together" && isHalloweenCandyEatOption(params.option);
     const execute = () => {
         try {
             return withWorldCommitContext({ balanceAuthority: "farm", actor: "agent" }, () => {
-                const out = halloweenActivityView
-                    ? activeHalloweenFarmRuntime.activity.execute({ farmId: farm.id, option: "万圣节", now })
-                    : executeDoorbellFarmActionCore(farm, action, params, detail, now);
-                return halloweenActivityRequest ? out : appendNpcMotionReceipt(farm, out,
+                const out = executeDoorbellFarmActionCore(farm, action, params, detail, now);
+                return halloweenCandyEat ? out : appendNpcMotionReceipt(farm, out,
                     isNpcMotionChoice(action, params) ? undefined : sourceOp, now,
                     { motions: glimmerContentEditor.motions, save, restore: restoreCommittedWorldInMemory, getFarm, view: farmView, context:{args:params,residentId:farm.doorbellMcpMigration?.residentId ?? farm.id} });
             });
@@ -182,8 +163,6 @@ function executeDoorbellFarmAction(farm, action, params, detail, now, sourceOp) 
     const out = withHalloweenFarmAction(activeHalloweenFarmRuntime.service, {
         actorFarmId: farm.id, side: "ai", operationId: randomUUID(), now,
     }, execute);
-    if (action === "together" && isHalloweenMutationOption(params.option))
-        activeHalloweenFarmRuntime.scheduleFarm(farm.id);
     return out;
 }
 function executeLegacyMcpAction(me, action, params, now) {
@@ -1065,12 +1044,9 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         onReporterPublication: () => rescheduleReporterEvaluation(),
     });
     activeLingyeWorldBackend = lingyeWorldBackend;
-    const halloweenRuntime = createHalloweenFarmIntegration({
-        database: lingyeWorldDatabase,
-        backend: lingyeWorldBackend,
-        onNpcError: detail => console.error("[halloween-npc] delivery recovery pending", detail?.farmId, detail?.day, detail?.code),
-    });
+    const halloweenRuntime = createHalloweenFarmIntegration({ database: lingyeWorldDatabase });
     activeHalloweenFarmRuntime = halloweenRuntime;
+    activeHalloweenCandyTool = createHalloweenCandyTool({ service: halloweenRuntime.service });
     const gachaRuntime = createDoorbellGachaRuntime({
         database: lingyeWorldDatabase,
         backend: lingyeWorldBackend,
@@ -1547,10 +1523,9 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         }
     });
     setInterval(() => { const t = Date.now(); sweepGuard(t); sweepNonces(t); legacyAgent.sweepFlashes(t); }, 60_000).unref(); // 周期清理限流表 + 过期 nonce/flash
-    halloweenRuntime.startNpcDelivery();
     server.once("close", () => {
-        halloweenRuntime.stopNpcDelivery();
         if (activeHalloweenFarmRuntime === halloweenRuntime) activeHalloweenFarmRuntime = null;
+        if (activeHalloweenCandyTool) activeHalloweenCandyTool = null;
         stopP3Scheduler();
         stopNatureScheduler();
         stopConstableInterviewScheduler();

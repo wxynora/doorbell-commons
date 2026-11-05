@@ -438,7 +438,7 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "farm-creation" && parts.length === 3) {
-            await handleDoorbellFarmCreation(req, res, method, farm => halloweenRuntime?.scheduleNewFarm(farm.id));
+            await handleDoorbellFarmCreation(req, res, method);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "mcp-migrations" && parts[3] === "revoke-farm-access" && parts.length === 4) {

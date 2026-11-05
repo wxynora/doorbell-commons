@@ -13,6 +13,5 @@ export function createDoorbellHalloweenHumanHandler(runtime) {
     resolveBinding: input => validateFarmBinding(input),
     service: runtime.service,
     withAuthorityAction: (input, operation) => runtime.authority.withAuthorityAction(input, operation),
-    onAuthorizedMutation: ({ farmId }) => runtime.scheduleFarm(farmId),
   });
 }

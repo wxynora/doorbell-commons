@@ -1,82 +1,33 @@
-import { HalloweenService } from './service.mjs';
 import { installHalloweenSchema } from './schema.mjs';
-import { createHalloweenFarmAuthorityAdapter } from './authority-adapter.mjs';
-import { createHalloweenTogetherActivity } from './together-activity.mjs';
+import { HalloweenError, HalloweenService } from './service.mjs';
 import { createHalloweenFarmEffectHooks } from './action-effects.mjs';
-import { createHalloweenNpcDeliveryRuntime } from './npc-delivery-runtime.mjs';
-import { createHalloweenMaterialCloseout } from './material-closeout.mjs';
 
-// The Farm entrypoint supplies its one existing Lingye SQLite connection,
-// economy backend, Farm persistence port, and verified Farm catalogues here.
-// Event mechanics never open their own database connection or invent defaults.
-export function createHalloweenFarmRuntime({ database, backend, persistence, getFarm,
-  resolveFarmByDoorplate, listFarmNeighbors, listFarmIds, crops, titles,
-  eventId = 'halloween-2026', opensAt, closesAt, economy, collection, rewards,
-  appearance, renderCandy, npcRoster, random, generateId, generateSeed, resolveCollectionClearReward,
-  now = Date.now, onNpcError, onRewardError }) {
-  if (!((opensAt == null && closesAt == null) || (Number.isSafeInteger(opensAt) &&
-      Number.isSafeInteger(closesAt) && closesAt > opensAt)) ||
-      !economy || !collection || !rewards || !appearance || typeof renderCandy !== 'function' ||
-      !Array.isArray(npcRoster) || !npcRoster.length || typeof listFarmIds !== 'function')
+const requiredText = value => typeof value === 'string' && value.trim().length > 0;
+
+export function createHalloweenFarmRuntime({ database, eventId = 'halloween-2026', random } = {}) {
+  if (!database || typeof database.exec !== 'function' || typeof database.prepare !== 'function' ||
+      !requiredText(eventId) || (random !== undefined && typeof random !== 'function'))
     throw new TypeError('halloween_runtime_configuration_unavailable');
 
-  const authority = createHalloweenFarmAuthorityAdapter({ database, backend, persistence, getFarm,
-    resolveFarmByDoorplate, listFarmNeighbors, crops, titles, eventId });
   installHalloweenSchema(database);
-  const service = new HalloweenService(database, { eventId, opensAt, closesAt, economy, collection, rewards,
-    appearance, renderCandy, npcRoster, titles, random, generateId, generateSeed,
-    resolveCollectionClearReward, withRewardSavepoint: authority.withRewardSavepoint,
-    debitSilver: authority.debitSilver, applyCurrency: authority.applyCurrency,
-    grantReward: authority.grantReward, resolveNeighbor: authority.resolveNeighbor,
-    listNeighbors: authority.listNeighbors });
+  const service = new HalloweenService(database, { eventId, ...(random ? { random } : {}) });
   const effectHooks = createHalloweenFarmEffectHooks(service);
-  const npcDelivery = createHalloweenNpcDeliveryRuntime({ service, listFarmIds, now, onError: onNpcError });
-  const reportRewardError = onRewardError ?? (detail =>
-    console.error('[halloween-reward] recovery pending', detail.farmId, detail.code));
-  const materialCloseout = createHalloweenMaterialCloseout({ service, authority,
-    rates: economy.materialCloseoutGoldByTier, now, onError: reportRewardError });
-  const pendingForFarm = database.prepare(`SELECT 1 FROM halloween_reward_outbox
-    WHERE event_id=? AND farm_id=? AND status='pending' LIMIT 1`);
-  const recoverPendingRewards = ({ farmId, side, requestId, now: recoveryTime }) => {
-    try {
-      if (!pendingForFarm.get(eventId, farmId)) return;
-      authority.withAuthorityAction({ farmId, side, requestId: `reward-recovery:${requestId}`, now: recoveryTime },
-        () => service.settleRewards(farmId, recoveryTime));
-    } catch (error) {
-      reportRewardError({ farmId, code: error.code ?? error.message });
-    }
-  };
-  const actionAuthority = Object.freeze({ ...authority,
-    withAuthorityAction(input, operation) {
-      const result = authority.withAuthorityAction(input, operation);
-      if (input.op && input.op !== 'gift') {
-        recoverPendingRewards(input);
-        materialCloseout.settleFarm(input.farmId, input.now);
-      }
-      return result;
-    },
-  });
-  const activityWithRecovery = createHalloweenTogetherActivity({ service,
-    withAuthorityAction: actionAuthority.withAuthorityAction, ...(generateId ? { generateId } : {}) });
-
-  return Object.freeze({ service, authority: actionAuthority, activity: activityWithRecovery, effectHooks, npcDelivery,
-    scheduleFarm(farmId) { npcDelivery.scheduleFarm(farmId); },
-    scheduleNewFarm(farmId) { npcDelivery.scheduleFarm(farmId); },
-    // The existing Farm startup hook also restores any durable reward outbox.
-    startNpcDelivery() {
-      let pendingFarms = [];
+  const authority = Object.freeze({
+    withAuthorityAction({ farmId, side, requestId, now }, operation) {
+      if (!requiredText(farmId) || !['human', 'ai'].includes(side) || !requiredText(requestId) ||
+          !Number.isSafeInteger(now) || typeof operation !== 'function')
+        throw new HalloweenError('invalid_request', 400);
+      database.exec('SAVEPOINT halloween_farm_action');
       try {
-        pendingFarms = database.prepare(`SELECT DISTINCT farm_id FROM halloween_reward_outbox
-          WHERE event_id=? AND status='pending'`).all(eventId);
+        const result = operation();
+        if (result && typeof result.then === 'function') throw new HalloweenError('async_farm_action_not_supported', 503);
+        database.exec('RELEASE halloween_farm_action');
+        return result;
       } catch (error) {
-        reportRewardError({ farmId: null, code: error.code ?? error.message });
+        database.exec('ROLLBACK TO halloween_farm_action; RELEASE halloween_farm_action');
+        throw error;
       }
-      const recoveryTime = now();
-      for (const row of pendingFarms) recoverPendingRewards({ farmId: row.farm_id, side: 'human',
-        requestId: 'startup', now: recoveryTime });
-      materialCloseout.start();
-      npcDelivery.start();
     },
-    stopNpcDelivery() { npcDelivery.stop(); materialCloseout.stop(); },
   });
+  return Object.freeze({ service, authority, effectHooks });
 }
