@@ -39,7 +39,7 @@ export async function sendCandyCommand<T>(payload: CandyCommand, options: { sign
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      signal: options.signal,
+      ...(options.signal ? { signal: options.signal } : {}),
     });
   } catch {
     throw Object.assign(new Error("小幽灵没带回回信。点「再问一次」确认刚才的结果。"), { uncertain: true });
