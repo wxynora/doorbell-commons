@@ -1,5 +1,6 @@
 // 核心引擎：惰性生长 + 抽卡收获 + 浇水运气 + 偷菜 + 商店 + 土地升级。
 import { stageAnnualCounters } from "./annual-statistics/world-buffer.js";
+import { championCropBonus } from "./domain/champion-harvest.js";
 import { Rng } from "./rng.js";
 import { rollCrop, rollQuality, cropValue } from "./gacha.js";
 import { currentSeason, currentDayIndex, currentWeather } from "./time.js";
@@ -325,6 +326,7 @@ export function harvest(farm, plotId, now, seasonMod, options = {}) {
     if (qixiSilver !== null && bonus?.effectType === "倍率")
         bonus = null; // 七夕作物只按审定的基础银币与品相倍率结算，不展示未生效的金币价值倍率事件
     let value = qixiSilver ?? cropValue(crop, quality);
+    const championExtraValue = championCropBonus(farm, value, now);
     const halloweenBaseGold = qixiSilver === null ? value : null;
     if (qixiSilver === null) {
         // 旧农场每块地只结算一份作物，因此“基础产量”落在该份基础金币价值上；
@@ -350,7 +352,7 @@ export function harvest(farm, plotId, now, seasonMod, options = {}) {
             farmId: farm.id, plotId, now, baseGold: halloweenBaseGold, effective: true,
         }));
     }
-    value += extraValue;
+    value += extraValue + championExtraValue;
     if (apply && seasonMod.capLeft)
         seasonMod.capLeft.n -= 1; // 吃掉一株名额
     if (qixiSilver === null)

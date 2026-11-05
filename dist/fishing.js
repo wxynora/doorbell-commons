@@ -8,6 +8,7 @@ import { currentSeason, currentDayIndex, currentWeather } from "./time.js";
 import { bumpDaily } from "./daily.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import { glimmerBuffMultiplier } from "./glimmer.js";
+import { championBonusItem } from "./domain/champion-harvest.js";
 import { qixi2026FishText, submitQixi2026Fish } from "./qixi-2026.js";
 import { submitMidAutumnSeedFish, midAutumnSeedCompletionText } from './mid-autumn-seeds.js';
 import { halloweenFishingJunkProbability } from "./halloween/action-effects.mjs";
@@ -447,14 +448,18 @@ function castStep(farm, state, rng, bait, now) {
     const rarity = fishing.rarities[fishDef.rarity].label;
     const first = caught.first ? `\n🆕 首次收录，额外 +${caught.bonus} 银。` : "";
     const luck = lucky && !((qixi?.submittedIds?.includes(caught.instance.id) || midAutumnSeed?.submittedIds?.includes(caught.instance.id)) && lucky.id === "golden_touch") ? `\n${lucky.text}` : "";
-    let text = `🐟 ${fishDef.name} · ${rarity} · ${caught.instance.size}${fishDef.size_unit} · 可卖 ${caught.instance.sellSilver} 银〔${caught.instance.publicRef}〕${first}${feverText}${luck}`;
+    const catchLine = fish => `🐟 ${fishDef.name} · ${rarity} · ${fish.size}${fishDef.size_unit} · 可卖 ${fish.sellSilver} 银〔${fish.publicRef}〕`;
+    let text = `${catchLine(caught.instance)}${first}${feverText}${luck}`;
     for (const id of [...(qixi?.submittedIds ?? []), ...(midAutumnSeed?.submittedIds ?? [])]) {
         const publicRef = publicRefById.get(id);
         if (publicRef)
             text = text.replace(new RegExp(` · 可卖 \\d+ 银〔${publicRef}〕`), "").replaceAll(`〔${publicRef}〕`, "");
     }
+    const championExtra = championBonusItem(farm, "fishing", now);
+    if (championExtra)
+        text += `\n${catchLine(recordCatch(farm, state, fishDef, caught.instance.size).instance)}`;
     return {
-        consumed: true, kind: "fish", fishName: fishDef.name, rarity: fishDef.rarity,
+        consumed: true, kind: "fish", fishName: fishDef.name, rarity: fishDef.rarity, championExtra,
         first: caught.first, luck: lucky?.id, qixi,
         midAutumnSeed,
         text: midAutumnSeed ? `${text}\n中秋任务：银鲦 ×${midAutumnSeed.submitted} 已自动提交（${midAutumnSeed.progress}/2）。\n${midAutumnSeedCompletionText(midAutumnSeed)}`.trim() : text,
@@ -521,8 +526,9 @@ function castMany(farm, state, farms, params, now) {
         const result = castStep(farm, state, rng, nextBait.bait, now);
         done++;
         if (result.kind === "fish") {
-            fishCount++;
-            caught.set(result.fishName, (caught.get(result.fishName) ?? 0) + 1);
+            const quantity = 1 + result.championExtra;
+            fishCount += quantity;
+            caught.set(result.fishName, (caught.get(result.fishName) ?? 0) + quantity);
             if (result.qixi) {
                 qixiResult = {
                     ...result.qixi,
