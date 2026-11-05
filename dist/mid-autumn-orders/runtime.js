@@ -5,7 +5,7 @@ import {EVENT_ID} from './catalog.js';
 
 // Credit the existing ledger and stage the Farm projection in one service transaction.
 export function createMidAutumnRuntime(database, options = {}) {
-  const persistence = createFarmWorldSqlitePersistence(database);
+  let persistence;
   const resolveFarm = options.getFarm ?? getFarm;
   let publication = null;
   const service = new MidAutumnService(database, {...options, grantGiftReward(farmId,reward) {
@@ -34,6 +34,7 @@ export function createMidAutumnRuntime(database, options = {}) {
   }});
   return {execute(input,now) {
     if (database.isTransaction) throw new Error('mid_autumn_runtime_requires_transaction_boundary');
+    if (input?.op === 'send') persistence = createFarmWorldSqlitePersistence(database);
     publication = null;
     try {
       const result = service.execute(input,now);
@@ -44,6 +45,6 @@ export function createMidAutumnRuntime(database, options = {}) {
         farm.doorbellMcpMigration.balanceProjection = working.doorbellMcpMigration.balanceProjection;
       }
       return result;
-    } finally {publication = null;}
+    } finally {publication = null; persistence = undefined;}
   }};
 }

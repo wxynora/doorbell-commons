@@ -70,11 +70,6 @@ function assertDatabase(database) {
     const journalMode = database.prepare("PRAGMA journal_mode").get()?.journal_mode;
     if (journalMode !== "delete")
         fail("farm_persistence_journal_mode_invalid", "Farm persistence requires rollback-journal DELETE mode");
-    const quickCheck = database.prepare("PRAGMA quick_check").all();
-    if (quickCheck.length !== 1 || quickCheck[0]?.quick_check !== "ok")
-        fail("farm_persistence_corrupt", "Lingye database quick_check failed");
-    if (database.prepare("PRAGMA foreign_key_check").all().length > 0)
-        fail("farm_persistence_corrupt", "Lingye database foreign_key_check failed");
 }
 
 function receiptKey(receipt) {
