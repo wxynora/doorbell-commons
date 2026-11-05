@@ -1,4 +1,5 @@
 import {houseStyleName} from './house.js';
+import {championLeaseSuffix} from './champion-lease.js';
 import {projectDecorationGrid} from './decorate-plan.js';
 
 const value=v=>JSON.stringify(v);
@@ -21,7 +22,7 @@ export function decorationViewText(farm,resource){
     '已摆放：',
     ...view.instances.map(o=>`${o.code} ${o.name}｜实例编号：${o.instance}｜位置：${o.anchor}｜朝向：${o.facing}｜占格：${cells(o.cells)}`),
     '仓库可用：',
-    ...view.inventory.map(i=>`${i.definition.name}｜代号：${i.definition.model_id}｜占地：${i.definition.cells.join('×')}｜${i.definition.purchase_mode==='unlock'?'已解锁，可重复摆放':`还能摆${i.available_quantity}件`}`),
+    ...view.inventory.map(i=>`${i.definition.name}${championLeaseSuffix(resource,i.definition.item_id)}｜代号：${i.definition.model_id}｜占地：${i.definition.cells.join('×')}｜${i.definition.purchase_mode==='unlock'?'已解锁，可重复摆放':`还能摆${i.available_quantity}件`}`),
   ].join('\n');
 }
 export function decorationSummary(draft){

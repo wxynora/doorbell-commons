@@ -1,6 +1,7 @@
 // Separate namespace: old ranch decoration holdings are never imported here.
 const rows = [
   ["snow_fort", "团团雪堡", 3, 2, 0],
+  ["snow_king", "雪王", 4, 3, 0],
   ["small_snow_fort", "团团小雪堡", 1, 1, 0],
   ["house_level_two", "二级房屋升级", 1, 1, 150000, "unlock", "house"],
   ["house_level_three", "三级房屋升级", 1, 1, 300000, "unlock", "house"],
@@ -139,7 +140,7 @@ export function farmDecorationSaleDescription(item, now = Date.now(), saleStartA
 
 export function isDecorationSaleOpen(item, now = Date.now(), saleStartAt = WITCH_PUMPKIN_SALE_START_AT) {
   const id = typeof item === "string" ? item : item?.item_id;
-  if (["farm_decor:snow_fort", "farm_decor:small_snow_fort"].includes(id)) return false; // Activity reward only; also excluded from gacha.
+  if (["farm_decor:snow_fort", "farm_decor:small_snow_fort", "farm_decor:snow_king"].includes(id)) return false; // Activity reward only; also excluded from gacha.
   if (id === WITCH_PUMPKIN_DECORATION_ID) {
     const window = witchPumpkinSaleWindow(saleStartAt);
     const currentTime = Number(now);

@@ -1,14 +1,15 @@
+import { currentChampionLayout } from "./champion-lease.js";
 // Human layout snapshots share the existing farm document and replaceFarm write.
 // They never own furniture, coins or crop state.
 export const isLayoutSlot = value => Number.isInteger(value) && value >= 1 && value <= 3;
-export function savedLayoutSlots(farm) {
+export function savedLayoutSlots(farm,now=Date.now()) {
   const slots=farm.farmDecorationLayouts??[];
   if(!Array.isArray(slots)||slots.length>3||new Set(slots.map(s=>s?.slot)).size!==slots.length||
      slots.some(s=>!s||!isLayoutSlot(s.slot)||!s.layout||Object.keys(s).some(k=>!['slot','layout','name'].includes(k))||(s.name!==undefined&&typeof s.name!=='string')))throw new Error('Invalid saved layout slots');
-  return structuredClone(slots).sort((a,b)=>a.slot-b.slot);
+  return structuredClone(slots).map(slot=>({...slot,layout:currentChampionLayout(farm,slot.layout,now)})).sort((a,b)=>a.slot-b.slot);
 }
-export function layoutSlotSummaries(farm) {
-  return savedLayoutSlots(farm).map(({slot,layout,name})=>({slot,decoration_count:layout.decorations.length,...(name?{name}:{})}));
+export function layoutSlotSummaries(farm,now=Date.now()) {
+  return savedLayoutSlots(farm,now).map(({slot,layout,name})=>({slot,decoration_count:layout.decorations.length,...(name?{name}:{})}));
 }
 export function saveLayoutSlot(farm,slot,layout,name) {
   const slots=savedLayoutSlots(farm),normalized=(name??slots.find(s=>s.slot===slot)?.name??'').trim();

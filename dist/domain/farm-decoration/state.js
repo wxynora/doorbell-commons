@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { currentChampionState, championLease, CHAMPION_FURNITURE_ID } from "./champion-lease.js";
 import { FARM_DECORATION_CATALOG, WITCH_PUMPKIN_DECORATION_ID, decorationById, farmDecorationPrice, farmDecorationSaleDescription, isDecorationSaleOpen } from "./catalog.js";
 import { decorationGrid } from "./layout.js";
 import { bumpDaily } from "../../daily.js";
@@ -7,7 +8,7 @@ import { relocateWaterwheels } from "./waterwheel-relocation.js";
 import { DEFAULT_HOUSE_POSITION } from "./house-geometry.js";
 import { normalizeFieldLayout } from "./field-layout.js";
 
-export function decorationState(farm) {
+export function decorationState(farm, now=Date.now()) {
   if (farm.farmDecorations === undefined) return { version: 2, owned: {}, layout: { house: {...DEFAULT_HOUSE_POSITION}, roof: "mint", canopy: "plain", stall: { x: -3.76, z: 2.32, rotation: 0 }, decorations: [] } };
   const state = farm.farmDecorations;
   if (!state || ![1, 2].includes(state.version) || !state.owned || typeof state.owned !== "object" || Array.isArray(state.owned) || !state.layout || !Array.isArray(state.layout.decorations)) throw new Error("Invalid farm decoration state");
@@ -26,7 +27,7 @@ export function decorationState(farm) {
     relocateWaterwheels(result.layout, farm.plots ?? []);
     result.version = 2;
   }
-  return result;
+  return currentChampionState(farm,result,now);
 }
 function decorationCatalogFor(owned, now, saleStartAt) {
   return FARM_DECORATION_CATALOG
@@ -41,12 +42,12 @@ function decorationCatalogFor(owned, now, saleStartAt) {
     });
 }
 export function decorationRevision(farm, now = Date.now(), saleStartAt) {
-  const state = decorationState(farm);
+  const state = decorationState(farm,now);
   const catalog = decorationCatalogFor(state.owned, now, saleStartAt);
   return `farm-decoration-v1:${createHash("sha256").update(JSON.stringify({ coins: farm.coins, state, plots: (farm.plots ?? []).map(plot => plot.id), catalog, saved_layouts:farm.farmDecorationLayouts })).digest("hex")}`;
 }
 export function decorationResource(farm, now = Date.now(), saleStartAt) {
-  const state = decorationState(farm);
+  const state = decorationState(farm,now);
   if (!Number.isSafeInteger(farm.coins) || farm.coins < 0) throw new Error("Invalid farm coin balance");
   return {
     catalog: decorationCatalogFor(state.owned, now, saleStartAt),
@@ -54,7 +55,7 @@ export function decorationResource(farm, now = Date.now(), saleStartAt) {
     inventory: FARM_DECORATION_CATALOG.filter(item => item.layer !== "house").map(item => {
       const owned_quantity = state.owned[item.item_id] ?? 0;
       const placed_quantity = state.layout.decorations.filter(instance => instance.item_id === item.item_id).length;
-      return { item_id: item.item_id, owned_quantity, placed_quantity, available_quantity: item.purchase_mode === "unlock" ? null : owned_quantity - placed_quantity, unlocked: owned_quantity > 0 };
+      return { item_id: item.item_id, owned_quantity, placed_quantity, available_quantity: item.purchase_mode === "unlock" ? null : owned_quantity - placed_quantity, unlocked: owned_quantity > 0, ...(item.item_id===CHAMPION_FURNITURE_ID && championLease(farm) ? {expires_at:new Date(championLease(farm).expires_at).toISOString()} : {}) };
     }),
     layout: state.layout, coins: farm.coins, grid: decorationGrid(farm, state.layout.house, state.layout.field),
   };

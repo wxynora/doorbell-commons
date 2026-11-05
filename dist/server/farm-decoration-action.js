@@ -13,7 +13,7 @@ export function projectHumanFarmDecorations(farm, now = Date.now()) {
   const hour = ((now / 3600000 + 8) % 24 + 24) % 24;
   const night = hour < 5 || hour >= 19 ? 1 : hour < 7 ? (7 - hour) / 2 : hour < 17 ? 0 : (hour - 17) / 2;
   return {
-    data: { ...decorationResource(farm), saved_layouts: layoutSlotSummaries(farm), environment: {
+    data: { ...decorationResource(farm,now), saved_layouts: layoutSlotSummaries(farm,now), environment: {
       status: nature.status,
       season: nature.season ? { id: nature.season.id, name: nature.season.name } : null,
       weather: nature.weather ? { condition: nature.weather.condition } : null,
@@ -21,7 +21,7 @@ export function projectHumanFarmDecorations(farm, now = Date.now()) {
       disaster: nature.currentEvent ? { type: nature.currentEvent.type, phase: nature.currentEvent.phase } : null,
       flood: floodVisuals(world, farm),
     } },
-    revision: decorationRevision(farm), server_time: new Date(now).toISOString(),
+    revision: decorationRevision(farm,now), server_time: new Date(now).toISOString(),
   };
 }
 function canonical(value) {
@@ -51,14 +51,14 @@ export function handleHumanFarmDecorationSave(farm, body, now = Date.now()) {
       const replay = replayMinimalHumanActionReceipt(receipts[body.idempotency_key], fingerprint, response(farm, now, null));
       return replay ? { status: 200, json: replay } : error("idempotency_conflict");
     }
-    const revision = decorationRevision(farm);
+    const revision = decorationRevision(farm,now);
     if (body.expected_revision !== revision) return error("state_conflict", revision);
     const layout=loading||renaming?savedLayoutSlots(farm).find(s=>s.slot===(renaming?body.rename_slot:body.load_slot))?.layout:body.layout;
     if((loading||renaming)&&!layout)return error("layout_slot_empty");
     const working = structuredClone(farm);
     if(renaming)renameLayoutSlot(working,body.rename_slot,body.name);
     else {
-      const state = decorationState(farm), invalid = validateDecorationLayout(farm, layout, state.owned);
+      const state = decorationState(farm,now), invalid = validateDecorationLayout(farm, layout, state.owned);
       if (invalid) return error(invalid);
       working.farmDecorations = { ...state, layout: structuredClone(layout) };
       if(Object.hasOwn(body,"save_slot"))saveLayoutSlot(working,body.save_slot,layout,body.name);

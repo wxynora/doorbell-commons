@@ -84,6 +84,8 @@ import {
 } from "./gacha.js";
 
 import { handleTogetherReward, handleTogetherRegistration } from "./together-reward.js";
+import { handleTournamentFurniture } from "./tournament-furniture.js";
+import { handleTournamentRegistration } from "./tournament-registration.js";
 import { readBody as readTogetherBody, jsonOut as togetherJsonOut } from "../http.js";
 import { requireDoorbellService as authorizeTogetherReward } from "./contract.js";
 
@@ -92,6 +94,18 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
     return async function handleDoorbellInternal(req, res, parts, method) {
         if (parts.join("/") === "internal/doorbell/halloween/human") {
             await halloweenHumanHandler(req, res, method);
+            return true;
+        }
+        if (["internal/doorbell/together/registration/read", "internal/doorbell/together/registration/refund"].includes(parts.join("/"))) {
+            await handleTournamentRegistration(req, res, method, constableInterviewRuntime, {
+                authorize: authorizeTogetherReward, readBody: readTogetherBody, jsonOut: togetherJsonOut, error: internalServiceError,
+            }, parts[4]);
+            return true;
+        }
+        if (parts.join("/") === "internal/doorbell/together/furniture") {
+            await handleTournamentFurniture(req,res,method,constableInterviewRuntime,{
+                authorize: authorizeTogetherReward, readBody: readTogetherBody, jsonOut: togetherJsonOut, error: internalServiceError,
+            });
             return true;
         }
         if (["internal/doorbell/together/reward", "internal/doorbell/together/registration"].includes(parts.join("/"))) {
