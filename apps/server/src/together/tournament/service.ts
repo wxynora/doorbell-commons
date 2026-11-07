@@ -1,5 +1,6 @@
 import type { SnowTournamentResponse } from "@doorbell/protocol";
 import type { SnowTournamentStore } from "./store.js";
+import { snowTeamLimit } from "./roster.js";
 
 export class SnowTournamentService {
   constructor(private readonly store: SnowTournamentStore, private readonly project: (value: unknown) => SnowTournamentResponse,
@@ -13,7 +14,7 @@ export class SnowTournamentService {
     const raw = edition as { id:string; enrollments?:unknown[]; teams: { members: { name:string }[] }[]; matches:{id:string; status:string;
       games?:{attackerTeamId:string; defenderTeamId:string; winnerTeamId:string; coreDamage:number; breakTimeRemaining:number; endTick?:number; endReason?:string}[]}[] };
     // Do not publish per-person economic state or even an inferred team settlement status.
-    return this.project({ edition:{...raw,enrolledCount:raw.enrollments?.length??0,teamLimit:Math.floor((raw.enrollments?.length??0)/3), matches:raw.matches.map(match => {
+    return this.project({ edition:{...raw,enrolledCount:raw.enrollments?.length??0,teamLimit:snowTeamLimit(raw.enrollments?.length??0), matches:raw.matches.map(match => {
       const progress = this.live?.({editionId:raw.id,matchId:match.id});
       return {...match, ...(progress ? {scheduledAt:progress.scheduledAt,
         status:match.status==="scheduled" && progress.started ? "in_progress" : match.status} : {}),roundResults:(match.games??[]).map((game,index)=>({

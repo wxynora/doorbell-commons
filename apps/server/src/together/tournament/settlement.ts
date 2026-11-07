@@ -5,7 +5,7 @@ import type { SnowTournamentTeamService } from "./team-service.js";
 
 type SettlementEdition = {
   id: string; phase: string; registrationOpenAt:string; registrationCloseAt: string; teamFormationCloseAt:string; registrationRounds: RegistrationRound[];
-  teams: {id:string; status:string; members:{id:string}[]}[];
+  teams: {id:string; status:string; members:{id:string;npc?:true}[]}[];
   matches: { games?: {
     battleId:string; attackerTeamId:string; defenderTeamId:string; winnerTeamId:string;
     endReason?:SnowTournamentTerminal["endReason"]; participants?:SnowTournamentTerminal["participants"];
@@ -64,6 +64,7 @@ export function planSnowTournamentGrants(edition: SettlementEdition): Grant[] {
   }
   const champion=edition.bracket.championTeamId;
   if (champion && naturalTeams.has(champion)) for (const member of edition.teams.find(t=>t.id===champion)?.members ?? []) {
+    if (member.npc) continue;
     const residentId=member.id;
     grants.push({id:grantKey(edition.id,"champion",residentId),residentId,kind:"champion",gold:100_000,silver:100});
   }

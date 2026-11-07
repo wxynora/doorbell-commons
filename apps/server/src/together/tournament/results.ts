@@ -7,7 +7,7 @@ type Game = { battleId:string; attackerTeamId:string; defenderTeamId:string; win
   endTick?:number; endReason?:SnowTournamentTerminal["endReason"]; participants?:SnowTournamentTerminal["participants"] };
 type Match = { id:string; stage:"round_robin"|"semifinal"|"final"; round:number; teamAId:string|null; teamBId:string|null; attackerTeamId:string|null; defenderTeamId:string|null; status:"scheduled"|"in_progress"|"completed"|"forfeit"|"cancelled"; scheduledAt:string|null; score:[number,number]|null; winnerTeamId:string|null; games?:Game[]; plannedAttackers?:[string,string,string] };
 type State = { id:string; phase:string; rulesVersion:string; registrationOpenAt:string; revision:number; battleStarted?:boolean; calendar?:SnowTournamentCalendar;
-  teams:{id:string;status:string;drawOrder:number|null;captainId:string|null;members:{id:string}[];ineligibleMemberIds?:string[]}[]; matches:Match[]; standings:unknown[];
+  teams:{id:string;status:string;drawOrder:number|null;captainId:string|null;members:{id:string;npc?:true}[];ineligibleMemberIds?:string[]}[]; matches:Match[]; standings:unknown[];
   bracket:{semifinalMatchIds:string[];finalMatchId:string|null;championTeamId:string|null}; registrationRounds:RegistrationRound[] };
 
 export type SnowTournamentTerminal = {
@@ -113,8 +113,8 @@ export class SnowTournamentResults {
       const excluded=team.ineligibleMemberIds ?? [];
       if (excluded.includes(residentId)) return;
       excluded.push(residentId); team.ineligibleMemberIds=excluded;
-      if (team.captainId===residentId) team.captainId=team.members.find(m=>!excluded.includes(m.id))?.id ?? null;
-      if (team.members.every(m=>excluded.includes(m.id))) {
+      if (team.captainId===residentId) team.captainId=team.members.find(m=>!m.npc&&!excluded.includes(m.id))?.id ?? null;
+      if (team.members.every(m=>m.npc||excluded.includes(m.id))) {
         const started=this.engine.hasStarted(editionId);
         if (started===null || (!started && state.battleStarted)) throw new Error("engine_start_unverified");
         state.battleStarted ||= started; this.applyWithdrawals(state,[team.id]);

@@ -3,6 +3,7 @@ import type { SnowTournamentScheduleHost } from "./scheduler.js";
 import { snowRoundRecoveryKey, type SnowTournamentStore } from "./store.js";
 import { SnowTournamentRecovery } from "./recovery.js";
 import type { SnowSignalSink, SignalChanges } from "./player-signals.js";
+import type { SnowTeamMember } from "./roster.js";
 
 type Role = "attack" | "defend";
 type HostInput = Parameters<SnowTournamentScheduleHost["reconcileMatch"]>[0];
@@ -40,7 +41,7 @@ export type SnowPlayerSignal={
   kind:"chat"|"lineup"|"prepare"|"started"|"action";
   facts:unknown;
 };
-type Team = { id: string; captainId: string | null; drawOrder: number | null; members: { id: string }[]; ineligibleMemberIds?: string[] };
+type Team = { id: string; captainId: string | null; drawOrder: number | null; members: SnowTeamMember[]; ineligibleMemberIds?: string[] };
 type Match = { id: string; stage: "round_robin" | "semifinal" | "final";
   teamAId: string | null; teamBId: string | null; attackerTeamId: string | null;
   scheduledAt: string | null; status: string;replays?:{gameIndex:number;voidedBattleId:string;replayBattleId:string;randomSeed:number;reason:"invalid_save";at:string}[] };
@@ -77,6 +78,10 @@ type RoundRecovery={attempt:0|1;input:Parameters<SnowMatchEngine["create"]>[0];
 const second = 1000;
 const minute = 60 * second;
 const roles = ["attack", "defend"] as const;
+function readyNpcSeats(teams:Team[],members:Record<Role,string>) {
+  const npc=roles.map(side=>members[side]).filter(id=>teams.some(team=>team.members.some(member=>member.id===id&&member.npc)));
+  return {ready:[...npc],npc};
+}
 
 /** Per-match state, bound to this edition and match, never to the old activity. */
 export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
@@ -133,7 +138,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
 
   private recoveryKey(ref:MatchRef,index:number) {return snowRoundRecoveryKey(ref.matchId,index);}
   private retryCorrupt(input:HostInput):Runtime|null {
-    const {edition}=this.match(input),entry=edition.roundRecovery?.[this.recoveryKey(input,input.gameIndex)];
+    const {edition,teams}=this.match(input),entry=edition.roundRecovery?.[this.recoveryKey(input,input.gameIndex)];
     if (!entry) throw new Error("snow_round_recovery_setup_missing");
     entry.voided.push({battleId:entry.battleId,at:input.now,runtime:this.store.readMatchRuntimeText(input.editionId,input.matchId)});
     if (entry.attempt===1) {
@@ -158,9 +163,10 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
     (latest.matches.find(match=>match.id===input.matchId)!.replays??=[]).push({gameIndex:input.gameIndex+1,voidedBattleId,
       replayBattleId:entry.battleId,randomSeed,reason:"invalid_save",at:new Date(input.now).toISOString()});
     battle.runtime={started:false};
+    const members={attack:entry.input.participants.attack[0]!,defend:entry.input.participants.defend[0]!};
     const state:Runtime={...structuredClone(entry.context),owner:this.owner,lastSeenAt:input.now,
-      active:{index:input.gameIndex,battle,members:{attack:entry.input.participants.attack[0]!,defend:entry.input.participants.defend[0]!},
-        ready:[],npc:[],prepareUntil:input.now+2*minute,nextTickAt:null,batches:{},waitAt:{}}};
+      active:{index:input.gameIndex,battle,members,...readyNpcSeats(teams,members),
+        prepareUntil:input.now+2*minute,nextTickAt:null,batches:{},waitAt:{}}};
     (latest.roundRecovery??={})[this.recoveryKey(input,input.gameIndex)]=entry;
     this.store.save(latest.id,latest.registrationOpenAt,latest);
     this.store.saveMatchRuntime(input.editionId,input.matchId,state);
@@ -273,7 +279,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       const battle = this.engine.restore(round.battle);
       if (round.nextTickAt === null) {
         if (input.now < round.prepareUntil && round.ready.length < 2) return finish(round.prepareUntil);
-        round.npc = roles.map(side => round.members[side]).filter(id => !round.ready.includes(id));
+        round.npc = roles.map(side => round.members[side]).filter(id => round.npc.includes(id) || !round.ready.includes(id));
         const startAt=round.ready.length===2 ? Math.min(round.prepareUntil,round.lastReadyAt??input.now) : round.prepareUntil;
         round.nextTickAt = startAt + second;
         battle.runtime = { started: true };
@@ -325,7 +331,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
   private discussion(state:Runtime,team:Team,key:"0"|"1",now:number) {
     const starts=state.matchAt-8*minute, ends=state.matchAt-2*minute;
     if (now<starts || now>=ends) return null;
-    const eligible=team.members.map(m=>m.id).filter(id=>!team.ineligibleMemberIds?.includes(id));
+    const eligible=team.members.filter(m=>!m.npc&&!team.ineligibleMemberIds?.includes(m.id)).map(m=>m.id);
     if (!eligible.length) return null;
     const channels=state.chat??={};
     let chat=channels[key];
@@ -420,7 +426,8 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       context:structuredClone({teamIds:state.teamIds,matchAt:state.matchAt,choiceTeamId:state.choiceTeamId,
         attackers:state.attackers,lineups:state.lineups,rounds:state.rounds}),voided:[]};
     this.store.save(edition.id,edition.registrationOpenAt,edition);
-    return { index:input.gameIndex, battle, members:{attack:a.member,defend:d.member}, ready:[], npc:[],
+    const members={attack:a.member,defend:d.member};
+    return { index:input.gameIndex, battle, members, ...readyNpcSeats(teams,members),
       prepareUntil:at + 2 * minute, nextTickAt:null, batches:{}, waitAt:{} };
   }
 
@@ -444,7 +451,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
   ready(ref: MatchRef, actor: string, battleId: string, now: number) {
     const result=this.mutate(ref, state => {
       const round = state.active;
-      if (!round || round.battle.battleId !== battleId || !roles.some(side => round.members[side] === actor) ||
+      if (!round || round.battle.battleId !== battleId || !roles.some(side => round.members[side] === actor) || round.npc.includes(actor) ||
           now >= round.prepareUntil || round.nextTickAt !== null ||
           this.match(ref).teams.some(team => team.ineligibleMemberIds?.includes(actor))) throw new Error("snow_ready_closed");
       if (!round.ready.includes(actor)) round.ready.push(actor);

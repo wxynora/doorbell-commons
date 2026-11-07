@@ -3,7 +3,7 @@ import { z } from "zod";
 const timestampSchema = z.iso.datetime({ offset: true }).refine(value => Number.isFinite(Date.parse(value)));
 const teamSchema = z.object({
   id: z.string(), name: z.string(), captainId: z.string().nullable(),
-  members: z.array(z.object({ id: z.string(), name: z.string() })),
+  members: z.array(z.object({ id: z.string(), name: z.string(), npc:z.literal(true).optional() })),
   status: z.enum(["forming", "registered", "withdrawn"]), drawOrder: z.number().int().nullable(),
 });
 const matchSchema = z.object({

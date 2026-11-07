@@ -9,6 +9,7 @@ import { snowTournamentOperationByName, type SnowTournamentToolPort } from "./to
 import {snowTeamOptionLabel,snowTeamReceipt} from "./tool-presentation.js";
 import {decorateRegistrationStatus} from './registration-status.js';
 import {renderSnowReply} from './reply.js';
+import { SNOW_TEAM_SIZE, snowTeamHasOpenSeat, snowTeamLimit } from "./roster.js";
 
 type Ref={editionId:string;matchId:string};
 type TeamCommand=Parameters<SnowTournamentTeamService["execute"]>[0];
@@ -61,39 +62,40 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
       const team=(kind:string,extra:Partial<Binding>={})=>{
         const rev=extra.offerId?0:Object.values(state.receipts).filter(receipt=>receipt.actorId===actor&&receipt.result.kind===kind&&
           (!extra.teamId||receipt.result.team?.id===extra.teamId)&&(!extra.residentId||receipt.result.resident?.id===extra.residentId)).length;
-        const roster=["confirm","cancel","leave","handover","accept_captain"].includes(kind);
+        const roster=["confirm","cancel","leave","handover","accept_captain","rename"].includes(kind);
         put({kind,revision:rev,...(roster?{context:stable([own?.id,own?.captainId,own?.members.map(member=>member.id),own?.status,
           state.registrationRounds?.filter(round=>round.teamId===own?.id).map(round=>[round.status])])}:{}),...extra});
       };
       if (!own) {
-        if(state.teams.filter(t=>t.status!=="withdrawn").length<Math.floor(state.enrollments.length/3))team("create",{requires:["name"]});
-        for (const t of state.teams.filter(t=>t.status==="forming" && t.members.length<3 &&
+        if(state.teams.filter(t=>t.status!=="withdrawn").length<snowTeamLimit(state.enrollments.length))team("create",{requires:["name"]});
+        for (const t of state.teams.filter(t=>snowTeamHasOpenSeat(t) &&
           !state.offers.some(offer=>offer.teamId===t.id && offer.residentId===actor && offer.kind==="request"))) team("request",{teamId:t.id});
       } else {
         const round=state.registrationRounds?.find(round=>round.teamId===own.id && round.status!=="cancelled");
         team("leave",{teamId:own.id});
         if (round && (round.confirmed.length>0 || round.status!=="confirming")) team("cancel",{teamId:own.id});
-        if (own.status==="forming" && own.members.length===3 && (!round || round.status==="confirming" && !round.confirmed.includes(actor))) team("confirm",{teamId:own.id});
+        if (own.status==="forming" && own.captainId && (!round || round.status==="confirming" && !round.confirmed.includes(actor))) team("confirm",{teamId:own.id});
         if (own.captainId===null && own.status==="forming") team("accept_captain",{teamId:own.id});
-        if (own.captainId===actor && own.status==="forming") {
-          if (own.members.length<3) for (const resident of this.options.residents().filter(resident=>state.enrollments.some(member=>member.id===resident.id))) {
+        if (own.captainId===actor) {
+          team("rename",{teamId:own.id,requires:["name"]});
+          if (snowTeamHasOpenSeat(own)) for (const resident of this.options.residents().filter(resident=>state.enrollments.some(member=>member.id===resident.id))) {
             if (!state.teams.some(t=>t.status!=="withdrawn" && t.members.some(m=>m.id===resident.id)) &&
                 !state.offers.some(o=>o.teamId===own.id && o.residentId===resident.id && o.kind==="invite")) {
               team("invite",{teamId:own.id,residentId:resident.id});
             }
           }
-          for (const member of own.members) if(member.id!==actor &&
+          for (const member of own.members) if(own.status==="forming" && member.id!==actor &&
             !state.offers.some(offer=>offer.teamId===own.id && offer.residentId===member.id && offer.kind==="handover")) {
             team("handover",{teamId:own.id,residentId:member.id});
           }
         }
       }
       for (const offer of state.offers) {
-        const target=state.teams.find(t=>t.id===offer.teamId && t.status==="forming");
+        const target=state.teams.find(t=>t.id===offer.teamId && (offer.kind==="handover"?t.status==="forming":snowTeamHasOpenSeat(t)));
         if (!target) continue;
         const available=offer.kind==="handover"
           ? offer.residentId===actor && offer.fromCaptainId===target.captainId && target.members.some(m=>m.id===actor)
-          : target.members.length<3 && (offer.kind==="request"
+          : (offer.kind==="request"
             ? own?.captainId===actor && own.id===offer.teamId
             : !own && offer.residentId===actor);
         if (available) {team("accept",{offerId:offer.id,teamId:offer.teamId,residentId:offer.residentId});team("decline",{offerId:offer.id,teamId:offer.teamId,residentId:offer.residentId});}
@@ -160,11 +162,11 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
     const next=own?publicState.matches.filter(match=>["scheduled","in_progress"].includes(match.status)&&[match.teamAId,match.teamBId].includes(own.id))
       .sort((a,b)=>Date.parse(a.scheduledAt!)-Date.parse(b.scheduledAt!))[0]:undefined;
     const pendingRegistration=overview.registration.filter(round=>round.status!=="registered");
-    const seekingTeam=!own||own.status==="forming"&&own.members.length<3;
+    const seekingTeam=!own||snowTeamHasOpenSeat(own);
     return {edition:{id:state.id,title:state.title,phase:state.phase,registrationCloseAt:state.registrationCloseAt,teamFormationCloseAt:state.teamFormationCloseAt},
       enrolled:state.enrollments.some(member=>member.id===actor),team:publicState.teams.find(team=>team.id===own?.id)??null,
-      ...(state.phase==="team_formation"&&seekingTeam?{teams:publicState.teams.filter(team=>team.status==="forming"&&team.members.length<3),
-        teamLimit:Math.floor(state.enrollments.length/3),enrolledCount:state.enrollments.length}:{}),
+      ...(state.phase==="team_formation"&&seekingTeam?{teams:publicState.teams.filter(snowTeamHasOpenSeat),
+        teamLimit:snowTeamLimit(state.enrollments.length),enrolledCount:state.enrollments.length}:{}),
       ...(pendingRegistration.length?{registration:pendingRegistration}:{}),matches,...cards,
       ...(!matches.length&&next?{nextMatch:{matchId:next.id,scheduledAt:next.scheduledAt,stage:next.stage,opponent:publicState.teams.find(team=>team.id===(next.teamAId===own!.id?next.teamBId:next.teamAId))?.name}}:{}),
       rules:{op:"game.snow.view",args:{section:"rules"}},
@@ -196,8 +198,8 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
     if (!parsed.success) return {ok:false,error:{code:"INVALID_ARGS",issues:parsed.error.issues}};
     const input=parsed.data as Record<string,unknown>;
     if (op==="game.snow.view") return input.section==="rules"?{
-      competition:{teamSize:3,registrationHours:48,teamFormationHours:24,teamLimit:"floor(enrolledCount / 3)",registrationFeeGold:10000,
-        paymentAfter:"three_roster_confirmations",groupStage:"single_round_robin",groupWinPoints:3,
+      competition:{teamSize:SNOW_TEAM_SIZE,registrationHours:48,teamFormationHours:24,teamLimit:"ceil(enrolledCount / 3)",registrationFeeGold:10000,
+        paymentAfter:"all_human_roster_confirmations",groupStage:"single_round_robin",groupWinPoints:3,
         formats:{twoTeams:"direct_final",threeTeams:"round_robin_top_two_final",fourOrMoreTeams:"round_robin_top_four_semifinal_final"},gamesPerMatch:3,eachMemberGamesPerMatch:1},
       combat:{lanes:3,cellsPerLane:12,tickSeconds:1,durationTicks:600,coreHp:20,attackerVictory:"coreHp <= 0",defenderVictory:"tick = 600 and coreHp > 0",thinkingPausesClock:false,
         batchedCommands:true,atomicBatch:true,minimumWaitTicks:30},catalog:this.options.catalog}:this.view(actor);
@@ -229,6 +231,7 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
         action:binding.kind,...(binding.teamId?{teamId:binding.teamId}:{}),...(binding.residentId?{residentId:binding.residentId}:{}),
         ...(binding.offerId?{offerId:binding.offerId}:{}),
         ...(binding.kind==="create"?{teamId:key(id,"team"),name:input.name}:{}),
+        ...(binding.kind==="rename"?{name:input.name}:{}),
         ...(["invite","request","handover"].includes(binding.kind)?{offerId:key(id,"offer")}:{ }),
         ...(binding.kind==="confirm"?{roster:state.teams.find(t=>t.id===binding.teamId)!.members.map(m=>m.id)}:{})} as TeamCommand;
       let receipt:unknown;

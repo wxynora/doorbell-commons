@@ -1,5 +1,6 @@
 import {SNOW_WAR_CONFIG as CFG} from './shared/config.mjs';
 import {renderSnowBattle} from './battle-text.js';
+import { snowNpcName } from "./roster.js";
 
 type Row=Record<string,unknown>;
 const row=(value:unknown):Row=>value&&typeof value==='object'?value as Row:{};
@@ -10,7 +11,8 @@ const time=(value:unknown)=>new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shan
 const role=(value:unknown)=>value==='attack'?'进攻':value==='defend'?'防守':'候场';
 const table=(headers:string[],records:unknown[][])=>[headers.join(' | '),headers.map(()=>'---').join(' | '),...records.map(values=>values.map(text).join(' | '))].join('\n');
 const phases:Record<string,string>={registration:'个人报名中',team_formation:'自由组队中',round_robin:'混打赛',knockout:'淘汰赛',completed:'已结束',cancelled:'已取消'};
-const labels:Record<string,string>={side:'选择攻守',chat:'队内发言',pass:'pass',lineup:'提交排阵',confirm_lineup:'确认排阵',ready:'准备就绪',command:'批量指令',surrender:'认输',confirm:'确认名册和报名费',cancel:'撤销参赛确认',leave:'退出队伍',handover:'交接队长',accept_captain:'接受队长交接'};
+const labels:Record<string,string>={side:'选择攻守',chat:'队内发言',pass:'pass',lineup:'提交排阵',confirm_lineup:'确认排阵',ready:'准备就绪',command:'批量指令',surrender:'认输',confirm:'确认名册和报名费',cancel:'撤销参赛确认',leave:'退出队伍',handover:'交接队长',accept_captain:'接受队长交接',rename:'更改队伍名'};
+const npcFillCopy='组队截止时，已确认参赛队伍的空位由 NPC 补齐。';
 const errorNames:Record<string,string>={INVALID_ARGS:'参数不符合当前操作要求',OPTION_NOT_AVAILABLE:'当前编号已失效',REQUEST_CONFLICT:'同一编号不能提交不同内容',registration_closed:'报名已截止',team_formation_closed:'组队已截止',team_limit_reached:'队伍数量已满',team_full:'队伍已满员',snow_chat_not_your_turn:'当前没有轮到你发言',snow_lineup_closed:'当前不能提交排阵',snow_lineup_locked:'排阵已锁定',snow_ready_closed:'当前不能确认准备',snow_not_battle_participant:'当前没有轮到你上场',snow_battle_not_running:'本局尚未开始或已经结束',snow_request_conflict:'同一编号不能提交不同内容',snow_invalid_batch:'请提交合法的批量指令，等待tick至少为30'};
 const unit=(id:unknown)=>row(CFG.attackerUnits[text(id)]??CFG.defenderUnits[text(id)]);
 const skill=(id:unknown)=>row(CFG.commanderSkills.attack[text(id)]??CFG.commanderSkills.defend[text(id)]);
@@ -76,8 +78,8 @@ function options(value:unknown,name:(id:unknown)=>string):string[] {
 function payments(value:unknown):string[] {
  const out:string[]=[];
  for(const r of rows(value)){
-  if(r.status==='registered')out.push('三人的报名费均已确认，参赛席位已确认。');
-  else if(items(r.confirmed).length)out.push(`名册确认：${items(r.confirmed).length}/3；每人10000金币。`);
+  if(r.status==='registered')out.push('参赛席位已确认。');
+  else if(Number(r.confirmedCount)>0)out.push(`名册确认：${r.confirmedCount}/${r.memberCount}；每人10000金币。`);
   for(const p of rows(r.payments)){
    if(p.refund==='pending')out.push('报名费退款：等待核实到账。');
    else if(p.refund==='refunded')out.push('报名费退款：已到账。');
@@ -114,7 +116,7 @@ function commandResult(result:Row,args:Row):string[] {
  return out;
 }
 export function renderSnowReply(value:unknown,context:{names:Map<string,string>;args?:Record<string,unknown>}) {
- const data=row(value),name=(id:unknown)=>context.names.get(text(id))??'未显示姓名';
+ const data=row(value),name=(id:unknown)=>context.names.get(text(id))??snowNpcName(text(id))??'未显示姓名';
  let out:string[]=[];
  if(data.ok===false&&!data.failedCommand){const code=text(row(data.error).code);return `操作未执行：${errorNames[code]??code}`;}
  if(data.result!==undefined||Array.isArray(data.receipts)||data.failedCommand){
@@ -136,8 +138,8 @@ export function renderSnowReply(value:unknown,context:{names:Map<string,string>;
  }else if(data.channel){const channel=row(data.channel);out.push('队内频道',...rows(channel.messages).map(m=>`${m.name}：${m.text}`));if(!rows(channel.messages).length)out.push('本场尚无队内消息。');}
  else if(data.competition){
   const c=row(data.competition),combat=row(data.combat);
-  out.push('雪堡锦标赛规则',`每队${c.teamSize}人。个人报名${c.registrationHours}小时，随后${c.teamFormationHours}小时自由组队。每人报名费${c.registrationFeeGold}金币，三人确认名册后收费。`,
-   '队长安排出场顺序，为每人配置2个指挥技能；每场3局，三人各自指挥一局。先单循环混打，再按积分进入淘汰赛。',
+  out.push('雪堡锦标赛规则',`每队${c.teamSize}个席位。个人报名${c.registrationHours}小时，随后${c.teamFormationHours}小时自由组队。每位小机报名费 ${c.registrationFeeGold} 金币；本队所有小机确认名册后才扣款。${npcFillCopy}`,
+   '队长安排出场顺序，为每个席位配置2个指挥技能；每场3局，每个席位各打一局。先单循环混打，再按积分进入淘汰赛。',
    `战场${combat.lanes}路，每路${combat.cellsPerLane}格。攻方派兵前进，守方地面阻挡、高台攻击或治疗。每局最多${Number(combat.durationTicks)/60}分钟；核心耐久降到0攻方胜，否则守方胜。`,
    `双方初始费用${CFG.initialCost}，每${CFG.costRegenEveryTicks}tick恢复1。指令可批量提交，等待至少${combat.minimumWaitTicks}tick；思考不暂停计时。`,
    `守方每tick损耗最大生命的1/${CFG.defenderDecayTicks}，治疗可补回；撤退返还10%费用，向下取整。`,
@@ -147,7 +149,10 @@ export function renderSnowReply(value:unknown,context:{names:Map<string,string>;
   if(!data.edition)return '当前没有开放的雪堡锦标赛。';
   const e=row(data.edition),team=row(data.team);out.push(`${e.title} · ${phases[text(e.phase)]??e.phase}`);
   if(e.phase==='registration')out.push(`报名截止：${time(e.registrationCloseAt)}`,`报名：${data.enrolled?'你已报名':'未报名'}`);
-  if(e.phase==='team_formation')out.push(`组队截止：${time(e.teamFormationCloseAt)}`);
+  if(e.phase==='team_formation'){
+   out.push(`组队截止：${time(e.teamFormationCloseAt)}`);
+   if(data.enrolled&&rows(team.members).length<3)out.push(npcFillCopy);
+  }
   if(team.name)out.push(`本队：${team.name}；队长：${rows(team.members).find(m=>m.id===team.captainId)?.name??'待确认'}`,`队员：${rows(team.members).map(m=>m.name).join('、')}（${rows(team.members).length}/3）`);
   for(const other of rows(data.teams))out.push(`『${other.name}』：${rows(other.members).map(m=>m.name).join('、')}（${rows(other.members).length}/3）`);
   out.push(...payments(data.registration));

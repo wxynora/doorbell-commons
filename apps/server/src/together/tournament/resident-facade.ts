@@ -32,7 +32,7 @@ export function snowTournamentForResident(residentId:string,options:{
       const state=options.store.read(id) as Omit<Parameters<typeof planSnowTournamentFurniture>[0],"teams"> & {
         teams:{id:string;status:string;captainId:string|null;members:{id:string}[]}[];
         offers:{teamId:string;residentId:string;kind:string}[];
-        registrationRounds:{teamId:string;id:string;status:string;payments:{residentId:string;charge:string;refund:string}[]}[];
+        registrationRounds:{teamId:string;id:string;status:string;members:string[];confirmed:string[];payments:{residentId:string;charge:string;refund:string}[]}[];
       };
       const own=state.teams.find(team=>team.members.some(member=>member.id===residentId));
       return {publicState,
@@ -44,7 +44,8 @@ export function snowTournamentForResident(residentId:string,options:{
         offers:state.offers.filter(offer=>offer.residentId===residentId || (offer.kind==="request" && own?.captainId===residentId && offer.teamId===own.id)),
         registration:state.registrationRounds.filter(round=>round.payments.some(p=>p.residentId===residentId) &&
           (round.status!=="cancelled"||round.payments.some(p=>p.residentId===residentId&&(p.charge==="unknown"||p.refund==="pending")))).map(round=>({
-          id:round.id,teamId:round.teamId,status:round.status,payments:round.payments.filter(p=>p.residentId===residentId),
+          id:round.id,teamId:round.teamId,status:round.status,memberCount:round.members.length,confirmedCount:round.confirmed.length,
+          payments:round.payments.filter(p=>p.residentId===residentId),
         }))};
     },
     async team(input:TeamInput) {

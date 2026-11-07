@@ -3,9 +3,10 @@ import { weekendCalendar, teamFormationCloseAt, type SnowTournamentCalendar } fr
 import { roundRobin } from "./competition.js";
 import { beginCharge, cancelRegistration, confirmRegistration, newRegistrationRound, resolveCharge, resolveRefund, type RegistrationRound } from "./registration.js";
 import { SnowTournamentStore } from "./store.js";
+import { fillSnowTeamSeats, snowTeamHasOpenSeat, snowTeamLimit, type SnowTeamMember } from "./roster.js";
 
 type Member = { id: string; name: string };
-type Team = { id: string; name: string; captainId: string | null; members: Member[]; status: "forming" | "registered" | "withdrawn"; drawOrder: number | null };
+type Team = { id: string; name: string; captainId: string | null; members: SnowTeamMember[]; status: "forming" | "registered" | "withdrawn"; drawOrder: number | null };
 type Offer = { id: string; teamId: string; residentId: string; kind: "invite" | "request" | "handover"; fromCaptainId?: string };
 type State = {
   id: string; phase: string; registrationOpenAt: string; registrationCloseAt: string; teamFormationCloseAt:string; revision: number;
@@ -17,6 +18,7 @@ type State = {
 type Command = { editionId: string; actorId: string; commandId: string; revision?: number; now: string } & (
   | { action: "register" }
   | { action: "create"; teamId: string; name: string }
+  | { action: "rename"; teamId: string; name: string }
   | { action: "invite"; teamId: string; residentId: string; offerId: string }
   | { action: "request"; teamId: string; offerId: string }
   | { action: "handover"; teamId: string; residentId: string; offerId: string }
@@ -83,20 +85,26 @@ export class SnowTournamentTeamService {
         case "register":break;
         case "create": {
           if (ownTeam() || !command.name.trim() || state.teams.some(t => t.id === command.teamId)) throw new Error("cannot_create_team");
-          if(state.teams.filter(t=>t.status!=="withdrawn").length>=Math.floor(state.enrollments.length/3))throw new Error("team_limit_reached");
+          if(state.teams.filter(t=>t.status!=="withdrawn").length>=snowTeamLimit(state.enrollments.length))throw new Error("team_limit_reached");
           state.teams.push({id:command.teamId,name:command.name.trim(),captainId:actor.id,members:[actor],status:"forming",drawOrder:null});
           break;
         }
+        case "rename": {
+          const t=team(command.teamId); captain(t);
+          const name=command.name.trim();
+          if (!name) throw new Error("cannot_rename_team");
+          t.name=name; break;
+        }
         case "invite": {
           const t = team(command.teamId); captain(t);
-          if (t.members.length >= 3 || state.teams.some(x => x.status !== "withdrawn" && x.members.some(m => m.id === command.residentId))) throw new Error("cannot_invite");
+          if (!snowTeamHasOpenSeat(t) || state.teams.some(x => x.status !== "withdrawn" && x.members.some(m => m.id === command.residentId))) throw new Error("cannot_invite");
           if(!state.enrollments.some(member=>member.id===command.residentId))throw new Error("registration_required");
           if (state.offers.some(o => o.id === command.offerId || o.teamId===t.id && o.residentId===command.residentId && o.kind==="invite")) throw new Error("offer_exists");
           state.offers.push({id:command.offerId,teamId:t.id,residentId:command.residentId,kind:"invite",fromCaptainId:actor.id}); break;
         }
         case "request": {
           const t = team(command.teamId);
-          if (ownTeam() || t.members.length >= 3 || state.offers.some(o => o.id === command.offerId || o.teamId===t.id && o.residentId===actor.id && o.kind==="request")) throw new Error("cannot_request");
+          if (ownTeam() || !snowTeamHasOpenSeat(t) || state.offers.some(o => o.id === command.offerId || o.teamId===t.id && o.residentId===actor.id && o.kind==="request")) throw new Error("cannot_request");
           state.offers.push({id:command.offerId,teamId:t.id,residentId:actor.id,kind:"request"}); break;
         }
         case "handover": {
@@ -125,7 +133,7 @@ export class SnowTournamentTeamService {
             break;
           }
           if (offer.kind === "invite" ? offer.residentId !== actor.id : t.captainId !== actor.id) throw new Error("not_offer_recipient");
-          if (t.members.length >= 3 || state.teams.some(x => x.status !== "withdrawn" && x.members.some(m => m.id === offer.residentId))) throw new Error("cannot_join");
+          if (!snowTeamHasOpenSeat(t) || state.teams.some(x => x.status !== "withdrawn" && x.members.some(m => m.id === offer.residentId))) throw new Error("cannot_join");
           if(!state.enrollments.some(member=>member.id===accepted.id))throw new Error("registration_required");
           invalidate(t); t.members.push(accepted);
           state.offers = state.offers.filter(o => o.residentId !== accepted.id && o.id !== offer.id); break;
@@ -141,7 +149,7 @@ export class SnowTournamentTeamService {
         case "cancel": { const t = team(command.teamId); if (!t.members.some(m => m.id === actor.id)) throw new Error("not_member"); invalidate(t); break; }
         case "confirm": {
           const t = team(command.teamId);
-          if (t.members.length !== 3 || !t.captainId) throw new Error("invalid_roster");
+          if (!t.captainId) throw new Error("invalid_roster");
           let round = state.registrationRounds.find(r => r.teamId === t.id && r.status !== "cancelled");
           if (!round) { round = newRegistrationRound(randomUUID(), t.id, t.members.map(m => m.id)); state.registrationRounds.push(round); }
           confirmRegistration(round, actor.id, command.roster); result = {ok:true,roundId:round.id,status:round.status}; break;
@@ -225,6 +233,7 @@ export class SnowTournamentTeamService {
         }
         team.drawOrder = draw.indexOf(team.id) < 0 ? null : draw.indexOf(team.id);
       }
+      if (draw.length>=2) for (const team of registered) fillSnowTeamSeats(team);
       if (draw.length < 2) {
         for (const round of state.registrationRounds) cancelRegistration(round);
         for (const team of registered) team.status = "forming";

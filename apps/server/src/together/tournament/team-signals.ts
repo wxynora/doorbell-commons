@@ -2,6 +2,7 @@ import {createHash} from "node:crypto";
 import type Database from "better-sqlite3";
 import type {BellWakeSource,BellWakeSourceRecord,BellWakeSourceTransition} from "../../bell-service.js";
 import type {SnowTournamentStore} from "./store.js";
+import {snowTeamHasOpenSeat} from "./roster.js";
 
 type Kind="formation"|"invite"|"request";
 type Row={wake_id:string;edition_id:string;resident_id:string;kind:Kind;reference:string;created_at:number;expires_at:number;
@@ -24,7 +25,7 @@ export class SnowTournamentTeamSignals {
     if(state.phase!=="team_formation"||now<Date.parse(state.registrationCloseAt)||now>=Date.parse(state.teamFormationCloseAt))return [];
     const events=state.enrollments.filter(member=>this.options.eligible(member.id)).map(member=>({residentId:member.id,kind:"formation" as Kind,reference:state.id}));
     for(const offer of state.offers){
-      const team=state.teams.find(team=>team.id===offer.teamId&&team.status==="forming"&&team.members.length<3);
+      const team=state.teams.find(team=>team.id===offer.teamId&&snowTeamHasOpenSeat(team));
       if(!team||!state.enrollments.some(member=>member.id===offer.residentId)||state.teams.some(team=>team.status!=="withdrawn"&&team.members.some(member=>member.id===offer.residentId)))continue;
       const recipient=offer.kind==="invite"?offer.residentId:offer.kind==="request"?team.captainId:null;
       if(recipient&&this.options.eligible(recipient))events.push({residentId:recipient,kind:offer.kind as Kind,reference:offer.id});

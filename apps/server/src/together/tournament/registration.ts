@@ -1,3 +1,5 @@
+import { SNOW_TEAM_SIZE } from "./roster.js";
+
 /** Registration accounting state. All mutations must be saved in the shared-store transaction. */
 export interface TournamentPayment {
   paymentId: string; residentId: string;
@@ -11,16 +13,16 @@ export interface RegistrationRound {
 }
 
 export function newRegistrationRound(id: string, teamId: string, members: string[]): RegistrationRound {
-  if (members.length !== 3 || new Set(members).size !== 3) throw new Error("invalid_roster");
+  if (!members.length || members.length>SNOW_TEAM_SIZE || new Set(members).size!==members.length) throw new Error("invalid_roster");
   return {id, teamId, members:[...members], confirmed:[], status:"confirming",
     payments:members.map((residentId, i) => ({paymentId:`${id}:${i}`,residentId,charge:"not_started",refund:"not_due"}))};
 }
 
 export function confirmRegistration(round: RegistrationRound, residentId: string, roster: string[]): void {
   if (round.status !== "confirming" || !round.members.includes(residentId) ||
-      roster.length !== 3 || roster.some((id, i) => id !== round.members[i])) throw new Error("invalid_confirmation");
+      roster.length !== round.members.length || roster.some((id, i) => id !== round.members[i])) throw new Error("invalid_confirmation");
   if (!round.confirmed.includes(residentId)) round.confirmed.push(residentId);
-  if (round.confirmed.length === 3) round.status = "paying";
+  if (round.confirmed.length === round.members.length) round.status = "paying";
 }
 
 /** Call and persist before issuing a charge, then use the same paymentId to resolve uncertainty. */

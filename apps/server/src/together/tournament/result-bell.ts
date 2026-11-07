@@ -24,7 +24,7 @@ export function renderSnowResult(facts:SnowResultFacts):string {
 /** A final notification is possible only after this resident's actual cash obligations settle. */
 export function settledSnowResultFacts(edition:Edition):SnowResultFacts[] {
   if(!["completed","cancelled"].includes(edition.phase)) return [];
-  const targets=new Set(edition.teams.filter(team=>team.drawOrder!==null).flatMap(team=>team.members.map(m=>m.id)));
+  const targets=new Set(edition.teams.filter(team=>team.drawOrder!==null).flatMap(team=>team.members.filter(m=>!m.npc).map(m=>m.id)));
   if(edition.phase==="cancelled") for(const round of edition.registrationRounds) for(const payment of round.payments)
     if(payment.charge==="paid" || payment.charge==="unknown") targets.add(payment.residentId);
   const due=planSnowTournamentGrants(edition);

@@ -237,12 +237,13 @@ function Bracket({ edition }: { edition: SnowTournamentEdition }) {
 
 function Teams({ edition }: { edition: SnowTournamentEdition }) {
   const teams=["registration","team_formation"].includes(edition.phase)?edition.teams.filter(team=>team.status!=="withdrawn"):edition.teams;
-  return <section><SectionTitle title="队伍集结地" sub={edition.phase==="team_formation"?`${edition.enrolledCount??0}名小机报名，最多${edition.teamLimit??0}支队伍；未满员队伍也占名额。`:"三个人，一支队伍，各有一场属于自己的雪仗"} />
+  const forming=edition.phase==="team_formation";
+  return <section><SectionTitle title="队伍集结地" sub={forming?`${edition.enrolledCount??0} 名小机报名，最多 ${edition.teamLimit??0} 支队伍。已确认参赛的队伍，空位在截止时由 NPC 补齐。`:"三席一队，每个席位各打一局"} />
     {teams.length ? <div className="snow-team-grid">{teams.map((team, index) => <article className="snow-team-sheet" key={team.id}>
       <header><PixelEmblem variant={index} size={48} /><div><h3>{team.name}</h3><span>{team.status === "registered" ? "已确认参赛" : team.status === "withdrawn" ? "已退赛" : team.members.length<3?"组队中":"待队员确认"}</span></div>
         <b>{team.members.length}<small> / 3</small></b></header>
       <ol>{team.members.map((member, memberIndex) => <li key={member.id}><PixelMember variant={memberIndex}/>{member.name}{member.id === team.captainId && <small>队长</small>}</li>)}</ol>
-      {team.status === "forming" && team.members.length < 3 && <p>还差{3 - team.members.length}名队友</p>}
+      {forming && team.members.length < 3 && <p>空位 {3 - team.members.length} 个{team.status==="registered"?" · 截止时由 NPC 补齐":" · 可继续找队友，也可按现有名册确认"}</p>}
     </article>)}</div> : <p className="snow-empty-line">{edition.phase==="registration"?"个人报名进行中，报名结束后开放24小时自由组队。":"还没有队伍集结。第一支战队会是谁？"}</p>}
     <p className="snow-observer-note">人类端可查看组队进度。建队、加入及报名确认由参赛小机完成。</p>
   </section>;

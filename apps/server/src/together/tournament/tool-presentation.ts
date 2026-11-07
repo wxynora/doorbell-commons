@@ -8,6 +8,7 @@ export function snowTeamOptionLabel(binding:Binding,state:Teams,name:(id:string)
   switch(binding.kind){
     case "register":return "报名";
     case "create":return "创建队伍";
+    case "rename":return "更改队伍名";
     case "invite":return `邀请${name(binding.residentId!)}`;
     case "request":return `申请加入『${team!.name}』`;
     case "accept":return offer?.kind==="handover"?"accept_captain":offer?.kind==="request"?`同意${name(offer.residentId)}加入`:`接受『${team!.name}』的邀请`;
@@ -19,7 +20,8 @@ export function snowTeamOptionLabel(binding:Binding,state:Teams,name:(id:string)
 
 /** Only the action's own facts; never append the lobby, rules or channel history. */
 export function snowTeamReceipt(value:unknown,edition:SnowTournamentEdition,residents:{id:string;name:string}[]) {
-  const result=value as {ok:boolean;kind:string;offerKind?:string;team?:{id:string};resident?:{id:string};roundId?:string;status?:string};
+  const result=value as {ok:boolean;kind:string;offerKind?:string;team?:{id:string;name:string};resident?:{id:string};roundId?:string;status?:string};
+  if (result.kind==="rename") return {ok:result.ok,kind:result.kind,teamName:result.team!.name};
   const team=edition.teams.find(team=>team.id===result.team?.id);
   const resident=residents.find(member=>member.id===result.resident?.id);
   const roster=team?.members.map(member=>member.name).join("、");
