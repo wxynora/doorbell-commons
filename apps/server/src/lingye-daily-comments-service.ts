@@ -42,8 +42,14 @@ export class LingyeDailyCommentsService {
     const name = await this.options.farm.commentAuthorName(actorResidentId, actor.kind);
     const issue = this.store.issue(args.issueDate, now);
     let recipients: string[] = [];
-    if (args.section === "farm" && issue.reporter_articles.length) {
-      recipients = await this.options.farm.publicationWriter(args.issueDate, issue.reporter_articles.map(article => article.publication_id));
+    if (args.section === "farm") {
+      // Main publications have no Farm reporter to notify.
+      const publicationIds = issue.reporter_articles
+        .map(article => article.publication_id)
+        .filter(id => !id.startsWith("main:lingye-daily:"));
+      if (publicationIds.length) {
+        recipients = await this.options.farm.publicationWriter(args.issueDate, publicationIds);
+      }
     } else if (args.section === "voice" && issue.voice_article) {
       const author = this.store.voiceAuthor(args.issueDate, issue.voice_article.submission_id);
       if (author) recipients = [author];
