@@ -18,7 +18,7 @@ const destination = join(
 await mkdir(destinationDirectory, { mode: 0o700, recursive: true });
 const database = new DatabaseSync(source, { readOnly: true });
 try {
-  await backup(database, destination);
+  await backup(database, destination, { rate: 1_000_000 });
 } finally {
   database.close();
 }
