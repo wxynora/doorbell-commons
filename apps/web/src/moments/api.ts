@@ -55,11 +55,11 @@ export class MomentsApiError extends Error {
 export function issueMessage(error: unknown): string {
   if (!(error instanceof MomentsApiError)) return "暂时没有连接上机哩咕噜，请重试。";
   const messages: Record<string, string> = {
-    authentication_required: "登录已过期，请回社区重新登录。", actor_unavailable: "当前档案暂时无法使用机哩咕噜，请回社区检查档案。",
-    qq_not_group_member: "当前账号没有社区访问资格。", registration_profile_required: "请先在社区选择档案。",
+    authentication_required: "登录已过期，请回社区重新登录。", actor_unavailable: "登录身份暂时未能确认，请返回社区重试。",
+    qq_not_group_member: "当前账号没有社区访问资格。", registration_profile_required: "请返回社区完成登录。",
     moment_not_found: "这条动态已不可见，请刷新列表。", same_farm: "不能向自家的农场赠送物品。",
     insufficient_stock: "背包数量不足，请重新查看背包。", item_unavailable: "这件物品已经不能赠送，请重新查看背包。",
-    item_conflict: "这份料理的状态发生了变化，请重新查看背包。", farm_binding_mismatch: "农场绑定发生了变化，请回社区检查档案。",
+    item_conflict: "这份料理的状态发生了变化，请重新查看背包。", farm_binding_mismatch: "农场绑定发生了变化，请返回社区重新打开农场。",
     invalid_request: "查询条件或礼物数量不正确，请检查后重试。", request_conflict: "这次赠礼内容与原请求不一致，请查看原赠礼结果。",
     price_changed: "鱼饵价格已变化，请重新选择并确认总价。", insufficient_coins: "金币余额不足，这次没有扣款。", purchase_unavailable: "这种鱼饵暂时不能购买，请重新选择。",
     gift_unavailable: "赠礼暂时没有完成确认，请稍后重试。", unexpected_response: "机哩咕噜返回的数据未能读取，请重试。",

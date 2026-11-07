@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { readHumanSessionToken, serializeClearedHumanSessionCookie } from "../session-cookie.js";
+import { AuthenticationRequiredError } from "../registration-auth.js";
+import { loungeHumanName } from "../lounge-display-name.js";
 import { feedQuerySchema, type MomentsStore } from "./store.js";
 import { MomentsError, type MomentActor, type MomentView } from "./types.js";
 import { registerMomentsNotificationRoutes } from "./notification-routes.js";
@@ -8,10 +10,8 @@ import type { MomentsGiftService } from "./gift-service.js";
 
 export interface MomentsHumanAuth {
   getCurrentSession(token: string): Promise<{
-    account: { accountId: string }; resident: { residentId: string };
-    farmBinding: { farmDoorplate: string };
+    account: { accountId: string }; resident: { residentId: string; residentName: string };
   }>;
-  lookupFarm(doorplate: string): Promise<{ farmDoorplate: string; humanName?: string }>;
 }
 
 function error(reply: FastifyReply, status: number, code: string) {
@@ -39,12 +39,9 @@ export function registerMomentsHumanRoutes(app: FastifyInstance, options: {
   }
   async function authenticate(request: FastifyRequest): Promise<MomentActor> {
     const token = readHumanSessionToken(request.headers.cookie);
-    if (!token) throw new MomentsError("actor_unavailable");
+    if (!token) throw new AuthenticationRequiredError();
     const community = await options.registrationAuth.getCurrentSession(token);
-    const farm = await options.registrationAuth.lookupFarm(community.farmBinding.farmDoorplate);
-    if (farm.farmDoorplate !== community.farmBinding.farmDoorplate || !farm.humanName?.trim())
-      throw new MomentsError("actor_unavailable");
-    return { kind: "human", accountId: community.account.accountId, residentId: community.resident.residentId, name: farm.humanName };
+    return { kind: "human", accountId: community.account.accountId, residentId: community.resident.residentId, name: loungeHumanName(community.resident.residentName) };
   }
   const handle = (action: (actor: MomentActor, request: FastifyRequest) => unknown) =>
     async (request: FastifyRequest, reply: FastifyReply) => {
