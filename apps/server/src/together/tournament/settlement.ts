@@ -90,6 +90,13 @@ export class SnowTournamentSettlement {
   constructor(private readonly store:SnowTournamentStore,private readonly teams:SnowTournamentTeamService,
     private readonly economy:SnowTournamentEconomy,private readonly now:()=>number=Date.now) {}
 
+  /** A deadline roster may have been stored after an older reconciliation took its snapshot. */
+  async settleRegistration(editionId:string) {
+    const pending=this.inflight.get(editionId);
+    if(pending)await pending;
+    return this.reconcile(editionId);
+  }
+
   reconcile(editionId:string) {
     const active=this.inflight.get(editionId);
     if (active) {this.requested.add(editionId);return active;}
@@ -178,7 +185,7 @@ export class SnowTournamentSettlement {
       return {edition,round,payment:round.payments.find(p=>p.paymentId===paymentId)!};
     };
     const open=(state:ReturnType<typeof snapshot>)=>state.edition.phase==="team_formation" &&
-      state.round.status==="paying" && this.now()<Date.parse(state.edition.teamFormationCloseAt);
+      state.round.status==="paying" && (this.now()<Date.parse(state.edition.teamFormationCloseAt)||state.round.deadlineConfirmedAt!==undefined);
     let current=snapshot();
     const input={paymentId,residentId:current.payment.residentId,gold};
     if (current.payment.charge==="not_started" && open(current)) {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { weekendCalendar, teamFormationCloseAt, type SnowTournamentCalendar } from "./calendar.js";
+import { calendarForEdition, teamFormationCloseAt, type SnowTournamentCalendar } from "./calendar.js";
 import { roundRobin } from "./competition.js";
 import { beginCharge, cancelRegistration, confirmRegistration, newRegistrationRound, resolveCharge, resolveRefund, type RegistrationRound } from "./registration.js";
 import { SnowTournamentStore } from "./store.js";
@@ -14,6 +14,7 @@ type State = {
   teams: Team[]; offers: Offer[]; registrationRounds: RegistrationRound[];
   matches: unknown[]; bracket: unknown; receipts: Record<string, { actorId: string; input: string; result: unknown }>;
   calendar?: SnowTournamentCalendar;
+  deadlineConfirmationAt?:number;
 };
 type Command = { editionId: string; actorId: string; commandId: string; revision?: number; now: string } & (
   | { action: "register" }
@@ -42,7 +43,19 @@ export class SnowTournamentTeamService {
     const normalized={...input,registrationOpenAt:new Date(opens).toISOString(),registrationCloseAt:new Date(closes).toISOString(),teamFormationCloseAt:teamFormationCloseAt(input.registrationCloseAt)};
     this.store.transaction(() => {
       if (this.store.read(input.id)) throw new Error("edition_exists");
-      this.store.save(input.id,normalized.registrationOpenAt,{...normalized,calendar:weekendCalendar(normalized.teamFormationCloseAt),phase:"registration",revision:0,enrollments:[],teams:[],offers:[],registrationRounds:[],matches:[],standings:[],bracket:{semifinalMatchIds:[],finalMatchId:null,championTeamId:null},rewards:[],receipts:{}});
+      this.store.save(input.id,normalized.registrationOpenAt,{...normalized,calendar:calendarForEdition(input.id,normalized.teamFormationCloseAt),phase:"registration",revision:0,enrollments:[],teams:[],offers:[],registrationRounds:[],matches:[],standings:[],bracket:{semifinalMatchIds:[],finalMatchId:null,championTeamId:null},rewards:[],receipts:{}});
+    });
+  }
+
+  /** Refresh an unstarted edition's public calendar without touching roster or payments. */
+  refreshCalendar(editionId:string):void {
+    this.store.transaction(()=>{
+      const state=this.requireState(editionId);
+      if(!["registration","team_formation"].includes(state.phase)||state.matches.length)return;
+      const calendar=calendarForEdition(state.id,state.teamFormationCloseAt);
+      if(JSON.stringify(state.calendar)===JSON.stringify(calendar))return;
+      state.calendar=calendar;state.revision++;
+      this.store.save(state.id,state.registrationOpenAt,state);
     });
   }
 
@@ -182,6 +195,32 @@ export class SnowTournamentTeamService {
     });
   }
 
+  /** Deadline authority freezes eligible real rosters once, before economic I/O. */
+  async confirmDueRosters(editionId:string,now:string,isEligible:(residentId:string)=>boolean|Promise<boolean>):Promise<void> {
+    const snapshot=this.requireState(editionId),at=Date.parse(now);
+    if(snapshot.phase!=="team_formation"||at<Date.parse(snapshot.teamFormationCloseAt)||!Number.isFinite(at)||snapshot.deadlineConfirmationAt!==undefined)return;
+    const eligible=new Set<string>();
+    for(const team of snapshot.teams.filter(team=>team.status==="forming"&&team.captainId&&team.members.length)){
+      let valid=true;
+      for(const member of team.members)if(!member.npc&&!await isEligible(member.id)){valid=false;break;}
+      if(valid)eligible.add(team.id);
+    }
+    this.store.transaction(()=>{
+      const state=this.requireState(editionId);
+      if(state.deadlineConfirmationAt!==undefined)return;
+      if(state.revision!==snapshot.revision)throw new Error("stale_revision");
+      for(const team of state.teams.filter(team=>eligible.has(team.id))){
+        const roster=team.members.filter(member=>!member.npc).map(member=>member.id);
+        let round=state.registrationRounds.find(round=>round.teamId===team.id&&round.status!=="cancelled");
+        if(!round){round=newRegistrationRound(randomUUID(),team.id,roster);state.registrationRounds.push(round);}
+        if(round.status==="confirming")for(const residentId of roster)confirmRegistration(round,residentId,roster);
+        if(round.status==="paying")round.deadlineConfirmedAt=at;
+      }
+      state.deadlineConfirmationAt=at;state.revision++;
+      this.store.save(state.id,state.registrationOpenAt,state);
+    });
+  }
+
   /** Trusted economy coordinator only. Persist before I/O and resolve only verified receipts. */
   paymentTransition(editionId: string, roundId: string, operation: { kind:"dispatch"; residentId:string } | { kind:"charge_result"; paymentId:string; outcome:"paid" | "failed"; receivedAt?:number } | { kind:"refund_confirmed"; paymentId:string }): void {
     this.store.transaction(() => {
@@ -190,7 +229,7 @@ export class SnowTournamentTeamService {
       if (!round) throw new Error("round_not_found");
       if (operation.kind === "dispatch") beginCharge(round,operation.residentId);
       else if (operation.kind === "charge_result") {
-        if (round.status!=="registered" && operation.receivedAt!==undefined &&
+        if (round.status!=="registered" && round.deadlineConfirmedAt===undefined && operation.receivedAt!==undefined &&
             operation.receivedAt>=Date.parse(state.teamFormationCloseAt)) cancelRegistration(round);
         resolveCharge(round,operation.paymentId,operation.outcome);
       }
@@ -240,6 +279,7 @@ export class SnowTournamentTeamService {
         state.phase = "cancelled";
       } else if (draw.length === 2) {
         state.phase = "knockout";
+        state.calendar=calendarForEdition(state.id,state.teamFormationCloseAt);
         const finalId = `${state.id}:final`;
         state.matches = [{id:finalId,stage:"final",round:1,teamAId:draw[0],teamBId:draw[1],attackerTeamId:null,defenderTeamId:null,status:"scheduled",scheduledAt:state.calendar?.finalAt??null,score:null,winnerTeamId:null}];
         state.bracket = {semifinalMatchIds:[],finalMatchId:finalId,championTeamId:null};
@@ -247,7 +287,7 @@ export class SnowTournamentTeamService {
         state.phase = "round_robin";
         const pairings = roundRobin(draw,oppositeAttackers);
         const roundCount = pairings.at(-1)!.round;
-        const calendar = weekendCalendar(state.teamFormationCloseAt, roundCount);
+        const calendar = calendarForEdition(state.id,state.teamFormationCloseAt, roundCount);
         state.calendar = calendar;
         state.matches = pairings.map((pair,i) => ({ id:`${state.id}:rr:${i+1}`, stage:"round_robin",
           teamAId:pair.attackerTeamId,teamBId:pair.defenderTeamId,...pair,status:"scheduled",scheduledAt:calendar.roundRobinAt[pair.round-1]!,score:null,winnerTeamId:null }));

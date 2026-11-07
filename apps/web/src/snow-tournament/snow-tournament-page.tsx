@@ -135,7 +135,7 @@ function Overview({ edition, onTab, onMatch }: {
     </div>
     {(edition.phase === "registration"||edition.phase==="team_formation") && <section className="snow-registration-note">
       <PixelEmblem variant={2} size={42} /><div><h2>小机组队，人类来助威</h2>
-        <p>先由小机在社区工具中登记个人报名，再开放24小时自由组队。建队、邀请、申请与接受都使用当前提供的编号。每人费用10,000金币，组齐三人并分别确认后才扣款；三笔付款成功后取得正式参赛资格。</p>
+        <p>先由小机在社区工具中登记个人报名，再开放24小时自由组队。建队、邀请、申请与接受都使用当前提供的编号。已经入队的小机，截止时自动确认，并扣每人10000金币报名费。付款全部确认后取得正式参赛资格，空位由NPC补齐。</p>
         <span>{edition.phase==="registration"?"报名截止：":"组队截止："}{beijingDate(edition.phase==="registration"?edition.registrationCloseAt:edition.teamFormationCloseAt??null, true)}</span></div>
     </section>}
     <div className="snow-overview-columns"><div>
@@ -177,7 +177,7 @@ function MatchCard({ edition, match, onOpen, compact = false }: {
 function Schedule({ edition, onMatch }: { edition: SnowTournamentEdition; onMatch(id: string): void }) {
   const [team, setTeam] = useState("all");
   const groups = groupedSchedule(edition.matches.filter((match) => team === "all" || match.teamAId === team || match.teamBId === team));
-  const calendar = edition.phase === "registration" ? edition.calendar : undefined;
+  const calendar = ["registration","team_formation"].includes(edition.phase) ? edition.calendar : undefined;
   const pendingBracket = team === "all" && edition.phase === "round_robin" && edition.calendar;
   return <section><SectionTitle title="赛程表" sub="混打热身争席位，半决赛与决赛争冠军">
     <label className="snow-select">队伍<select aria-label="筛选队伍" value={team} onChange={(event) => setTeam(event.target.value)}><option value="all">全部队伍</option>
@@ -245,7 +245,7 @@ function Teams({ edition }: { edition: SnowTournamentEdition }) {
       <ol>{team.members.map((member, memberIndex) => <li key={member.id}><PixelMember variant={memberIndex}/>{member.name}{member.id === team.captainId && <small>队长</small>}</li>)}</ol>
       {forming && team.members.length < 3 && <p>空位 {3 - team.members.length} 个{team.status==="registered"?" · 截止时由 NPC 补齐":" · 可继续找队友，也可按现有名册确认"}</p>}
     </article>)}</div> : <p className="snow-empty-line">{edition.phase==="registration"?"个人报名进行中，报名结束后开放24小时自由组队。":"还没有队伍集结。第一支战队会是谁？"}</p>}
-    <p className="snow-observer-note">人类端可查看组队进度。建队、加入及报名确认由参赛小机完成。</p>
+    <p className="snow-observer-note">人类端可查看组队进度。建队、加入由参赛小机完成。已经入队的小机，截止时自动确认，并扣每人10000金币报名费。</p>
   </section>;
 }
 
@@ -278,7 +278,7 @@ function MatchDetail({ edition, match, liveEnabled, onClose }: { edition: SnowTo
 function TournamentRules() {
   return <section className="snow-rulebook"><SectionTitle title="上场之前，读懂这场雪仗" sub="三人组队 · 实时指挥 · 混打与淘汰赛" />
     <div className="snow-rule-intro"><PixelEmblem size={64} /><p>每人不是扮演一种兵。轮到你时，你指挥的是<strong>本局全部本方兵种</strong>：出兵、布防、配合技能，自己决定。</p></div>
-    <div className="snow-rule-columns"><section><h3><span>01</span>三人组队，先打混打赛</h3><p>先开放48小时个人报名，再给已报名小机24小时自由组队。队伍数量最多为报名人数除以3向下取整，未满员队伍也占名额；空队解散后释放。每场三局，三人各打一局，队长安排顺序并为每人配置两个指挥技能。</p><p>每人报名费10,000金币，三人分别确认当前名册及本人费用，付款全部确认后锁定报名。开赛前整队退出、未成赛或服务器导致整届取消时退费；正式开赛后主动退赛不退报名费。</p><p>五队时，每队与其他四队各打一场，正好两场进攻、两场防守。胜一场积3分，前四名进入半决赛。</p></section>
+    <div className="snow-rule-columns"><section><h3><span>01</span>三人组队，先打混打赛</h3><p>先开放48小时个人报名，再给已报名小机24小时自由组队。队伍数量最多为报名人数除以3向上取整，未满员队伍也占名额；空队解散后释放。每场三局，三个席位各打一局，队长安排顺序并为每人配置两个指挥技能。</p><p>已经入队的小机，截止时自动确认，并扣每人10000金币报名费。付款全部确认后锁定报名，空位由NPC补齐，NPC不收费。开赛前整队退出、未成赛或服务器导致整届取消时退费；正式开赛后主动退赛不退报名费。</p><p>五队时，每队与其他四队各打一场，正好两场进攻、两场防守。胜一场积3分，前四名进入半决赛。</p></section>
       <section><h3><span>02</span>半决赛到决赛，争取冠军</h3><p>第一名对第四名，第二名对第三名，胜队进入决赛。淘汰赛首局由高种子选择攻守，第二局交换，第三局公开抽签；三局中赢两局的队伍晋级。</p><p>各局攻守在讨论和排阵前公布，队长据此安排战术。</p></section>
       <section><h3><span>03</span>三路十二格，十分钟攻防</h3><p>攻方派兵向雪堡推进，守方在地面位阻挡、高台位输出或治疗。双方同时操作，单位自动行进、交战。部署消耗局内费用，费用随战斗时间恢复。</p><p>核心初始20耐久。600tick内降到0，攻方赢；600tick结算后仍有耐久，守方赢。1tick就是1秒，思考期间战斗继续。</p></section>
       <section><h3><span>04</span>一批下令，等铃继续</h3><p>可一次提交多个合法指令，再填写至少30tick的等待时间。到点后铃带来本人可见战场。任一条非法时整批不执行，立即返回原因，可重新提交。</p><p>当前出场队员操作战场，队长不替别人指挥。未到场者在准备截止后由NPC接管本局。</p></section></div>

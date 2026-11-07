@@ -11,19 +11,28 @@ type Edition={id:string;phase:string;registrationCloseAt:string;teamFormationClo
   teams:{id:string;name:string;captainId:string|null;status:string;members:{id:string}[]}[];
   offers:{id:string;kind:string;teamId:string;residentId:string;fromCaptainId?:string}[]};
 type Choice={label:string;call:{op:string;args:{option:string}}};
+type FormationChoice={label:string;op:string;option:string;requires?:string[];call?:Choice["call"]};
 const view='使用 doorbell：{"op":"game.snow.view","args":{}}';
+const reminderReference=(editionId:string)=>editionId+":unassigned-hour";
 
 /** Team-window events and directed offers, not a broadcast on every mutation. */
 export class SnowTournamentTeamSignals {
   constructor(private readonly db:Database.Database,private readonly store:SnowTournamentStore,private readonly options:{
     eligible(id:string):boolean;name(id:string):string;notify(id:string):void;cancelled?(id:string,wake:string):void;
-    choices(id:string,editionId:string,offerId:string):Choice[];now?:()=>number;
+    choices(id:string,editionId:string,offerId:string):Choice[];
+    formationChoices(id:string,editionId:string):FormationChoice[];now?:()=>number;
   }){}
   private now(){return this.options.now?.()??Date.now();}
   private events(state:Edition):{residentId:string;kind:Kind;reference:string}[]{
     const now=this.now();
     if(state.phase!=="team_formation"||now<Date.parse(state.registrationCloseAt)||now>=Date.parse(state.teamFormationCloseAt))return [];
     const events=state.enrollments.filter(member=>this.options.eligible(member.id)).map(member=>({residentId:member.id,kind:"formation" as Kind,reference:state.id}));
+    if(now>=Date.parse(state.teamFormationCloseAt)-3_600_000){
+      for(const member of state.enrollments){
+        if(this.options.eligible(member.id)&&!state.teams.some(team=>team.status!=="withdrawn"&&team.members.some(other=>other.id===member.id)))
+          events.push({residentId:member.id,kind:"formation",reference:reminderReference(state.id)});
+      }
+    }
     for(const offer of state.offers){
       const team=state.teams.find(team=>team.id===offer.teamId&&snowTeamHasOpenSeat(team));
       if(!team||!state.enrollments.some(member=>member.id===offer.residentId)||state.teams.some(team=>team.status!=="withdrawn"&&team.members.some(member=>member.id===offer.residentId)))continue;
@@ -62,7 +71,13 @@ export class SnowTournamentTeamSignals {
     const current=state&&this.events(state).some(event=>event.residentId===row.resident_id&&event.kind===row.kind&&event.reference===row.reference);
     let text:string|null=null;
     if(current&&row.status==="pending"){
-      if(row.kind==="formation")text=`❄️ 雪堡报名结束，24小时自由组队开始啦！找两位队友，建一支自己的雪堡战队吧。${view} 查看队伍、邀请或申请加入。组队截止：${new Intl.DateTimeFormat("zh-CN",{timeZone:"Asia/Shanghai",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date(row.expires_at))}。`;
+      if(row.kind==="formation"&&row.reference===reminderReference(row.edition_id)){
+        text="❄️ 雪堡组队还有1小时就截止啦！你还没入队，可以加入现有队伍，也可以自己建队。单人也能确认参赛，空位在截止时由 NPC 补齐。";
+        const choices=this.options.formationChoices(row.resident_id,row.edition_id);
+        for(const choice of choices)text+="\n"+(choice.call?choice.label+"\n"+JSON.stringify(choice.call):
+          `${choice.label}：${choice.option}；填写 ${(choice.requires??[]).join("、")}（${choice.op}）`);
+      }
+      else if(row.kind==="formation")text=`❄️ 雪堡报名结束，24小时自由组队开始啦！找两位队友，建一支自己的雪堡战队吧。${view} 查看队伍、邀请或申请加入。组队截止：${new Intl.DateTimeFormat("zh-CN",{timeZone:"Asia/Shanghai",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date(row.expires_at))}。`;
       else {
         const offer=state!.offers.find(offer=>offer.id===row.reference)!;
         const team=state!.teams.find(team=>team.id===offer.teamId)!;

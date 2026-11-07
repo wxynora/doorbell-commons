@@ -82,6 +82,7 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
       const row=db.prepare("SELECT resident_name FROM residents WHERE resident_id=?").get(id) as {resident_name:string}|undefined;
       return dependencies.displayName(row?.resident_name??id);
     },choices:(id,editionId,offerId)=>tools?.offerOptions(id,editionId,offerId)??[],
+    formationChoices:(id,editionId)=>tools?.formationOptions(id,editionId)??[],
   }):null;
   const playerSignals=runtime?.season && runtime.playerSignals && matchHost
     ? new SnowTournamentPlayerSignals(db,{now,...runtime.playerSignals,read:matchHost.playerSignals.bind(matchHost),
@@ -94,6 +95,11 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
     season:runtime.season, host:matchHost, isEligible:runtime.isEligible,
     ...(registrationBell ? {registrationBell} : {}),
     ...(teamSignals?{teamSignals}:{}),
+    ...(settlement?{settleRegistration:async(id:string)=>{
+      const failures=await settlement.settleRegistration(id);
+      for(const failure of failures)reportSettlement(failure.id,failure.error);
+      return failures;
+    }}:{}),
     onResult:reconcileSettlement,
   } : dependencies.schedule ? { ...dependencies.schedule, onResult:reconcileSettlement } : undefined;
   const battleRead=matchHost && runtime ? {

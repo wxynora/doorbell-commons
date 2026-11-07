@@ -141,6 +141,12 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
       op,...(binding.requires?.length?{argsHint:snowTournamentOperationByName.get(op)!.argsHint}:{call:{op,args:{option:id}}})};
   }
   /** The same current capabilities are used by the tool and targeted team Bells. */
+  formationOptions(actor:string,editionId:string) {
+    const state=this.options.store.read(editionId) as State|null;
+    if(!state||state.teams.some(team=>team.status!=="withdrawn"&&team.members.some(member=>member.id===actor)))return [];
+    return this.candidates(actor,state).filter(binding=>["create","request","accept","decline"].includes(binding.kind))
+      .map(binding=>this.issue(actor,binding));
+  }
   offerOptions(actor:string,editionId:string,offerId:string) {
     const state=this.options.store.read(editionId) as State|null;
     if(!state)return [];

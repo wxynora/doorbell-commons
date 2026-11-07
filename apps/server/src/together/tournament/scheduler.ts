@@ -1,5 +1,5 @@
 import { randomInt } from "node:crypto";
-import { monthlyWindow, weekendCalendar, type MonthlySnowSeason } from "./calendar.js";
+import { monthlyWindow, calendarForEdition, type MonthlySnowSeason } from "./calendar.js";
 import type { SnowTournamentEnginePort, SnowTournamentResults } from "./results.js";
 import type { SnowTournamentStore } from "./store.js";
 import type { SnowTournamentTeamService } from "./team-service.js";
@@ -42,6 +42,7 @@ type ScheduleOptions = {
     publish(ids:readonly string[]):void;
   };
   teamSignals?:{sync(editionId:string):void};
+  settleRegistration?:(editionId:string)=>Promise<unknown>;
   onResult?:(editionId:string)=>void;
 };
 
@@ -99,6 +100,7 @@ export class SnowTournamentScheduler {
     }
     for (const initial of this.store.unfinished() as ScheduledEdition[]) {
       if (!initial.id.startsWith("snow-tournament:")) continue;
+      if(["registration","team_formation"].includes(initial.phase))this.teams.refreshCalendar(initial.id);
       this.options.onResult?.(initial.id);
       if (this.recovery.expire(initial.id,now)) {
         for (const match of initial.matches) if (pending(match)) this.host.invalidateMatch?.({editionId:initial.id,matchId:match.id});
@@ -116,14 +118,17 @@ export class SnowTournamentScheduler {
       if (forming.phase === "team_formation") {
         const deadline=Date.parse(forming.teamFormationCloseAt);
         this.options.teamSignals?.sync(initial.id);
-        if(now<deadline){watch(deadline);continue;}
+        if(now<deadline){watch(deadline-60*minutes);watch(deadline);continue;}
         try {
+          await this.teams.confirmDueRosters(initial.id,new Date(now).toISOString(),this.options.isEligible);
+          await this.options.settleRegistration?.(initial.id);
           await this.teams.closeRegistration(initial.id, new Date(now).toISOString(), [], [], {
             isEligible: this.options.isEligible, draw: drawTeams,
           });
+          this.options.onResult?.(initial.id);
         } catch (error) {
           failures.push({ id: initial.id, error });
-          const calendar = weekendCalendar(forming.teamFormationCloseAt);
+          const calendar = calendarForEdition(forming.id,forming.teamFormationCloseAt);
           for (const time of calendar.roundRobinAt) watch(Date.parse(time) - 8 * minutes);
           watch(Date.parse(calendar.semifinalAt) - 10 * minutes);
           watch(Date.parse(calendar.finalAt) - 10 * minutes);

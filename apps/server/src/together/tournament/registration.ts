@@ -8,6 +8,7 @@ export interface TournamentPayment {
 }
 export interface RegistrationRound {
   id: string; teamId: string; members: string[]; confirmed: string[];
+  deadlineConfirmedAt?:number;
   status: "confirming" | "paying" | "registered" | "cancelled";
   payments: TournamentPayment[];
 }
