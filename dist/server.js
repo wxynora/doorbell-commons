@@ -37,6 +37,7 @@ import {
 } from "./content.js";
 import { PublicSyncError } from "./public-sync.js";
 import { runFishing } from "./fishing.js";
+import { mergeGlimmerTitleActivities, recordMomentsActivities, titleActivities, visitorWaterActivity } from "./domain/moments/activity.js";
 import { runGlimmer } from "./glimmer.js";
 import { advancePublicExpedition, checkPublicContribution, currentPublicTask, findPublicDish, findPublicHarvestPlot, findPublicWaterTarget, markPublicTrialPlot, publicExpeditionStatusLine, publicExpeditionText, recordPublicContribution, recordPublicPlantEncounter, runPublicChoice, takePublicAiNotices, takePublicDish } from "./public-expedition.js";
 import { qixi2026CompletionText, recordQixi2026Progress, recordQixi2026StealAttempt } from "./qixi-2026.js";
@@ -130,7 +131,7 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
         : { ...body, ...(mysteryMerchantBuy ? { by: farm.id } : {}), token: farm.token };
     const suppressTogetherNotices = ["bag", "status", "visit"].includes(action);
     const result = runFarm(target, action, injected, social ? farm.id : body.id, now,
-        { detail, careerBenefits, suppressTogetherNotices });
+        { detail, careerBenefits, suppressTogetherNotices, captureMoments: true });
     if (action === "bag" && result.status === 200 &&
         result.json?.ok === true && typeof result.json.text === "string") {
         const entry = activeHalloweenCandyTool?.bagEntry({ farmId: farm.id });
@@ -350,6 +351,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         || b?.verbose === true || b?.verbose === "1" || b?.verbose === "true";
     const vf = (ff) => detail ? { farm: farmView(ff, now) } : {};
     if (action === "visit") {
+        let moments = [];
         const visitor = b.by ? getFarm(String(b.by)) : null;
         const detention = visitor ? activeDetentionForFarm(visitor, now) : null;
         if (detention)
@@ -368,8 +370,9 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
                 } // 串门称号：按去重家数
                 if (onTaskEvent(v, "visit", now, { targetId: f.id }))
                     changed = true;
-                if (checkTitles(v).length)
-                    changed = true;
+                const freshTitles = checkTitles(v);
+                if (freshTitles.length) changed = true;
+                if (options.captureMoments) moments = recordMomentsActivities(v, titleActivities(freshTitles), now);
                 if (changed)
                     saveKnownFarmChanges([v.id], now);
             }
@@ -381,7 +384,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
                 plots: farmView(f, now).plots,
             } } : {};
         persistProjectedRead();
-        return { status: 200, json: { ok: true, text: visitView(f, now, visitorId ? getFarm(visitorId) : undefined, targetRef), ...publicDetail } };
+        return { status: 200, json: { ok: true, text: visitView(f, now, visitorId ? getFarm(visitorId) : undefined, targetRef), ...publicDetail, ...(moments.length ? {moment_activities:moments} : {}) } };
     }
     if (action === "leaderboard" || action === "ranking") {
         persistProjectedRead();
@@ -561,20 +564,22 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     }
     if (action === "glimmer") {
         const r = runGlimmer(f, getGlimmerWorld(), b, now);
-        checkTitles(f);
+        const freshTitles = checkTitles(f);
+        const moments = r.ok && options.captureMoments ? recordMomentsActivities(f, mergeGlimmerTitleActivities(r.momentActivities, freshTitles), now) : [];
         save();
-        return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
+        return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f), ...(moments.length ? {moment_activities:moments} : {}) } };
     }
     if (action === "fish") {
-        const r = runFishing(f, b, now, playerFarms());
+        const r = runFishing(f, b, now, playerFarms(), {captureMoments: options.captureMoments});
         const castRequested = b.option === undefined && b.leave === undefined && b.view === undefined && b.sell === undefined && b.open === undefined
             && (b.times !== undefined || (b.bait !== undefined && b.buy === undefined) || (b.buy === undefined && b.location === undefined));
         const qixi = r.ok && castRequested ? recordQixiLantern2026FarmAction(f, getQixiLantern2026World(), "fish", now) : null;
         if (qixi)
             r.text = `${r.text}\n${qixi.text}`;
-        checkTitles(f);
+        const freshTitles = checkTitles(f);
+        const moments = r.ok && options.captureMoments ? recordMomentsActivities(f, [...(r.momentActivities ?? []), ...titleActivities(freshTitles)], now) : [];
         save();
-        return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
+        return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f), ...(moments.length ? {moment_activities:moments} : {}) } };
     }
     // 视图（主人私有）
     if (!action || action === "status") {
@@ -681,9 +686,10 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             return { status: 400, json: { ok: false, text: r.error, ...vf(buyer) } };
         if (b.kind === "seed" && String(b.id).startsWith("ugc_"))
             onTaskEvent(buyer, "buy_ugc", now); // 随机任务：买邻居原创作物
-        checkTitles(buyer); // 任务称号（买原创可能完成任务）
+        const freshTitles = checkTitles(buyer); // 任务称号（买原创可能完成任务）
+        const moments = options.captureMoments ? recordMomentsActivities(buyer, titleActivities(freshTitles), now) : [];
         saveKnownFarmChanges([f.id, buyer.id], now, ["ugc"]);
-        return { status: 200, json: { ok: true, text: `🛒 从「${f.name}」买到「${r.name}」×${r.qty}，-🪙${r.cost}银\n${statusFooter(buyer, now)}`, ...vf(buyer) } };
+        return { status: 200, json: { ok: true, text: `🛒 从「${f.name}」买到「${r.name}」×${r.qty}，-🪙${r.cost}银\n${statusFooter(buyer, now)}`, ...vf(buyer), ...(moments.length ? {moment_activities:moments} : {}) } };
     }
     // 偷菜
     if (action === "steal") {
@@ -694,7 +700,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             return { status: 400, json: { ok: false, text: reachable(thief) ? `你关闭了偷菜开关——先让 ${thief.humanName || "伴侣"} 帮你打开才能偷别人。` : `你设了谢绝来访（闭门状态），不能出门偷菜——先让 ${thief.humanName || "伴侣"} 帮你打开『访问』。`, ...vf(thief) } };
         advance(thief, now);
         const r = steal(f, Number(b.plotId), byId, now, thief);
-        checkTitles(thief);
+        const freshTitles = checkTitles(thief);
         checkTitles(f); // 大盗 / 倒霉称号
         let securityResult = null;
         if (r.ok) {
@@ -717,6 +723,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             pushSocialInbox(f, `🥷 「${thief.name}」偷了你的菜`, now);
             commitNatureRemovedPlot(f, Number(b.plotId), "visitor", `steal:${thief.id}:${f.id}:${Number(b.plotId)}`, now);
         }
+        const moments = r.ok && options.captureMoments ? recordMomentsActivities(thief, titleActivities(freshTitles), now) : [];
         save();
         if (!r.ok) {
             const bribe = r.guardBlocked
@@ -728,7 +735,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         const reveal = r.isNewForThief ? `\n${harvestText(r.crop, r.quality, r.value, true, r.codexReward, false)}` : "";
         const caughtLine = theftCaughtLine({database:activeLingyeWorldDatabase,farms:allFarms(),
             residentForFarm:farm=>farmResidentId(activeLingyeWorldDatabase,farm),victim:f,actorFarmId:byId,now,securityResult,cropName:r.crop.name});
-        return { status: 200, json: { ok: true, text: `${got}${reveal}${caughtLine}\n${statusFooter(thief, now)}`, ...(securityResult ? { security: securityResult } : {}), ...vf(thief) } };
+        return { status: 200, json: { ok: true, text: `${got}${reveal}${caughtLine}\n${statusFooter(thief, now)}`, ...(securityResult ? { security: securityResult } : {}), ...vf(thief), ...(moments.length ? {moment_activities:moments} : {}) } };
     }
     if (isGuardBribe) {
         const thief = getFarm(byId);
@@ -781,10 +788,11 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         const autumn = recordMidAutumnSeedProgress(visitor, 'water', 1, now);
         onTaskEvent(f, "got_watered", now); // 随机任务：被人浇水（被浇者）
         const got = tryWaterReward(f, visitor, now);
-        checkTitles(visitor); // 热心称号
+        const freshTitles = checkTitles(visitor); // 热心称号
         pushSocialInbox(f, `💧 「${visitor.name}」给你浇了水`, now);
+        const moments = options.captureMoments ? recordMomentsActivities(visitor, [visitorWaterActivity(r, f.name), ...titleActivities(freshTitles)], now) : [];
         saveKnownFarmChanges([f.id, visitor.id], now);
-        return { status: 200, json: { ok: true, text: [`${waterText(false, visitor.name)}（帮「${f.name}」${r.plotId} 号地加速 30 分钟${r.ripened ? "，正好催熟啦" : ""}）${got ? "\n🧪 浇水有回报——掉了 1 瓶加速药水！" : ""}`, qixi2026CompletionText(qixi), midAutumnSeedCompletionText(autumn), statusFooter(visitor, now)].filter(Boolean).join("\n"), ...vf(visitor) } };
+        return { status: 200, json: { ok: true, text: [`${waterText(false, visitor.name)}（帮「${f.name}」${r.plotId} 号地加速 30 分钟${r.ripened ? "，正好催熟啦" : ""}）${got ? "\n🧪 浇水有回报——掉了 1 瓶加速药水！" : ""}`, qixi2026CompletionText(qixi), midAutumnSeedCompletionText(autumn), statusFooter(visitor, now)].filter(Boolean).join("\n"), ...vf(visitor), ...(moments.length ? {moment_activities:moments} : {}) } };
     }
     // 串门买别家商店随机刷出的「药水套装」（钱由买家=by 出，每份每人限购 1）
     if (action === "buy-potion-set" && b.by) {
@@ -817,9 +825,10 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         pushSocialInbox(f, `💬 「${poster.name}」给你留言（访客留言，仅供阅读）：${text}`, now);
         bumpDaily(poster, now, "messages"); // 热情榜（今日给别人留言数）
         onTaskEvent(poster, "message", now); // 随机任务：给邻居留言
-        checkTitles(poster); // 任务称号（留言可能完成任务）
+        const freshTitles = checkTitles(poster); // 任务称号（留言可能完成任务）
+        const moments = options.captureMoments ? recordMomentsActivities(poster, titleActivities(freshTitles), now) : [];
         saveKnownFarmChanges([f.id, poster.id], now);
-        return { status: 200, json: { ok: true, text: `💬 已在「${f.name}」的留言板留言。` } };
+        return { status: 200, json: { ok: true, text: `💬 已在「${f.name}」的留言板留言。`, ...(moments.length ? {moment_activities:moments} : {}) } };
     }
     // 删留言：主人(无by)删任意/清空(all)；留言者(带by)只能删自己那条
     if (action === "delete-message") {
@@ -850,7 +859,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     const season3Harvest = action === "harvest" || action === "run"
         ? captureStoredTogetherSeason3Harvest(f,now) : null;
     const r = dispatch(f, { ...b, action }, now, action === "ranch-harvest"
-        ? { ...careerBenefits, ranchFarms: publicFarms } : careerBenefits);
+        ? { ...careerBenefits, ranchFarms: publicFarms, captureMoments: options.captureMoments } : { ...careerBenefits, captureMoments: options.captureMoments });
     if(r?.ok && season3Harvest) attachStoredTogetherSeason3Harvest(f,season3Harvest,now);
     if (r?.ok && action === "water") {
         const plotIds = b.plotId != null ? [Number(b.plotId)] : f.plots.map((plot) => plot.id);
@@ -882,9 +891,10 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         if (qixi)
             r.text = `${r.text}\n${qixi.text}`;
     }
+    const moments = r.ok && options.captureMoments ? recordMomentsActivities(f, r.momentActivities, now) : [];
     save(isTogetherSeason3(publicWorld) && !isQixiLantern2026Active(now)
         ? ownFarmPersistenceScope(action, f.id) : null);
-    return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f) } };
+    return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f), ...(moments.length ? {moment_activities:moments} : {}) } };
 }
 function authenticatedResultFarm(farmId, body) {
     const token = String(body?.token ?? "");
@@ -1287,6 +1297,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         },
         gachaRuntime,
         halloweenRuntime,
+        lingyeWorldDatabase,
     );    const stopP3Scheduler = startRegisteredP3Scheduler(lingyeWorldDatabase);
     const stopNatureScheduler = startNatureRuntimeScheduler();
     const stopConstableInterviewScheduler = startConstableInterviewScheduler(lingyeWorldDatabase, lingyeWorldBackend);

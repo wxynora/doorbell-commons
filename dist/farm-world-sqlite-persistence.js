@@ -21,6 +21,8 @@ const REQUIRED_WORLD_COMPONENT_KEYS = Object.freeze([
 
 const CHEF_STORE_SCOPE = "/chefStoreOrderReceipts";
 const DEFERRED_CROSS_DOMAIN_SCOPES = new Set([
+    "/doorbellMomentsRaffleReceipts",
+    "/doorbellMomentsGiftReceipts",
     "/doorbellHumanMarketActionReceipts",
     "/doorbellHumanNeighborhoodMessageReceipts",
     "/doorbellHumanOriginalPlantActionReceipts",

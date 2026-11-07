@@ -35,6 +35,7 @@ import {
     withFooter,
 } from "../presentation/farm.js";
 import { shopBrief } from "../presentation/shop.js";
+import { plantActivity, waterActivity, harvestActivity } from "../../domain/moments/activity.js";
 
 /** potion:"auto"：用现有金币买足够药水（享套装折扣）催熟所有生长中的地，买不起就尽量催，并说明。 */
 function autoPotion(f, now) {
@@ -64,27 +65,33 @@ function autoPotion(f, now) {
 
 function doRun(f, b, now, options = {}) {
     const parts = [];
+    const momentActivities = [];
     // 顺序：（可选 harvestFirst 先收上轮腾地）→ 种 → 浇 → 催 → 收。
     // 收获默认放在最后，这样催熟后能当场揭晓本轮——抽卡的爽点不被推迟到下一次 run。
     if (b.harvestFirst) {
         const se = f.plots.some((p) => p.crop?.ripe) ? rollSeasonHarvest(f, now) : null;
         const hs = harvestAll(f, now, se?.mod, options);
-        if (hs.length)
+        if (hs.length) {
+            if (options.captureMoments) momentActivities.push(harvestActivity(hs));
             parts.push((se ? seasonHeadline(se.hit) + "\n" : "") + `【先收上轮 ${hs.length} 株】\n` + composeHarvests(hs, b.compact !== false, f.id));
+        }
     }
     if (b.plant) {
         const pr = plantBatch(f, { common: Number(b.plant.common) || 0, fantasy: Number(b.plant.fantasy) || 0, limited: b.plant.limited }, now);
         if (!pr.ok)
             parts.push(`【补种】${pr.error}`);
         else {
+            if (options.captureMoments) momentActivities.push(plantActivity(pr));
             const note = pr.leftover ? `；还有 ${pr.leftover} 份未种下：${pr.error}` : "";
             parts.push(`【补种】${summarizePlanted(pr.planted)}（-${pr.spent} 金${note}）`);
         }
     }
     if (b.water) {
         const w = waterAll(f, "主人", true, now);
-        if (w.ok)
+        if (w.ok) {
+            if (options.captureMoments) momentActivities.push(waterActivity(w));
             parts.push(`【浇水】${w.count} 块`);
+        }
         else if (b.water !== "if-any")
             parts.push("【浇水】没有可浇的");
     }
@@ -104,16 +111,17 @@ function doRun(f, b, now, options = {}) {
     if (b.harvest || b.harvestAfter) {
         const se = f.plots.some((p) => p.crop?.ripe) ? rollSeasonHarvest(f, now) : null;
         const hs = harvestAll(f, now, se?.mod, options);
-        if (hs.length)
+        if (hs.length) {
+            if (options.captureMoments) momentActivities.push(harvestActivity(hs));
             parts.push((se ? seasonHeadline(se.hit) + "\n" : "") + `【收获 ${hs.length} 株】\n` + composeHarvests(hs, b.compact !== false, f.id));
-        else if (b.harvest !== "if-any" && b.harvestAfter !== "if-any") {
+        } else if (b.harvest !== "if-any" && b.harvestAfter !== "if-any") {
             const growing = f.plots.filter((p) => p.crop && !p.crop.ripe).length;
             parts.push(growing > 0
                 ? `【收获】本轮还没有可收的——${growing} 块在生长中（刚种下，或药水不足没催熟）。帮别人浇水攒药水或等真实时间长熟后，再执行一条龙经营即可收获揭晓：doorbell({"op":"farm.run","args":{}})`
                 : "【收获】没有成熟的作物（先种下种子，再浇水催熟）。");
         }
     }
-    return { ok: true, text: withFooter(f, now, parts.join("\n") || "（这轮一条龙经营没有指定动作）") };
+    return { ok: true, text: withFooter(f, now, parts.join("\n") || "（这轮一条龙经营没有指定动作）"), momentActivities };
 }
 
 /** 熔炼/原创成功后的「种下」引导：有空地→鼓励直接种（Agent 页会自动出「🌷 种下「X」」按钮）；
@@ -146,20 +154,20 @@ export function handleFieldAction(action, f, b, now, options = {}) {
             if (b.plotId != null) {
                 const r = plant(f, Number(b.plotId), b.seedType, b.limitedId, now);
                 const lim = b.limitedId ? [String(b.limitedId)] : [];
-                return { ok: r.ok, text: r.ok ? withFooter(f, now, plantText(lim)) : r.error };
+                return { ok: r.ok, text: r.ok ? withFooter(f, now, plantText(lim)) : r.error, ...(options.captureMoments && r.ok ? { momentActivities: [plantActivity(r)] } : {}) };
             }
             const r = plantBatch(f, { common: Number(b.common) || 0, fantasy: Number(b.fantasy) || 0, limited: b.limited }, now);
             const lim = r.limitedIds;
-            return { ok: r.ok, text: r.ok ? withFooter(f, now, `${plantText(lim)}\n（种下 ${summarizePlanted(r.planted)}，-${r.spent} 金${r.leftover ? `；还有 ${r.leftover} 份未种下：${r.error}` : ""}）`) : (r.error ?? "种不了") };
+            return { ok: r.ok, text: r.ok ? withFooter(f, now, `${plantText(lim)}\n（种下 ${summarizePlanted(r.planted)}，-${r.spent} 金${r.leftover ? `；还有 ${r.leftover} 份未种下：${r.error}` : ""}）`) : (r.error ?? "种不了"), ...(options.captureMoments && r.ok ? { momentActivities: [plantActivity(r)] } : {}) };
         }
         case "water": {
             const isOwner = !b.by;
             if (b.plotId != null) {
                 const r = water(f, Number(b.plotId), b.by ?? "主人", isOwner, now);
-                return { ok: r.ok, text: r.ok ? withFooter(f, now, waterText(r.isOwner, r.by) + (r.capped ? "（运气已封顶）" : "")) : r.error };
+                return { ok: r.ok, text: r.ok ? withFooter(f, now, waterText(r.isOwner, r.by) + (r.capped ? "（运气已封顶）" : "")) : r.error, ...(options.captureMoments && r.ok ? { momentActivities: [waterActivity({...r, count:1, helped:r.capped ? 0 : 1})] } : {}) };
             }
             const r = waterAll(f, b.by ?? "主人", isOwner, now);
-            return { ok: r.ok, text: r.ok ? withFooter(f, now, `${waterText(isOwner, b.by ?? "主人")}（浇了 ${r.count} 块地）`) : "没有可浇水的作物" };
+            return { ok: r.ok, text: r.ok ? withFooter(f, now, `${waterText(isOwner, b.by ?? "主人")}（浇了 ${r.count} 块地）`) : "没有可浇水的作物", ...(options.captureMoments && r.ok ? { momentActivities: [waterActivity(r)] } : {}) };
         }
         case "harvest": {
             if (b.plotId != null) {
@@ -168,11 +176,11 @@ export function handleFieldAction(action, f, b, now, options = {}) {
                 const r = harvest(f, Number(b.plotId), now, se?.mod, options);
                 if (!r.ok)
                     return { ok: false, text: r.error };
-                return { ok: true, text: withFooter(f, now, (se ? seasonHeadline(se.hit) + "\n" : "") + fmtHarvest(r, f.id) + "\n" + replantReminder(1)) };
+                return { ok: true, text: withFooter(f, now, (se ? seasonHeadline(se.hit) + "\n" : "") + fmtHarvest(r, f.id) + "\n" + replantReminder(1)), ...(options.captureMoments ? { momentActivities: [harvestActivity([r])] } : {}) };
             }
             const se = f.plots.some((p) => p.crop?.ripe) ? rollSeasonHarvest(f, now) : null;
             const hs = harvestAll(f, now, se?.mod, options);
-            return { ok: hs.length > 0, text: hs.length ? withFooter(f, now, (se ? seasonHeadline(se.hit) + "\n" : "") + `【收获 ${hs.length} 株】\n` + composeHarvests(hs, b.compact !== false, f.id) + "\n" + replantReminder(hs.length)) : "没有成熟的作物" };
+            return { ok: hs.length > 0, text: hs.length ? withFooter(f, now, (se ? seasonHeadline(se.hit) + "\n" : "") + `【收获 ${hs.length} 株】\n` + composeHarvests(hs, b.compact !== false, f.id) + "\n" + replantReminder(hs.length)) : "没有成熟的作物", ...(options.captureMoments && hs.length ? { momentActivities: [harvestActivity(hs)] } : {}) };
         }
         case "ripen": {
             if (b.auto === true && b.plots === undefined)

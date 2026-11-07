@@ -44,6 +44,9 @@ const HUMAN_RECEIPT_FIELDS = Object.freeze([
 ]);
 
 export const LEGACY_FARM_RECEIPT_SCOPES = Object.freeze([
+    Object.freeze({path:Object.freeze(["doorbellMomentsRaffleReceipts"]),kind:"moments_raffle"}),
+    Object.freeze({path: Object.freeze(["doorbellMomentsGiftReceipts"]), kind: "moments_gift"}),
+    Object.freeze({path: Object.freeze(["doorbellMomentsActivityReceipts"]), kind: "moments_activity"}),
     ...HUMAN_RECEIPT_FIELDS.map((field) => Object.freeze({
         path: Object.freeze([field]),
         kind: "human",

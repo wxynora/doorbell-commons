@@ -1,6 +1,7 @@
 // 共享游戏核心：HTTP 服务和 CLI 适配器都调这里，保证同一套规则与存档结构。
 import { dispatchImpl } from "./game/actions/router.js";
 import { checkTitles } from "./titles.js";
+import { titleActivities } from "./domain/moments/activity.js";
 
 export { HELP } from "./game/help.js";
 export { genCode, hasDamagedPublicName, makeFarm } from "./game/factory.js";
@@ -43,7 +44,9 @@ export { statusFooter } from "./flavor.js";
 /** 单农场动作分发（HTTP 与 CLI 共用）。多人动作(偷菜/串门)由各端各自处理。 */
 export function dispatch(f, b, now, options = {}) {
     const result = dispatchImpl(f, b, now, options);
-    checkTitles(f); // 每次本人动作后重新结算称号解锁（纯派生、幂等）
+    const freshTitles = checkTitles(f); // 每次本人动作后重新结算称号解锁（纯派生、幂等）
+    if (options.captureMoments && result?.ok && freshTitles.length)
+        result.momentActivities = [...(result.momentActivities ?? []), ...titleActivities(freshTitles)];
     return result;
 }
 //# sourceMappingURL=game.js.map

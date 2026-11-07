@@ -343,14 +343,14 @@ function resolveFishingEvent(farm, state, rng, now) {
     const event = weightedPick(rng, pool, (item) => item.weight);
     if (event.type === "choice") {
         beginFishingEncounter(farm, currentDayIndex(now), event.id);
-        return { kind: "event", text: event.intro };
+        return { kind: "event", eventId: event.id, eventName: event.name, text: event.intro };
     }
     if (event.type === "bottle") {
         const seen = (state.seenLetters[event.id] ??= []);
         const unseen = event.messages.map((_, index) => index).filter((index) => !seen.includes(index));
         const index = unseen[rng.int(0, unseen.length - 1)];
         seen.push(index);
-        return { kind: "event", text: `🌊 漂流瓶：${event.messages[index]}` };
+        return { kind: "event", eventId: event.id, eventName: event.name, text: `🌊 漂流瓶：${event.messages[index]}` };
     }
     if (event.type === "chest") {
         state.stats.totalChests++;
@@ -361,10 +361,10 @@ function resolveFishingEvent(farm, state, rng, now) {
         };
         state.pendingChests.push(chest);
         state.publicRefHistory[chest.publicRef] = { kind: "chest", status: "active" };
-        return { kind: "event", text: `📦 钓到【${event.name}】〔${chest.publicRef}〕，先放进鱼篓。下一步：doorbell({"op":"farm.fish.open","args":{"id":"${chest.publicRef}"}})` };
+        return { kind: "event", eventId: event.id, eventName: event.name, text: `📦 钓到【${event.name}】〔${chest.publicRef}〕，先放进鱼篓。下一步：doorbell({"op":"farm.fish.open","args":{"id":"${chest.publicRef}"}})` };
     }
     const rewards = addReward(farm, state, rng, event.rewards ?? {});
-    return { kind: "event", text: `🌊 ${event.name}${rewards.length ? `：${rewards.join("、")}` : "。"}` };
+    return { kind: "event", eventId: event.id, eventName: event.name, text: `🌊 ${event.name}${rewards.length ? `：${rewards.join("、")}` : "。"}` };
 }
 
 function rollLuckyEvent(farm, state, rng, pool, bait, primary) {
@@ -424,7 +424,7 @@ function castStep(farm, state, rng, bait, now) {
     });
     if (rng.next() < adjustedJunkChance) {
         const junk = fishing.junk[rng.int(0, fishing.junk.length - 1)];
-        return { consumed: true, kind: "junk", text: `🪣 钓上来${junk}。空军一竿。` };
+        return { consumed: true, kind: "junk", junk, text: `🪣 钓上来${junk}。空军一竿。` };
     }
     const season = seasonDef(now);
     const spot = fishingSpotById.get(state.locationId);
@@ -459,7 +459,7 @@ function castStep(farm, state, rng, bait, now) {
     if (championExtra)
         text += `\n${catchLine(recordCatch(farm, state, fishDef, caught.instance.size).instance)}`;
     return {
-        consumed: true, kind: "fish", fishName: fishDef.name, rarity: fishDef.rarity, championExtra,
+        consumed: true, kind: "fish", fishId: fishDef.id, fishName: fishDef.name, rarity: fishDef.rarity, championExtra,
         first: caught.first, luck: lucky?.id, qixi,
         midAutumnSeed,
         text: midAutumnSeed ? `${text}\n中秋任务：银鲦 ×${midAutumnSeed.submitted} 已自动提交（${midAutumnSeed.progress}/2）。\n${midAutumnSeedCompletionText(midAutumnSeed)}`.trim() : text,
@@ -513,6 +513,7 @@ function castMany(farm, state, farms, params, now) {
         return { ok: false, text: claimed.error };
     const rng = new FishingRng(state.rngState, state.rngCalls);
     const highlights = [];
+    const outcomes = [];
     const caught = new Map();
     let done = 0, fishCount = 0, junkCount = 0, eventCount = 0, stopReason = "";
     let qixiResult = null;
@@ -524,6 +525,11 @@ function castMany(farm, state, farms, params, now) {
             break;
         }
         const result = castStep(farm, state, rng, nextBait.bait, now);
+        if (result.kind === "fish") outcomes.push({kind:"fish", fishId:result.fishId, name:result.fishName,
+            rarity:result.rarity, first:result.first === true});
+        else if (result.kind === "junk") outcomes.push({kind:"junk", name:result.junk});
+        else if (result.kind === "empty") outcomes.push({kind:"empty"});
+        else if (result.kind === "event") outcomes.push({kind:"event", eventId:result.eventId, name:result.eventName});
         done++;
         if (result.kind === "fish") {
             const quantity = 1 + result.championExtra;
@@ -556,14 +562,14 @@ function castMany(farm, state, farms, params, now) {
     state.rngCalls = rng.calls;
     state.activeUntil = now + fishing.leaseMs;
     if (times === 1)
-        return { ok: true, text: [highlights.join("\n"), qixi2026FishText(qixiResult)].filter(Boolean).join("\n") };
+        return { ok: true, text: [highlights.join("\n"), qixi2026FishText(qixiResult)].filter(Boolean).join("\n"), outcomes };
     const haul = [...caught].map(([name, count]) => `${name}×${count}`).join("、") || "无";
     const summary = `🎣 连钓 ${done} 竿${stopReason}｜鱼 ${fishCount} 条：${haul}｜垃圾/空竿 ${junkCount}｜事件 ${eventCount}`;
     const text = highlights.length ? `${highlights.join("\n———\n")}\n\n${summary}` : summary;
-    return { ok: true, text: [text, ecologyLimit, qixi2026FishText(qixiResult)].filter(Boolean).join("\n") };
+    return { ok: true, text: [text, ecologyLimit, qixi2026FishText(qixiResult)].filter(Boolean).join("\n"), outcomes };
 }
 
-function buyBait(farm, state, requested, qty, now) {
+export function buyBait(farm, state, requested, qty, now) {
     const bait = byIdOrName(fishingBaits, requested ?? "basic_worm");
     if (!bait)
         return { ok: false, text: `没有这种鱼饵：${requested}。` };
@@ -805,7 +811,7 @@ export function sellFishingCatchIds(farm, itemIds, qty) {
 }
 
 /** 单一 farm 工具下的扁平 fish 动作。全服 farms 用于钓位容量判定。 */
-export function runFishing(farm, params, now, farms) {
+export function runFishing(farm, params, now, farms, options = {}) {
     const state = ensureFishing(farm);
     const day = currentDayIndex(now);
     const finish = (result, remind = true) => {
@@ -814,7 +820,7 @@ export function runFishing(farm, params, now, farms) {
     };
     if (params.option !== undefined) {
         const result = answerFishingEncounter(farm, params.option, day);
-        return finish({ ok: result.ok, text: result.text });
+        return finish({ ok: result.ok, text: result.text, ...(options.captureMoments && result.ok ? { momentActivities: [{kind:"encounter", data:{eventId:result.eventId, name:result.eventName, choiceId:result.choiceId, outcome:result.text}}] } : {}) });
     }
     if (params.leave === true || params.leave === "true" || params.leave === "1") {
         state.activeUntil = 0;
@@ -846,6 +852,7 @@ export function runFishing(farm, params, now, farms) {
     if (shouldCast && FISHING_BLOCKED_WEATHER.has(currentWeather(now)?.condition))
         return finish({ ok: false, text: FISHING_BAD_WEATHER_TEXT });
     const out = [];
+    let momentActivities = [];
     if (params.buy !== undefined) {
         const bought = buyBait(farm, state, params.bait, Number(params.buy), now);
         if (!bought.ok)
@@ -863,6 +870,7 @@ export function runFishing(farm, params, now, farms) {
         if (!cast.ok)
             return finish({ ...cast, text: [...out, cast.text].join("\n") });
         out.push(cast.text);
+        if (options.captureMoments && cast.outcomes.length) momentActivities = [{kind:"fishing", data:{spotId:state.locationId, outcomes:cast.outcomes}}];
     }
-    return finish({ ok: true, text: out.join("\n") }, false);
+    return finish({ ok: true, text: out.join("\n"), momentActivities }, false);
 }

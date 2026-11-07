@@ -13,6 +13,7 @@ import { withFooter } from "../presentation/farm.js";
 import { kitchenToolOffer } from "../../domain/kitchen/tool-catalog.js";
 import { cookingIngredients, cookingProducts } from "../../content.js";
 import { kitchenMethodDefinition } from "../../domain/kitchen/chef.js";
+import { cookingActivity, cookingResearchActivity } from "../../domain/moments/activity.js";
 
 export const KITCHEN_DOMAIN_ERROR_TEXT = Object.freeze({
     anchor_content_unavailable: "料理评分内容暂时不可用，本次没有执行。",
@@ -86,7 +87,7 @@ function originalResearchSettlementLines(researched) {
     return lines;
 }
 
-function originalResearchResult(researched, farm, now) {
+function originalResearchResult(researched, farm, now, options) {
     let line;
     if (researched.status === "succeeded" && researched.recipe) {
         line = `📜 原创菜谱「${researched.recipe.name}·${researched.recipe.rarity}」已经登记。`;
@@ -120,7 +121,8 @@ function originalResearchResult(researched, farm, now) {
     }
     const ok = researched.status !== "rejected";
     const text = [line, ...originalResearchSettlementLines(researched)].join("\n");
-    return { ok, text: ok ? withFooter(farm, now, text) : text };
+    const activity = options.captureMoments ? cookingResearchActivity(researched) : null;
+    return { ok, text: ok ? withFooter(farm, now, text) : text, ...(activity ? {momentActivities:[activity]} : {}) };
 }
 
 function originalResearchErrorText(error, methodId) {
@@ -167,7 +169,7 @@ export function handleKitchenAction(action, f, b, now, options = {}) {
                     methodId: String(b.method ?? ""),
                     recipeName: String(b.name),
                 });
-                return originalResearchResult(researched, f, now);
+                return originalResearchResult(researched, f, now, options);
             }
             catch (error) {
                 return { ok: false, text: originalResearchErrorText(error, String(b.method ?? "")) };
@@ -178,18 +180,19 @@ export function handleKitchenAction(action, f, b, now, options = {}) {
             : kitchenCook(f, b.items, now, { ...options, methodId: b.method });
         if (!r.ok)
             return { ok: false, text: kitchenDomainErrorText(r) };
+        const momentActivities = options.captureMoments ? [cookingActivity(r)].filter(Boolean) : [];
         if (r.qixi) {
             const submitted = `黄油曲奇 ×1 已提交至七夕任务。`;
-            return { ok: true, text: withFooter(f, now, [submitted, qixi2026CompletionText(r.qixi)].filter(Boolean).join("\n")) };
+            return { ok: true, text: withFooter(f, now, [submitted, qixi2026CompletionText(r.qixi)].filter(Boolean).join("\n")), momentActivities };
         }
         if (r.midAutumnSeed?.submitted) {
             const submitted = '黄油曲奇 ×1 已自动提交至中秋任务并消耗，不再保留在背包。';
-            return { ok: true, text: withFooter(f, now, [submitted, midAutumnSeedCompletionText(r.midAutumnSeed)].filter(Boolean).join("\n")) };
+            return { ok: true, text: withFooter(f, now, [submitted, midAutumnSeedCompletionText(r.midAutumnSeed)].filter(Boolean).join("\n")), momentActivities };
         }
         const line = r.odd
             ? `🥴 锅里端出了一份「微妙的料理」：只能 1 金系统回收，或由你自己吃下并随机承受 2 小时负面效果。`
             : `🍲 做出了【${r.dish.name}·${r.dish.rarity}】！系统回收价已锁定为 ${r.dish.value} 牧场金币 + ${dishSystemRecycleSilver(r.dish)} 银。${r.discovered ? "还通过这次正确试做解锁了食谱。" : ""}`;
-        return { ok: true, text: withFooter(f, now, line) };
+        return { ok: true, text: withFooter(f, now, line), momentActivities };
     }
     if (op === "use") {
         if (String(b.target) === "guard-dog")

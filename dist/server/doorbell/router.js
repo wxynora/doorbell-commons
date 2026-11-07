@@ -1,3 +1,6 @@
+import { handleMomentsRaffle } from "../moments-raffle.js";
+import { handleMomentsGifts } from "../moments-gifts.js";
+import { handleMomentsActivities } from "../moments-activities.js";
 import { handleDoorbellSecurityPatrol } from "./security-patrol.js";
 import { handleGlimmerEditor } from "./glimmer-editor.js";
 import { handleDoorbellMidAutumn } from "./mid-autumn.js";
@@ -90,9 +93,23 @@ import { handleTournamentRegistration } from "./tournament-registration.js";
 import { readBody as readTogetherBody, jsonOut as togetherJsonOut } from "../http.js";
 import { requireDoorbellService as authorizeTogetherReward } from "./contract.js";
 
-export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime, gachaRuntime, halloweenRuntime) {
+export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime, gachaRuntime, halloweenRuntime, momentsDatabase) {
     const halloweenHumanHandler = createDoorbellHalloweenHumanHandler(halloweenRuntime);
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts.length === 5 && parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "moments"
+            && parts[3] === "raffle" && ["lock","settle"].includes(parts[4])) {
+            await handleMomentsRaffle(req,res,method,parts[4]);
+            return true;
+        }
+        if (parts.length === 5 && parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "moments"
+            && parts[3] === "gifts" && ["inventory","transfer"].includes(parts[4])) {
+            await handleMomentsGifts(req,res,method,parts[4]);
+            return true;
+        }
+        if (parts.join("/") === "internal/doorbell/moments/activities") {
+            await handleMomentsActivities(req, res, method, momentsDatabase);
+            return true;
+        }
         if (parts.join("/") === "internal/doorbell/halloween/human") {
             await halloweenHumanHandler(req, res, method);
             return true;

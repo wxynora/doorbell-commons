@@ -3,7 +3,7 @@
  * Farm doorplates and human keys are not identity credentials for this lookup.
  */
 import { createHash } from "node:crypto";
-import { getChefRecipe } from "./chef-recipe-service.js";
+import { getChefRecipe, getChefRecipeResearch } from "./chef-recipe-service.js";
 import { PAID_KITCHEN_TOOLS } from "../server/kitchen-structured.js";
 
 export function farmResidentId(database, farm) {
@@ -128,13 +128,16 @@ export function farmDoorbellKitchenCareerBenefits(database, backend, farm) {
             const ingredients = countedIngredients(items);
             const payload = { ingredients, methodId, recipeName };
             const key = stableChefActionId(residentId, "recipe-research", payload);
-            return resident.researchOwnChefRecipe({
+            const before = getChefRecipeResearch(database, key);
+            const result = resident.researchOwnChefRecipe({
                 operationId: key,
                 idempotencyKey: key,
                 recipeName,
                 methodId,
                 ingredients,
             });
+            const terminalBefore = ["succeeded", "failed", "rejected"].includes(before?.status);
+            return {...result, momentsNewlySucceeded:result.status === "succeeded" && !terminalBefore};
         },
         onOriginalCookingReceipt(receipt) {
             const receiptId = receipt?.receiptId ?? receipt?.cookingReceiptId;

@@ -3,6 +3,7 @@ import { playerPatrolView,playerPatrolAction,PATROL_SELECTION_INSTRUCTION } from
 import { expireNatureRecoveredCommissions } from "../../career/nature-commission-recovery.js";
 import { readCareerPaySummary } from "../../career/pay-summary.js";
 import { createHash } from "node:crypto";
+import { publicCommissionActivity } from "../../domain/moments/activity.js";
 import {
     CareerDomainError,
     CAREER_IDS,
@@ -2787,7 +2788,7 @@ function completeCommissionWorldOperation(database, backend, row, world) {
             }
         }
         const finalJob = backend.trustedQueries.getJob(job.jobId);
-        const response = current.operation_kind === "commission_check"
+        let response = current.operation_kind === "commission_check"
             ? success(`检查结果：${p3CheckFindingText(world.finding)}`, { result, world })
             : success(
                 world.resolved === true
@@ -2801,6 +2802,11 @@ function completeCommissionWorldOperation(database, backend, row, world) {
                         current.resident_id)
                     : [],
             );
+        const activity = publicCommissionActivity(database, {
+            residentId:current.resident_id, career:current.career, action:"complete",
+            actionKey:current.action_key, originalAt:current.created_at,
+        }, response);
+        if (activity) response = {...response, moment_activities:[activity]};
         database.prepare(`
           UPDATE lingye_cross_store_operations
           SET status = 'completed', result_json = ?, updated_at = ?
@@ -3785,8 +3791,15 @@ function commissionChoose(database, backend, residentId, career, args, sources, 
 }
 
 function commissionAction(database, backend, residentId, career, args, sources, now, afterWorldApplyForTesting) {
-    const present = (response) => currentServiceCommissionResult(database, backend,
-        residentId, career, sources, now, response);
+    const present = (response, originalAt = now) => {
+        const presented = currentServiceCommissionResult(database, backend, residentId, career, sources, now, response);
+        if (Array.isArray(response.moment_activities)) return presented;
+        const action = /^commission:publish:/u.test(args.option) ? "publish"
+            : /^commission:accept:/u.test(args.option) ? "accept"
+            : /^commission:treat:/u.test(args.option) ? "complete" : null;
+        const activity = publicCommissionActivity(database, {residentId, career, action, actionKey, originalAt}, presented);
+        return activity ? { ...presented, moment_activities:[activity] } : presented;
+    };
     const actionKey = idempotencyKey(residentId, `go.${career}.commission`, args);
     const payloadHash = createHash("sha256")
         .update(JSON.stringify({ args, career, residentId }))
@@ -3800,7 +3813,7 @@ function commissionAction(database, backend, residentId, career, args, sources, 
             existing.payload_hash !== payloadHash) {
             throw new LingyeBusinessError("CONFLICT", "这个委托操作已经使用了不同参数。");
         }
-        return present(JSON.parse(existing.result_json));
+        return currentServiceCommissionResult(database, backend, residentId, career, sources, now, JSON.parse(existing.result_json));
     }
     if (["agronomist", "veterinarian"].includes(career) &&
         /^commission:(check|treat):/u.test(args.option)) {

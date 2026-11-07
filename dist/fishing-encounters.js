@@ -52,7 +52,7 @@ export function answerFishingEncounter(farm, option, day) {
         state.activeUntil = 0;
     }
     delete state.pendingEncounter;
-    return { ok: true, kind: "settled", text: choice.text };
+    return { ok: true, kind: "settled", eventId: event.id, eventName: event.name, choiceId: choice.id, text: choice.text };
 }
 
 export function fishingEncounterOptionsText(farm, day, remind = true) {

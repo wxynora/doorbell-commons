@@ -358,7 +358,7 @@ function explore(farm, world, now) {
         suffix = grantReward(farm, event.reward, rng, now);
         farm.rngState = rng.state;
     }
-    return { ok: true, text: withStatus(farm, now, text + suffix) };
+    return { ok: true, text: withStatus(farm, now, text + suffix), momentActivities: [{kind:"glimmer", data:{action:"explore", id:event.id, name:event.name, pending:event.type === "choice", result:event.type === "choice" ? event.name : text + suffix}}] };
 }
 
 function choose(farm, now, option) {
@@ -383,7 +383,7 @@ function choose(farm, now, option) {
     const suffix = grantReward(farm, outcome.reward, rng, now);
     farm.rngState = rng.state;
     history(farm, { at: now, kind: "choice", refId: event.id, option: key, text: outcome.text });
-    return { ok: true, text: withStatus(farm, now, outcome.text + suffix) };
+    return { ok: true, text: withStatus(farm, now, outcome.text + suffix), momentActivities: [{kind:"glimmer", data:{action:"choose", id:event.id, name:event.name, choice:key, result:outcome.text + suffix}}] };
 }
 
 function findDish(farm, query) {
@@ -477,7 +477,7 @@ function catchVariant(farm, world, now, animalQuery, dishQuery) {
             ? `🐾 ${variant.name}很喜欢「${dish.name}」，但最后还是没有跟你走。料理已消耗；该种异色保底 ${pityAfter}/${CAPTURE_PITY_LIMIT}，20 分钟后可以再次尝试。`
             : `🐾 ${variant.name}吃完「${dish.name}」，绕着你看了两圈，还是跑进了草丛。料理已消耗；该种异色保底 ${pityAfter}/${CAPTURE_PITY_LIMIT}，20 分钟后可以再次尝试。`;
         history(farm, { at: now, kind: "capture-fail", refId: variant.id, dish: dish.name, pity: pityAfter });
-        return { ok: true, text: withStatus(farm, now, text), success: false };
+        return { ok: true, text: withStatus(farm, now, text), success: false, momentActivities: [{kind:"glimmer", data:{action:"catch", id:variant.id, name:variant.name, success:false, guaranteed:false, result:text}}] };
     }
     delete gate.state.capturePity[variant.kindId];
     gate.state.unlocked.push(variant.id);
@@ -527,7 +527,7 @@ function catchVariant(farm, world, now, animalQuery, dishQuery) {
         resultText += `\n🎯 第 ${CAPTURE_PITY_LIMIT} 次有效诱捕触发保底，该种异色保底已清零。`;
     publicLog(world, farm, `${timeLabel(now)} · 「${farm.name}」带走了异色外观「${variant.name}」`, now, "variant", variant.id);
     history(farm, { at: now, kind: "capture", refId: variant.id, dish: dish.name, guaranteed });
-    return { ok: true, text: withStatus(farm, now, resultText), success: true, variant };
+    return { ok: true, text: withStatus(farm, now, resultText), success: true, variant, momentActivities: [{kind:"glimmer", data:{action:"catch", id:variant.id, name:variant.name, success:true, guaranteed, result:resultText}}] };
 }
 
 function takeCoopItem(farm, event, query) {
@@ -621,9 +621,11 @@ function assist(farm, world, now, itemQuery) {
     const count = world.coop.contributors.length;
     if (count >= glimmer.coopRequired && !world.coop.completedAt) {
         world.coop.completedAt = now;
-        return { ok: true, text: withStatus(farm, now, `🤝 你为〔${event.name}〕交出「${item.name}」，共享进度 ${count}/${glimmer.coopRequired}。\n✨〔${event.name}〕协作完成！至少三家农场已经接力，流光原野出现了一条额外稀有踪迹。你获得 100 金、20 银。`) };
+        const text = `🤝 你为〔${event.name}〕交出「${item.name}」，共享进度 ${count}/${glimmer.coopRequired}。\n✨〔${event.name}〕协作完成！至少三家农场已经接力，流光原野出现了一条额外稀有踪迹。你获得 100 金、20 银。`;
+        return { ok: true, text: withStatus(farm, now, text), momentActivities: [{kind:"glimmer", data:{action:"assist", id:event.id, name:event.name, item:item.name, count, completed:true, result:text}}] };
     }
-    return { ok: true, text: withStatus(farm, now, `🤝 你为〔${event.name}〕交出「${item.name}」，共享进度 ${Math.min(count, glimmer.coopRequired)}/${glimmer.coopRequired}。\n你获得 100 金、20 银。`) };
+    const text = `🤝 你为〔${event.name}〕交出「${item.name}」，共享进度 ${Math.min(count, glimmer.coopRequired)}/${glimmer.coopRequired}。\n你获得 100 金、20 银。`;
+    return { ok: true, text: withStatus(farm, now, text), momentActivities: [{kind:"glimmer", data:{action:"assist", id:event.id, name:event.name, item:item.name, count, completed:false, result:text}}] };
 }
 
 function ticket(farm, now) {
@@ -643,7 +645,7 @@ function ticket(farm, now) {
     history(farm, { at: now, kind: "ticket", text: "今日通票" });
     recordWelfareWeekProgress(farm, "glimmer_ticket", 1, now);
     const notice = takeWelfareWeekNotice(farm);
-    return { ok: true, text: withStatus(farm, now, `🎫 买下「流光原野」今日通票，-500 金。今天开放期间可以反复进入。${notice ? `\n${notice}` : ""}`) };
+    return { ok: true, text: withStatus(farm, now, `🎫 买下「流光原野」今日通票，-500 金。今天开放期间可以反复进入。${notice ? `\n${notice}` : ""}`), momentActivities: [{kind:"glimmer", data:{action:"ticket", id:String(currentDayIndex(now)), name:"流光原野", result:"🎫 买下「流光原野」今日通票，-500 金。"}}] };
 }
 
 function glimmerDishInventoryLine(farm) {
@@ -756,7 +758,8 @@ export function runGlimmer(farm, worldValue, params, now = Date.now()) {
     const result = runGlimmerAction(farm, worldValue, params, now);
     const freshGrants = settleGlimmerAchievementRewards(farm);
     const rewardText = [glimmerAchievementRewardText(legacyGrants, true), glimmerAchievementRewardText(freshGrants)].filter(Boolean).join("\n");
-    return rewardText ? { ...result, text: `${result.text}\n${rewardText}` } : result;
+    const momentActivities = [...(result.momentActivities ?? []), ...freshGrants.map((grant) => ({kind:"glimmer", data:{action:"achievement", id:grant.id, name:grant.name, result:glimmerAchievementRewardText([grant])}}))];
+    return { ...result, ...(momentActivities.length ? {momentActivities} : {}), ...(rewardText ? {text:`${result.text}\n${rewardText}`} : {}) };
 }
 
 export function glimmerVariantSpriteInfo(entity, kindId, type = "animal") {

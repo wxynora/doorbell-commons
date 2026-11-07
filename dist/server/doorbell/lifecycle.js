@@ -228,6 +228,7 @@ async function executeDoorbellFarmRequest(req, res, method, executeFarmAction) {
             ok: out.json?.ok === true,
             text: typeof out.json?.text === "string" ? out.json.text : "农场没有返回可读取的结果。",
             ...(body.detail === true && isPlainObject(out.json?.farm) ? { farm: out.json.farm } : {}),
+            ...(out.json?.ok === true && Array.isArray(out.json?.moment_activities) ? {moment_activities:out.json.moment_activities} : {}),
         };
         const ownGuestbook = body.action === "guestbook" && body.params.on === undefined;
         const visitingGuestbook = body.action === "visit" && typeof body.params.to === "string" && body.params.to.trim() !== "";
