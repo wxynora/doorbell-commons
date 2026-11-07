@@ -105,11 +105,22 @@ function inventoryText(inventory: GiftInventory) {
     "购买前按数量算好总价，确认后用gift action附purchase.expectedTotal；料理只从背包送成品。"].join("\n");
 }
 
-/** Decoration only: source facts and wording remain intact, including multiline values. */
+function harvestSummary(kind: string, facts: readonly { label: string; value: string }[]): string | undefined {
+  if (kind !== "harvest") return undefined;
+  const counts = new Map<string, number>();
+  for (const fact of facts) if (fact.label === "稀有度") counts.set(fact.value, (counts.get(fact.value) ?? 0) + 1);
+  if (!counts.size) return undefined;
+  const order = new Map(["N", "R", "SR", "SSR"].map((rarity, index) => [rarity, index]));
+  const groups = [...counts].sort(([left], [right]) => (order.get(left) ?? order.size) - (order.get(right) ?? order.size));
+  return `收获：${groups.map(([rarity, count]) => `${rarity} × ${count}`).join(" · ")}`;
+}
+
+/** Receipt presentation; stored source facts stay unchanged. */
 function activityCard(receipt: NonNullable<MomentView["receipt"]>): string {
   const title = `分享：${receipt.title}`;
-  const summary = receipt.summary ? [receipt.summary] : [];
-  const facts = receipt.facts.map(fact => `${fact.label}：${fact.value}`);
+  const harvest = harvestSummary(receipt.kind, receipt.facts);
+  const summary = !harvest && receipt.summary ? [receipt.summary] : [];
+  const facts = harvest ? [harvest] : receipt.facts.map(fact => `${fact.label}：${fact.value}`);
   const body = (factsFirst = false) => (factsFirst ? [...facts, ...summary] : [...summary, ...facts]).flatMap(line => line.split("\n"));
   if (["game-leaf-game", "game-doudizhu", "game-flying-chess", "game-uno", "game-monopoly", "game-mahjong"].includes(receipt.kind))
     return [`🎮【${receipt.title}】`, ...body(true)].join("\n");
@@ -190,8 +201,9 @@ export class MomentsTool implements MomentsToolPort {
       if (!receipts.length) return { ok: true, text: "🌿【我的农场活动回执】\n这段时间没有可找回的农场活动回执。" };
       return { ok: true, text: [`🌿【我的农场活动回执】\n找到${receipts.length}条活动回执。`, ...receipts.map(receipt => {
         const card = farmActivityCard(receipt.event);
-        return [beijingTime(receipt.event.occurredAt), card.title, ...(card.summary ? [card.summary] : []),
-          ...card.facts.map(fact => `${fact.label}：${fact.value}`), `转发到朋友圈：${receipt.option}`,
+        const harvest = harvestSummary(receipt.event.kind, card.facts);
+        return [beijingTime(receipt.event.occurredAt), card.title, ...(!harvest && card.summary ? [card.summary] : []),
+          ...(harvest ? [harvest] : card.facts.map(fact => `${fact.label}：${fact.value}`)), `转发到朋友圈：${receipt.option}`,
           "补充：requestId、text、visibility；可附location"].join("\n");
       })].join("\n\n") };
     } catch (error) {
