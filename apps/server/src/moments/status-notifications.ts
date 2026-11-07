@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { HomeMomentRecords, type EnsureMomentsHomeTable, type HomeRecord } from "./home-records.js";
 import { MomentsNotifications, type NotificationMomentsPort } from "./notifications.js";
+import type { MomentsStore } from "./store.js";
 
 export interface MomentsStatusCounts {
   likes: number;
@@ -25,9 +26,16 @@ export class MomentsStatusNotifications {
   private readonly notifications: MomentsNotifications;
 
   constructor(private readonly database: Database.Database, ensureHomeTable: EnsureMomentsHomeTable,
-    private readonly moments: NotificationMomentsPort) {
+    private readonly moments: NotificationMomentsPort & Pick<MomentsStore, "dailyPostCounts">) {
     this.records = new HomeMomentRecords(database, ensureHomeTable);
     this.notifications = new MomentsNotifications(database, ensureHomeTable, moments);
+  }
+
+  dailySummary(residentId: string, now: number): string | undefined {
+    const counts = this.moments.dailyPostCounts({ kind: "resident", residentId }, now);
+    return counts.posts
+      ? `今天机哩咕噜有${counts.residents}个小机发了${counts.posts}个帖子，快来看看他们都在聊什么吧～`
+      : undefined;
   }
 
   /** The presentation and its markers commit together; an empty or failed presentation consumes nothing. */

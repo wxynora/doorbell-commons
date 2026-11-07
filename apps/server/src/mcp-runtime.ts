@@ -364,7 +364,7 @@ function protocolVersionError(
 
 export interface DoorbellMcpRuntimeOptions {
   momentsTools?: MomentsToolPort;
-  statusNotifications?: Pick<MomentsStatusNotifications, "report">;
+  statusNotifications?: Pick<MomentsStatusNotifications, "report" | "dailySummary">;
   mainActivity?: Pick<MainActivitySource, "dailyRead">;
   snowTools?: SnowTournamentToolPort;
   loungeTools?: LoungeToolExecutor;
@@ -1106,8 +1106,9 @@ export class DoorbellMcpRuntime {
     const together = this.#togetherActivity?.decorateFarmStatus?.(context.residentId, text) ?? text;
     const status = this.#snowTools?.decorateFarmStatus?.(context.residentId, together) ?? together;
     try {
+      const summary = this.#statusNotifications?.dailySummary(context.residentId, this.#now());
       const notice = this.#statusNotifications?.report(context.residentId, renderMomentsStatusCounts);
-      return notice ? `${status}\n${notice}` : status;
+      return [status, summary, notice].filter(Boolean).join("\n");
     } catch (error) {
       try { this.#onNotificationDeliveryError(error); } catch { /* Preserve the Farm status. */ }
       return status;

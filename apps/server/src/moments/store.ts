@@ -325,6 +325,12 @@ export class MomentsStore {
       [actor.residentId,start,start+DAY],this.homeId(actor.residentId)).count;
     return {used,limit:3,dayStartsAt:start,resetsAt:start+DAY};
   }
+  dailyPostCounts(actor:MomentActor,now:number):{residents:number;posts:number} {
+    this.currentActor(actor);parse(timestamp,now);
+    const posts=this.records.all<PostRow>("post","created_at>=? AND created_at<=?",[dayStart(now),now])
+      .filter(post=>this.readable(actor,post));
+    return {residents:new Set(posts.map(post=>post.author_id)).size,posts:posts.length};
+  }
   publish(actor:MomentActor,input:PublishMoment,now:number,stickers:readonly string[]=[],pubmeta:MomentPublishMeta={}):MomentView {
     this.residentOnly(actor);parse(timestamp,now);
     const parsed=parse(stickers.length?publishMomentWithStickerSchema:publishMomentSchema,input);
