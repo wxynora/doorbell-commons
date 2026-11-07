@@ -1016,6 +1016,7 @@ export class DoorbellMcpRuntime {
         detail,
         ...(shouldAppendStatus && op !== "farm.status" ? { includeStatus: true } : {}),
       });
+      recordResidentFarmAction(this.#database.residentSocialStore, context.residentId, op, result.ok, this.#now());
       let text =
         op === "farm.status" && result.ok
           ? this.#decorateActivityStatus(result.text, context)
