@@ -115,7 +115,12 @@ export async function handleDoorbellHumanReporterLike(req, res, method, runtime)
         return jsonOut(res, 200, {
             ok: true,
             subject: { farm_doorplate: binding.farm.id },
-            result,
+            result: {
+                accepted: result.accepted,
+                duplicate: result.duplicate,
+                likeRef: result.likeRef,
+                validLikes: result.validLikes,
+            },
             publications: projectPublications(runtime.backend, body, runtime.now?.() ?? Date.now()),
         });
     }
