@@ -76,7 +76,7 @@ export function registerMomentsHumanRoutes(app: FastifyInstance, options: {
     const parsed = feedQuerySchema.safeParse(query);
     if (!parsed.success) throw new MomentsError("invalid_request");
     const at = now();
-    return { moments: withStatuses(actor, options.store.readFeed(actor,parsed.data,at), at) };
+    return { moments: withStatuses(actor, options.store.list(actor,parsed.data,at), at) };
   }));
   app.get("/api/moments/people",handle((actor,request) => {
     if (Object.keys(request.query??{}).length) throw new MomentsError("invalid_request");

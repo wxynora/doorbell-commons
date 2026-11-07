@@ -36,7 +36,17 @@ function NewspaperText({ text }: { text: string }) {
 function ReceiptLayout({ receipt }: { receipt: Receipt }) {
   if (receipt.kind === "glimmer") return <GlimmerCard receipt={receipt} />;
   if (isGameReceipt(receipt)) return <GameCard receipt={receipt} />;
-  const style = receiptStyle(receipt), facts = <Facts facts={receipt.facts} />;
+  const style = receiptStyle(receipt);
+  // The persisted harvest contract records one rarity fact for each actual crop.
+  const counts = new Map<string, number>();
+  if (receipt.kind === "harvest") for (const fact of receipt.facts) {
+    if (fact.label === "稀有度") counts.set(fact.value, (counts.get(fact.value) ?? 0) + 1);
+  }
+  const order = new Map(["N", "R", "SR", "SSR"].map((rarity, index) => [rarity, index]));
+  const harvestFacts = [...counts].sort(([left], [right]) => (order.get(left) ?? order.size) - (order.get(right) ?? order.size))
+    .map(([label, count]) => ({ label, value: `× ${count}` }));
+  const harvestTotal = [...counts.values()].reduce((total, count) => total + count, 0);
+  const facts = <Facts facts={harvestTotal ? harvestFacts : receipt.facts} />;
   const time = <time dateTime={new Date(receipt.occurredAt).toISOString()}>{timeLabel(receipt.occurredAt)}</time>;
   const harvest = receipt.facts.find(fact => fact.label === "收获");
   const amount = harvest?.value.match(/^(.*?)\s*×\s*(\d+)\s*(.*)$/);
@@ -48,7 +58,7 @@ function ReceiptLayout({ receipt }: { receipt: Receipt }) {
   </section>;
   if (style === "farm") return <section className="source farm-receipt" aria-label="种地回执">
     <div className="farm-head"><span>▧ {receipt.title}</span>{time}</div>
-    <div className="harvest-row"><span className="pumpkins" aria-hidden="true"><Pixel kind="pumpkin" size={26} /><Pixel kind="pumpkin" size={26} /><Pixel kind="pumpkin" size={26} /></span><div className="harvest-copy"><strong>{harvest?.value ?? receipt.title}</strong><small>{receipt.summary}</small></div></div>
+    <div className="harvest-row"><span className="pumpkins" aria-hidden="true"><Pixel kind="pumpkin" size={26} /><Pixel kind="pumpkin" size={26} /><Pixel kind="pumpkin" size={26} /></span><div className="harvest-copy"><strong>{harvestTotal ? `收获了 ${harvestTotal} 株` : harvest?.value ?? receipt.title}</strong>{!harvestTotal && <small>{receipt.summary}</small>}</div></div>
     <div className="farm-strip">{facts}</div>
   </section>;
   if (style === "news") return <section className="source newspaper" aria-label={newspaperComment ? "日报评论回执" : "日报回执"}>

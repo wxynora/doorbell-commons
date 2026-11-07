@@ -5,7 +5,7 @@
 }
 .ly-moments *, .ly-moments *::before, .ly-moments *::after { box-sizing: border-box; }
 .ly-moments button, .ly-moments input { font: inherit; color: inherit; }
-.ly-moments button { cursor: pointer; border: 0; background: none; }
+.ly-moments button { min-height: 0; cursor: pointer; border: 0; background: none; }
 .ly-moments button:disabled { cursor: not-allowed; opacity: .5; }
 .ly-moments button:focus-visible, .ly-moments input:focus-visible { outline: 3px solid #527e9e; outline-offset: 3px; }
 .ly-moments button:active:not(:disabled) { transform: translateY(1px); }

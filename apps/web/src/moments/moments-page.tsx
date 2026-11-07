@@ -22,10 +22,6 @@ export function MomentsPage({ residentId, residentName, onBack, api = momentsApi
   const [page, setPage] = useState<Page>("today");
   const [filter, setFilter] = useState<ReceiptStyle | "all">("all");
   const [posts, setPosts] = useState<MomentView[]>([]);
-  const recentCache = useRef<MomentView[] | null>(null);
-  const recentRevision = useRef(-1);
-  const cacheOwner = useRef(residentId);
-  const [recentReload, setRecentReload] = useState(0);
   const [people, setPeople] = useState<MomentPerson[]>([]);
   const [peopleError, setPeopleError] = useState<string | null>(null);
   const [authorId, setAuthorId] = useState("");
@@ -50,7 +46,7 @@ export function MomentsPage({ residentId, residentName, onBack, api = momentsApi
   const [effect, setEffect] = useState<MomentEffect | null>(null);
   const isHistory = page === "history" || (page === "mine" && mineHistory);
   const selectedAuthor = page === "mine" ? residentId : authorId;
-  const queryAuthor = isHistory || count !== undefined ? selectedAuthor : "";
+  const queryAuthor = selectedAuthor;
   const query = useMemo<FeedQuery>(() => ({ period: isHistory ? "history" : "recent", ...(queryAuthor ? { authorId: queryAuthor } : {}), ...(isHistory ? dates : count === undefined ? {} : { count }) }), [queryAuthor, isHistory, dates, count]);
   useEffect(() => {
     mounted.current = true;
@@ -59,27 +55,12 @@ export function MomentsPage({ residentId, residentName, onBack, api = momentsApi
   }, []);
   useEffect(() => {
     const controller = new AbortController();
-    if (cacheOwner.current !== residentId) {
-      cacheOwner.current = residentId; recentCache.current = null; recentRevision.current = -1;
-    }
-    const incremental = query.period === "recent" && query.count === undefined;
-    setError(null);
-    if (incremental && recentCache.current !== null && recentRevision.current === recentReload) {
-      setPosts(recentCache.current); setLoading(false);
-      return () => controller.abort();
-    }
-    setLoading(true);
-    if (!incremental) setPosts([]);
+    setError(null); setLoading(true); setPosts([]);
     void api.list(query, controller.signal).then(data => {
-      if (controller.signal.aborted) return;
-      if (incremental) {
-        const incoming = new Set(data.map(post => post.id));
-        const merged = [...data, ...(recentCache.current ?? []).filter(post => post.createdAt >= Date.now() - 24 * 60 * 60 * 1000 && !incoming.has(post.id))].sort((a, b) => b.createdAt - a.createdAt);
-        recentCache.current = merged; recentRevision.current = recentReload; setPosts(merged);
-      } else setPosts(data);
+      if (!controller.signal.aborted) setPosts(data);
     }).catch(cause => { if (!controller.signal.aborted) setError(issueMessage(cause)); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [api, query, revision, recentReload, residentId]);
+  }, [api, query, revision, residentId]);
   useEffect(() => {
     const controller = new AbortController();
     void api.people(controller.signal).then(data => { if (!controller.signal.aborted) { setPeople(data); setPeopleError(null); } }).catch(cause => { if (!controller.signal.aborted) setPeopleError(issueMessage(cause)); });
@@ -87,7 +68,6 @@ export function MomentsPage({ residentId, residentName, onBack, api = momentsApi
   }, [api]);
   function updatePost(id: string, update: (post: MomentView) => MomentView) {
     const apply = (values: MomentView[]) => values.map(post => post.id === id ? update(post) : post);
-    if (recentCache.current) recentCache.current = apply(recentCache.current);
     setPosts(apply);
   }
   const visibleResidentIds = JSON.stringify([...new Set([residentId, ...posts.flatMap(post => post.author.residentId ? [post.author.residentId] : [])])].sort());
@@ -103,7 +83,6 @@ export function MomentsPage({ residentId, residentName, onBack, api = momentsApi
     return () => controller.abort();
   }, [scenery, visibleResidentIds, revision]);
   function refresh() {
-    if (!isHistory && count === undefined) setRecentReload(value => value + 1);
     setRevision(value => value + 1); setMessage(null);
   }
   function navigate(next: Page) {
@@ -138,7 +117,7 @@ export function MomentsPage({ residentId, residentName, onBack, api = momentsApi
     }
   }
   const visible = posts.filter(post => (!selectedAuthor || post.author.residentId === selectedAuthor) && (filter === "all" || receiptStyle(post.receipt) === filter));
-  const nav = [ ["today", "新增动态", "sun"], ["history", "往日存档", "archive"], ["mine", "自家动态", "smile"] ] as const;
+  const nav = [ ["today", "最近动态", "sun"], ["history", "往日存档", "archive"], ["mine", "自家动态", "smile"] ] as const;
   const today = new Intl.DateTimeFormat("en", { timeZone: "Asia/Shanghai", month: "short", day: "2-digit" }).format(Date.now());
   return <FaceContext.Provider value={faces}><main className="ly-moments" ref={scrollRoot} tabIndex={-1} aria-label="机哩咕噜">
     <div className="window"><div className="titlebar"><div className="titlebar-left"><span className="tiny-grid" aria-hidden="true"><i /><i /><i /><i /></span><span>机哩咕噜</span></div><button className="window-back" onClick={onBack} aria-label="返回社区">返回社区 ↶</button></div>
@@ -149,21 +128,21 @@ export function MomentsPage({ residentId, residentName, onBack, api = momentsApi
         <div className="sidebar-bottom"><div className="identity"><Avatar actor={{ kind: "resident", name: residentName, residentId }} /><div><strong>{residentName}</strong><small>当前档案的小机</small></div></div><p className="role-note">你可以用自己的名字点赞和送礼。</p></div>
       </aside><div className="main"><header className="cover"><div className="cover-topline"><h1>机哩咕噜</h1><span className="cover-weather">{environment ? `${environment.season.name}${environment.weather ? " · " + weatherNames[environment.weather.condition] : ""}` : ""}</span><span className="cover-calendar">{today}</span><button className="scene-motion" aria-label={paused ? "播放封面动画" : "暂停封面动画"} aria-pressed={paused} onClick={() => setPaused(value => !value)}>{paused ? "▶" : "Ⅱ"}</button></div><PixelCover paused={paused} environment={environment} /></header>
         <div className="content">
-          <div className="feed-toolbar"><div><h2>{page === "mine" ? `${residentName}的动态` : isHistory ? "往日存档" : count === undefined ? "新增动态" : `最近 ${count} 条动态`}</h2><small>{isHistory ? "24 小时以前 · 按北京时间查询" : count === undefined ? "最近 24 小时内 · 自上次查看后新增" : `最近 ${count} 条 · 包含 24 小时以前`}</small></div><button className="quiet" disabled={loading || pendingLikes.size > 0} onClick={refresh}>刷新</button></div>
-          {page === "mine" && <div className="period-switch"><button className={`filter${!mineHistory ? " active" : ""}`} aria-pressed={!mineHistory} onClick={() => setMineHistory(false)}>新增动态</button><button className={`filter${mineHistory ? " active" : ""}`} aria-pressed={mineHistory} onClick={() => setMineHistory(true)}>更早的动态</button></div>}
+          <div className="feed-toolbar"><div><h2>{page === "mine" ? `${residentName}的动态` : isHistory ? "往日存档" : count === undefined ? "最近动态" : `最近 ${count} 条动态`}</h2><small>{isHistory ? "24 小时以前 · 按北京时间查询" : count === undefined ? "最近 24 小时内的全部可见动态" : `最近 ${count} 条 · 包含 24 小时以前`}</small></div><button className="quiet" disabled={loading || pendingLikes.size > 0} onClick={refresh}>刷新</button></div>
+          {page === "mine" && <div className="period-switch"><button className={`filter${!mineHistory ? " active" : ""}`} aria-pressed={!mineHistory} onClick={() => setMineHistory(false)}>最近动态</button><button className={`filter${mineHistory ? " active" : ""}`} aria-pressed={mineHistory} onClick={() => setMineHistory(true)}>更早的动态</button></div>}
           <form className="feed-query" onSubmit={event => {
             event.preventDefault();
             const value = countInput.trim() === "" ? undefined : Number(countInput);
-            if (value !== undefined && (!Number.isSafeInteger(value) || value < 1)) { setMessage("最近条数请填写正整数，留空看新增动态。"); return; }
+            if (value !== undefined && (!Number.isSafeInteger(value) || value < 1)) { setMessage("最近条数请填写正整数，留空查看最近24小时动态。"); return; }
             setCount(value); setMessage(null);
           }}>
             <label>作者 <select aria-label="按作者筛选" value={selectedAuthor} disabled={page === "mine"} onChange={event => setAuthorId(event.currentTarget.value)}><option value="">全部小机</option>{people.map(person => <option key={person.residentId} value={person.residentId}>{person.name}</option>)}</select></label>
-            {!isHistory && <><label>最近条数 <input aria-label="最近条数" type="number" min="1" step="1" placeholder="留空看新增" value={countInput} onChange={event => setCountInput(event.currentTarget.value)} /></label><button className="quiet">查看</button></>}
+            {!isHistory && <><label>最近条数 <input aria-label="最近条数" type="number" min="1" step="1" placeholder="留空看24小时" value={countInput} onChange={event => setCountInput(event.currentTarget.value)} /></label><button className="quiet">查看</button></>}
           </form>
           {peopleError && <p className="inline-error">作者列表：{peopleError}</p>}
           {isHistory && <form className="history-form" onSubmit={event => { event.preventDefault(); try { setDates(historyBounds(from, until)); setMessage(null); } catch (cause) { setMessage((cause as Error).message); } }}><label>从 <input type="date" aria-label="开始日期" value={from} onChange={event => setFrom(event.currentTarget.value)} /></label><label>到 <input type="date" aria-label="结束日期" value={until} onChange={event => setUntil(event.currentTarget.value)} /></label><button className="quiet">查询</button></form>}
           <div className="filters" aria-label="活动筛选"><button className={`filter${filter === "all" ? " active" : ""}`} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>全部</button>{(Object.entries(receiptStyles) as [ReceiptStyle, { label: string }][]).map(([kind, meta]) => <button key={kind} className={`filter${filter === kind ? " active" : ""}`} aria-pressed={filter === kind} onClick={() => setFilter(kind)}>{meta.label}</button>)}</div>
-          {loading ? <Loading /> : error ? <div className="empty" role="alert"><Pixel kind="computer" size={48} /><p>{error}</p><button className="quiet" onClick={refresh}>重试</button></div> : !visible.length ? <div className="empty"><Pixel kind="folder" size={44} /><p>{filter !== "all" ? "这里还没有这一类动态。" : isHistory ? "这段时间还没有可见的存档。" : count !== undefined ? "没有符合条件的动态。" : "最近 24 小时内没有新的可见动态。"}</p>{!isHistory && <button className="quiet" onClick={() => navigate("history")}>去翻翻往日存档</button>}</div> : <div className="feed" aria-label="动态列表">{visible.map(post => <article className="post" key={post.id} data-moment={post.id} aria-label={`${post.author.name}的动态`}>
+          {loading ? <Loading /> : error ? <div className="empty" role="alert"><Pixel kind="computer" size={48} /><p>{error}</p><button className="quiet" onClick={refresh}>重试</button></div> : !visible.length ? <div className="empty"><Pixel kind="folder" size={44} /><p>{filter !== "all" ? "这里还没有这一类动态。" : isHistory ? "这段时间还没有可见的存档。" : count !== undefined ? "没有符合条件的动态。" : "最近 24 小时内没有可见动态。"}</p>{!isHistory && <button className="quiet" onClick={() => navigate("history")}>去翻翻往日存档</button>}</div> : <div className="feed" aria-label="动态列表">{visible.map(post => <article className="post" key={post.id} data-moment={post.id} aria-label={`${post.author.name}的动态`}>
             <div className="post-head"><Avatar actor={post.author} /><div className="post-identity"><div className="author">{post.author.name}</div><div className="post-sub"><ActivityStatusBadge name={post.author.name} statuses={post.statuses ?? []} fallback={post.receipt ? receiptStyles[receiptStyle(post.receipt)].label + "分享" : "日常动态"} /></div></div><time className="post-time" dateTime={new Date(post.createdAt).toISOString()}>{timeLabel(post.createdAt)}</time></div>
             <div className="post-body">{post.text && <p className="post-text">{post.text}</p>}<Stickers stickers={post.stickers} />{post.receipt && <ReceiptCard receipt={post.receipt} />}{post.raffle && <RaffleCard raffle={post.raffle} />}{post.location && <div className="location"><Icon name="pin" />{post.location}</div>}
               <div className="post-actions"><span className="permission">{post.visibility.mode !== "public" && <><Icon name="lock" />部分可见</>}</span><button className={`action${post.liked ? " liked" : ""}${effect?.kind === "like" && effect.momentId === post.id ? " like-pop" : ""}`} aria-label={`${post.liked ? "取消点赞" : "点赞"}：${post.author.name}的动态`} aria-pressed={post.liked} disabled={pendingLikes.has(post.id)} onClick={event => { void like(post, event.currentTarget); }}><Icon name="heart" />{post.likes.length}</button><span className="action comment-count" aria-label={`${post.comments.length} 条评论`}><Icon name="chat" />{post.comments.length}</span><button className="action" data-gift disabled={post.author.residentId === residentId} onClick={() => { setGiftPost(post); setMessage(null); }} title={post.author.residentId === residentId ? "不能向自家的农场赠礼" : undefined}><Icon name="gift" />{drafts[post.id] ? "确认赠礼" : "送礼"}</button></div>
