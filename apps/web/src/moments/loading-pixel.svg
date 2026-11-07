@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pixel-loader" viewBox="0 0 128 80" shape-rendering="crispEdges" role="img" aria-labelledby="pixel-loader-title">
+  <title id="pixel-loader-title">抱着爱心迈步的小机</title>
+  <style>
+    .pixel-loader .walk-body{animation:ly-load-bob .6s steps(2,end) infinite}
+    .pixel-loader .foot-left{animation:ly-load-step .6s steps(2,end) infinite}
+    .pixel-loader .foot-right{animation:ly-load-step .6s steps(2,end) -.3s infinite}
+    .pixel-loader .heart{animation:ly-load-heart 1.2s steps(2,end) infinite}
+    .pixel-loader .dot{animation:ly-load-dot 1.2s steps(1,end) infinite}
+    .pixel-loader .dot-two{animation-delay:.2s}.pixel-loader .dot-three{animation-delay:.4s}
+    .pixel-loader .trail{animation:ly-load-trail .6s steps(3,end) infinite}
+    @keyframes ly-load-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+    @keyframes ly-load-step{0%,100%{transform:translate(0,0)}50%{transform:translate(2px,-2px)}}
+    @keyframes ly-load-heart{0%,100%{transform:translateY(0)}50%{transform:translateY(-1px)}}
+    @keyframes ly-load-dot{0%,65%,100%{fill:#d6c4a5}20%,45%{fill:#7b9dac}}
+    @keyframes ly-load-trail{from{transform:translateX(4px)}to{transform:translateX(-4px)}}
+    @media(prefers-reduced-motion:reduce){.pixel-loader *{animation:none!important}}
+  </style>
+  <path d="M35 59h58v2H35Z" fill="#e8d7b6"/>
+  <g class="trail" fill="#cbbc9e"><path d="M30 57h5v2h-5ZM20 57h4v2h-4ZM94 57h6v2h-6Z"/></g>
+  <g transform="translate(42 5) scale(1.5)">
+    <g class="walk-body">
+      <path d="M12 0h3v5h-3Z" fill="#746454"/><path d="M11 0h5v3h-5Z" fill="#e6b974"/>
+      <path d="M5 4h17v2h3v3h2v13h-3v2H3v-3H1V9h2V6h2Z" fill="#557b92"/>
+      <path d="M5 6h17v2h2v12h-2v2H5v-2H3V9h2Z" fill="#76adc6"/>
+      <path d="M6 6h14v2H6ZM3 10h2v8H3Z" fill="#ccded4"/>
+      <path d="M6 9h15v2h1v8h-2v1H6v-2H5v-7h1Z" fill="#465563"/>
+      <path d="M8 12h3v4H8Zm8 0h3v4h-3ZM11 17h5v1h-5Z" fill="#fff0b1"/>
+      <path d="M0 11h2v8H0ZM25 11h3v8h-3ZM7 23h14v10H7Z" fill="#557b92"/>
+      <path d="M9 24h10v8H9Z" fill="#a6c5c6"/>
+      <g class="heart"><path d="M7 22h5v2h3v-2h5v2h2v5h-3v3h-3v3h-5v-3H8v-3H5v-5h2Z" fill="#b96958"/><path d="M8 24h4v2h3v-2h4v4h-3v3h-4v-3H8Z" fill="#ef9a7b"/><path d="M8 24h3v2H8Z" fill="#ffe0c2"/></g>
+      <path d="M3 26h5v4H3ZM20 26h5v4h-5Z" fill="#a4bfc0"/>
+    </g>
+    <g class="foot-left"><path d="M8 33h4v4H6v-2h2Z" fill="#557b92"/><path d="M8 33h3v2H8Z" fill="#c5c5af"/></g>
+    <g class="foot-right"><path d="M17 33h4v2h2v2h-6Z" fill="#557b92"/><path d="M18 33h3v2h-3Z" fill="#c5c5af"/></g>
+  </g>
+  <path class="dot" d="M53 70h4v4h-4Z" fill="#d6c4a5"/>
+  <path class="dot dot-two" d="M62 70h4v4h-4Z" fill="#d6c4a5"/>
+  <path class="dot dot-three" d="M71 70h4v4h-4Z" fill="#d6c4a5"/>
+</svg>

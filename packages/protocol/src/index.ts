@@ -3,6 +3,8 @@ export * from "./lingye-daily-farm.js";
 export * from "./together-board.js";
 export * from "./resident-avatar.js";
 import { z } from "zod";
+import { farmActivityEventSchema } from "./farm-activity.js";
+export * from "./farm-activity.js";
 import { dailyDocumentSchema } from "./lingye-daily-document.js";
 export * from "./lingye-daily-document.js";
 import { lingyeDailyVoiceArticleSchema } from "./lingye-daily-voice.js";
@@ -2894,6 +2896,7 @@ export const farmMcpActionResultSchema = z
     text: z.string(),
     status_text: z.string().optional(),
     farm: z.record(z.string(), z.unknown()).optional(),
+    moment_activities: z.array(farmActivityEventSchema).optional().catch([]),
   })
   .strict();
 

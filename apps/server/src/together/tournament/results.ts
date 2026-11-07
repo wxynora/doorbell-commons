@@ -4,7 +4,7 @@ import { cancelRegistration, type RegistrationRound } from "./registration.js";
 import { SnowTournamentStore } from "./store.js";
 
 type Game = { battleId:string; attackerTeamId:string; defenderTeamId:string; winnerTeamId:string; coreDamage:number; breakTimeRemaining:number;
-  endTick?:number; endReason?:SnowTournamentTerminal["endReason"]; participants?:SnowTournamentTerminal["participants"] };
+  endTick?:number; endReason?:SnowTournamentTerminal["endReason"]; participants?:SnowTournamentTerminal["participants"]; finishedAt?:number };
 type Match = { id:string; stage:"round_robin"|"semifinal"|"final"; round:number; teamAId:string|null; teamBId:string|null; attackerTeamId:string|null; defenderTeamId:string|null; status:"scheduled"|"in_progress"|"completed"|"forfeit"|"cancelled"; scheduledAt:string|null; score:[number,number]|null; winnerTeamId:string|null; games?:Game[]; plannedAttackers?:[string,string,string] };
 type State = { id:string; phase:string; rulesVersion:string; registrationOpenAt:string; revision:number; battleStarted?:boolean; calendar?:SnowTournamentCalendar;
   teams:{id:string;status:string;drawOrder:number|null;captainId:string|null;members:{id:string;npc?:true}[];ineligibleMemberIds?:string[]}[]; matches:Match[]; standings:unknown[];
@@ -72,7 +72,8 @@ export class SnowTournamentResults {
       if (gameIndex!==games.length || state.matches.some(m=>m.games?.some(g=>g.battleId===battle.battleId))) throw new Error("engine_round_conflict");
       games.push({battleId:battle.battleId,attackerTeamId:pair[0]!,defenderTeamId:pair[1]!,winnerTeamId:battle.status==="attack_win"?pair[0]!:pair[1]!,
         coreDamage:20-battle.coreHp,breakTimeRemaining,endTick:battle.tick,endReason:battle.endReason,
-        ...(battle.participants ? {participants:battle.participants} : {})});
+        ...(battle.participants ? {participants:battle.participants} : {}),
+        ...(battle.finishedAt!==undefined && Number.isSafeInteger(battle.finishedAt) && battle.finishedAt>=0 && battle.finishedAt<=this.now() ? {finishedAt:battle.finishedAt} : {})});
       match.games=games; state.battleStarted=true; match.status="in_progress";
       if (games[2]) {
         const a=games.filter(g=>g.winnerTeamId===match.teamAId).length;

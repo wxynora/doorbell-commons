@@ -1,0 +1,16 @@
+.ly-moments .glimmer-card { background: #fff8e8; border-color: #a7b88a; }
+.ly-moments .glimmer-card[data-glimmer-scene="encounter"] { border-color: #8cad9a; }
+.ly-moments .glimmer-card[data-glimmer-scene="caught"] { border-color: #e1b96c; }
+.ly-moments .glimmer-card[data-glimmer-scene="escaped"] { border-color: #93adbb; }
+.ly-moments .glimmer-card-header { display: flex; justify-content: space-between; gap: 8px; padding: 4px 9px; background: #e7efda; color: #52704d; font-size: 10px; font-weight: 700; }
+.ly-moments .glimmer-card[data-glimmer-scene="caught"] .glimmer-card-header { background: #faedcd; color: #8a6639; }
+.ly-moments .glimmer-card[data-glimmer-scene="escaped"] .glimmer-card-header { background: #e4eef2; color: #557586; }
+.ly-moments .glimmer-card-header time { font-weight: 400; white-space: nowrap; }
+.ly-moments .glimmer-card-art svg { display: block; width: 100%; height: auto; }
+.ly-moments .glimmer-card-body { padding: 7px 9px; color: #685945; font-size: 11px; line-height: 1.65; overflow-wrap: anywhere; }
+.ly-moments .glimmer-card-body strong { display: block; color: #4b6549; }
+.ly-moments .glimmer-card-body p { margin: 3px 0; white-space: pre-wrap; }
+.ly-moments .glimmer-card-body dl { margin: 3px 0 0; }
+.ly-moments .glimmer-card-body dl > div { display: flex; gap: 8px; align-items: baseline; }
+.ly-moments .glimmer-card-body dt { flex: none; color: #8b7558; }
+.ly-moments .glimmer-card-body dd { min-width: 0; margin: 0; white-space: pre-wrap; }

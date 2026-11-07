@@ -1,3 +1,4 @@
+import { MOMENTS_PATH } from "../routes";
 import type { ProfileActivityView } from "../auth/profile-activity-client";
 import { PROFILE_ACTIVITY_SCRIPT } from "./profile-activity-view";
 import {
@@ -90,7 +91,7 @@ interface CandidateTwoGlimmerEncounterDefinition {
   name: string;
 }
 
-const candidateTwoInternalPaths = [DOORBELL_FARM_PATH, CONSTABLE_INTERVIEW_PATH] as const;
+const candidateTwoInternalPaths = [MOMENTS_PATH, DOORBELL_FARM_PATH, CONSTABLE_INTERVIEW_PATH] as const;
 
 const candidateTwoGlimmerAnimalPositionParams: Record<
   CandidateTwoGlimmerAnimalPositionId,
@@ -302,7 +303,7 @@ const candidateTwoDemoGlimmerEncounterSeen = new Set(["glimmer_spring"]);
 type CandidateTwoInternalPath = (typeof candidateTwoInternalPaths)[number];
 
 export function shouldHandleCandidateNavigationInParent(path: CandidateTwoInternalPath): boolean {
-  return path === DOORBELL_FARM_PATH;
+  return path === MOMENTS_PATH || path === DOORBELL_FARM_PATH;
 }
 
 export interface CandidateTwoIdentityView {
@@ -4879,9 +4880,14 @@ const LINGYE_SCREEN = `
         <button class="candidate2-lingye-memories" type="button" aria-label="打开纪念册" onclick="openLingyeMemorial()">
             <img src="/lingye/ui/memorial-album.png" alt="" width="256" height="256" draggable="false">
         </button>
+        <div class="candidate2-lingye-social-shortcuts">
+        <button class="candidate2-lingye-moments-entry" type="button" aria-label="打开机哩咕噜" title="机哩咕噜" onclick="openLingyeRoute('${MOMENTS_PATH}', '机哩咕噜')">
+            <svg viewBox="0 0 64 64" width="64" height="64" shape-rendering="crispEdges" aria-hidden="true"><path d="M8 7h48v37H8Z" fill="#65859b"/><path d="M11 10h42v31H11Z" fill="#fff0ce"/><path d="M15 14h34v23H15Z" fill="#96c9db"/><path d="M19 19h9v4h8v-4h9v11h-4v4H23v-4h-4Z" fill="#f6e8b2"/><path d="M22 21h4v6h-4Zm16 0h4v6h-4ZM28 30h8v2h-8Z" fill="#56879b"/><path d="M21 44h22v4H21ZM12 48h40v8H12Z" fill="#b99462"/><path d="M15 49h34v4H15Z" fill="#ffe2a3"/><path d="M48 3h5v3h4V3h5v10h-4v4h-6v-4h-4Z" fill="#dc8c69"/></svg><span>机哩咕噜</span>
+        </button>
         <button class="candidate2-lingye-daily-entry" type="button" aria-label="打开铃野日报" onclick="openLingyeDaily()">
             <img src="/lingye/ui/lingye-daily-newspaper.png" alt="" width="256" height="256" draggable="false">
         </button>
+        </div>
         ${SNOW_LIVE_ENTRY}
         <button class="candidate2-lingye-mid-autumn-entry" type="button" aria-label="进入月满心间中秋活动" onclick="openMidAutumnActivity()" hidden>
             <span aria-hidden="true">月满心间</span>
@@ -5356,6 +5362,20 @@ const LINGYE_STYLES = `${SNOW_LIVE_ENTRY_STYLES}
         .candidate2-lingye-daily-entry {
             top: calc(94px + var(--candidate2-lingye-rail-icon-size));
         }
+        /* Two 64 × 64 icons share one size variable with their click targets. */
+        .candidate2-lingye-social-shortcuts {
+            --shortcut-unit: var(--candidate2-lingye-rail-icon-size);
+            position: absolute; right: 10px; top: calc(77px + var(--shortcut-unit)); z-index: 30;
+            width: calc(2 * var(--shortcut-unit) + 8px); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+        }
+        .candidate2-lingye-social-shortcuts > button {
+            position: relative; inset: auto; width: 100%; min-width: 0; aspect-ratio: 1; padding: 0; border: 0; line-height: 0;
+            background: transparent; cursor: pointer; touch-action: manipulation;
+        }
+        .candidate2-lingye-moments-entry svg { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+        .candidate2-lingye-moments-entry span { position: absolute; line-height: 1.2; bottom: 0; left: 0; right: 0; color: #72502f; font-size: 10px; font-weight: 600; text-shadow: 1px 1px #fff6df,-1px -1px #fff6df; }
+        .candidate2-lingye-moments-entry:focus-visible { outline: 3px solid #658f97; outline-offset: 3px; }
+
 
         .candidate2-lingye-mid-autumn-entry {
             top: calc(110px + 3 * var(--candidate2-lingye-rail-icon-size));

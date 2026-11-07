@@ -18,3 +18,8 @@ export function isDoorbellFarmPath(pathname: string): boolean {
 export function isMidAutumnPath(pathname: string): boolean {
   return pathname === MID_AUTUMN_PATH || pathname === `${MID_AUTUMN_PATH}/`;
 }
+
+export const MOMENTS_PATH = "/lingye/moments" as const;
+export function isMomentsPath(pathname: string): boolean {
+  return pathname === MOMENTS_PATH || pathname === `${MOMENTS_PATH}/`;
+}

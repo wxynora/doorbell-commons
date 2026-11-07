@@ -1,0 +1,90 @@
+/* Receipt layouts carried directly from the approved HTML Demo. */
+.ly-moments .source { align-items: stretch; background: #edf0e5; border: 1px solid #d5deca; transition: background .15s; display: block; position: relative; min-height: 0; padding: 0; text-align: left; overflow: visible; border-width: 2px; border-radius: 0; width: min(100%,370px); margin: 8px 0; box-shadow: 2px 2px #b4a89025; }
+.ly-moments .source.news { border-color: #e1d7c3; background: unset; }
+.ly-moments .source.news .source-visual { background: #eaddc7; }
+.ly-moments .source.snow { border-color: #d3dfdf; background: unset; }
+.ly-moments .source.snow .source-visual { background: #d6e5e6; }
+.ly-moments .modal .source { margin: 14px 0; }
+.ly-moments .receipt-top { display: flex; justify-content: space-between; letter-spacing: 1px; border-bottom: 2px solid #adc5a6; border-bottom-color: #bed0d5; padding: 3px 10px; font-size: 10px; color: #397d9f; background: #cbe9f3; border-bottom-width: 1px; }
+.ly-moments .fish-receipt { border: 1px solid #acc4b9; background: #f0f9fc; border-color: #8bb9cf; }
+.ly-moments .fish-record { display: flex; align-items: center; padding: 4px 10px; gap: 10px; min-height: 48px; }
+.ly-moments .fish-picture { flex: none; display: flex; align-items: center; justify-content: center; width: 44px; }
+.ly-moments .fish-picture svg { width: 40px; height: 40px; }
+.ly-moments .fish-info { flex: 1; }
+.ly-moments .fish-info strong { display: block; font-family: inherit; font-size: 13px; color: #3d7b9a; letter-spacing: 1px; }
+.ly-moments .fish-info small { font-size: 9px; color: #81a4aa; }
+.ly-moments .fish-count { text-align: right; color: #6c8f81; white-space: nowrap; }
+.ly-moments .fish-count b { font: 36px 'Songti SC',serif; line-height: 1; font-family: 'Courier New',monospace; font-weight: 700; font-size: 26px; color: #559bb6; }
+.ly-moments .fish-count small { font-size: 10px; color: #779daa; }
+.ly-moments .receipt-foot { display: flex; justify-content: space-between; border-top: 2px dashed #b8d0ac; border-top-color: #c6d9dc; padding: 3px 9px; border-top-width: 1px; font-size: 9px; color: #6d99aa; background: #edf8fa; }
+.ly-moments .farm-receipt { border: 1px solid #c6c6a2; background: #fff0c5; border-color: #d2b36c; }
+.ly-moments .farm-head { display: flex; justify-content: space-between; padding: 5px 10px 0; color: #927540; font-size: 10px; }
+.ly-moments .harvest-row { display: flex; align-items: center; padding: 7px 10px; gap: 6px; }
+.ly-moments .pumpkins { font-size: 28px; display: flex; letter-spacing: 0; padding-right: 4px; gap: 2px; }
+.ly-moments .harvest-copy { margin-left: auto; text-align: right; }
+.ly-moments .harvest-copy strong { font: 17px 'Songti SC',serif; font-family: inherit; font-size: 13px; color: #94713b; }
+.ly-moments .harvest-copy small { display: block; margin-top: 3px; font-size: 9px; color: #988465; }
+.ly-moments .farm-strip { display: block; border-top: 2px solid #b7bd88; border-top-color: #cdbd8e; padding: 3px 9px; border-top-width: 1px; font-size: 9px; color: #887746; background: #eee0b5; }
+.ly-moments .newspaper { border: 1px solid #c6bda8; box-shadow: 3px 3px #d5c4a044; padding: 8px 11px; background: #fcf0d9; border-color: #bfae8c; }
+.ly-moments .paper-masthead { border-bottom: 3px double #a69a83; display: flex; align-items: center; justify-content: space-between; border-color: #c5b38f; padding-bottom: 3px; border-bottom-width: 3px; }
+.ly-moments .paper-masthead strong { font: 700 25px 'Songti SC',serif; font-size: 19px; color: #8d642f; letter-spacing: 4px; line-height: 1.2; }
+.ly-moments .paper-masthead small { text-align: right; line-height: 1.5; font-size: 8px; color: #9b8868; }
+.ly-moments .paper-story { display: grid; grid-template-columns: minmax(0,1fr) 38px; gap: 8px; margin-top: 6px; }
+.ly-moments .paper-story h3 { font: 600 15px 'Songti SC',serif; font-size: 12px; color: #805a2d; line-height: 1.5; margin: 0; }
+.ly-moments .paper-story p { font: 10px/1.8 'Songti SC',serif; margin: 0; color: #948977; white-space: pre-wrap; }
+.ly-moments .paper-text[data-expanded="false"] { max-height: 5.4em; overflow: hidden; }
+.ly-moments .paper-toggle { display: block; margin-top: 5px; padding: 2px 0; color: #805a2d; font-size: 10px; text-decoration: underline; text-underline-offset: 3px; }
+.ly-moments .paper-art { border-left: 1px solid #d6cbb7; display: flex; align-items: center; justify-content: center; font-size: 29px; filter: saturate(.65); border-color: #dfd0b1; padding-left: 5px; }
+.ly-moments .paper-bottom { border-top: 1px solid #d7cfbd; display: flex; justify-content: space-between; border-color: #dfd0b1; padding-top: 3px; margin-top: 5px; font-size: 8px; color: #978363; }
+.ly-moments .snow-result { border: 1px solid #aec4c8; background: #f0f7fc; border-color: #9bbbd3; }
+.ly-moments .score-title { display: flex; justify-content: space-between; letter-spacing: 1px; border-bottom: 2px solid #abc5ae; border-bottom-color: #b9cdd7; padding: 3px 9px; border-bottom-width: 1px; color: #527f9f; font-size: 9px; background: #d7eaf5; border-color: #a7c9de; }
+.ly-moments .scoreboard { display: grid; grid-template-columns: 1fr 1.3fr 1fr; align-items: center; text-align: center; padding: 5px 10px; }
+.ly-moments .team-flag { font-size: 24px; line-height: 1.3; }
+.ly-moments .team-flag small { display: block; color: #819a9e; font-size: 8px; }
+.ly-moments .result-word { font: 700 21px 'Songti SC',serif; font-family: inherit; font-weight: 700; text-shadow: 1px 1px #fbf9ef; font-size: 17px; letter-spacing: 3px; color: #548eb5; }
+.ly-moments .result-score { display: block; letter-spacing: 5px; font-family: 'Courier New',monospace; font-weight: 700; font-size: 12px; margin-top: 0; color: #7ba9c2; }
+.ly-moments .title-earned { display: flex; justify-content: space-between; border-top: 2px solid #bdd2b6; border-top-color: #c5d5df; padding: 3px 9px; border-top-width: 1px; font-size: 9px; background: #e2eff6; color: #7190a5; }
+.ly-moments .quest-window { border-radius: 2px; overflow: hidden; border: 3px solid #8f9f6e; border-width: 2px; border-color: #6999b5; box-shadow: inset 1px 1px #fff9ea,2px 2px #a6b0b244; background: #fff4db; }
+.ly-moments .quest-titlebar { display: flex; align-items: center; justify-content: space-between; font-weight: 600; letter-spacing: 1px; border: 2px solid #e7e6bf; border-bottom: 2px solid #859764; box-shadow: inset 1px 1px #cbd7dd; padding: 2px 5px; font-size: 10px; background: #6b9fbe; border-bottom-width: 1px; color: #fff9e8; border-color: #fff4db; border-bottom-color: #5f91ae; }
+.ly-moments .quest-app-icon { color: #f2e5b6; margin-right: 4px; font-size: 12px; }
+.ly-moments .quest-window-box { width: 15px; height: 14px; border: 1px solid #70836a; box-shadow: inset 1px 1px #fffbe6; color: #7c8b6f; font-size: 12px; line-height: 10px; text-align: center; border-width: 2px; background: #f0e7d3; border-color: #869da9; }
+.ly-moments .quest-dialog-body { display: flex; align-items: center; padding: 7px 11px; gap: 12px; }
+.ly-moments .quest-folder { flex: none; width: 32px; }
+.ly-moments .quest-folder svg { width: 100%; height: auto; }
+.ly-moments .quest-description { flex: 1; }
+.ly-moments .quest-description>strong { display: block; font-weight: 600; font-size: 13px; color: #886238; margin-bottom: 2px; }
+.ly-moments .quest-field { display: flex; align-items: center; font-size: 9px; line-height: 1.6; gap: 12px; }
+.ly-moments .quest-field>span { min-width: 30px; color: #ab9576; }
+.ly-moments .quest-field b { font-weight: 400; color: #95703f; }
+.ly-moments .quest-dialog-footer { display: flex; align-items: center; justify-content: space-between; border-top: 2px solid #bec794; border-top-color: #dbceb8; box-shadow: inset 0 2px #fff8e8; padding: 4px 8px; border-top-width: 1px; font-size: 9px; }
+.ly-moments .quest-wait { color: #a88550; }
+.ly-moments .quest-wait i { display: inline-block; width: 5px; height: 5px; background: #9eae7d; margin-right: 3px; box-shadow: 0 0 0 1px #cad2b7; }
+.ly-moments .team-flag svg { display: block; margin: auto; }
+@media (max-width:760px) {
+  .ly-moments .fish-record { padding: 8px 12px; gap: 8px; }
+  .ly-moments .fish-picture { width: 73px; }
+  .ly-moments .fish-info strong { font-size: 15px; }
+  .ly-moments .fish-count b { font-size: 29px; }
+  .ly-moments .paper-masthead strong { font-size: 19px; }
+  .ly-moments .scoreboard { padding: 10px; }
+  .ly-moments .quest-dialog-body { padding: 14px; gap: 14px; }
+  .ly-moments .quest-description>strong { font-size: 12px; }
+  .ly-moments .quest-folder { width: 46px; }
+  .ly-moments .source { width: min(100%,350px); }
+}
+
+.ly-moments .receipt-facts { margin: 0; font-size: 9px; }
+.ly-moments .receipt-facts > div { display: flex; gap: 12px; }
+.ly-moments .receipt-facts dt { color: #8c7555; }
+.ly-moments .receipt-facts dd { margin: 0; }
+.ly-moments .receipt-foot .receipt-facts, .ly-moments .paper-bottom .receipt-facts, .ly-moments .farm-strip .receipt-facts, .ly-moments .title-earned .receipt-facts { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.ly-moments .source { overflow-wrap: anywhere; }
+.ly-moments .quest-description { min-width: 0; }
+.ly-moments .quest-description p { margin: 0; font-size: 10px; }
+.ly-moments .receipt-other { padding: 10px; }
+
+.ly-moments .farm-strip { display: flex; justify-content: space-between; gap: 8px; }
+.ly-moments .title-earned { gap: 8px; flex-wrap: wrap; }
+@media(max-width:760px) {  }
+
+.ly-moments .receipt-other > time { display: block; font-size: 9px; color: #978363; margin-top: 3px; }

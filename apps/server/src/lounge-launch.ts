@@ -14,7 +14,7 @@ const launchSchema=z.strictObject({
   chatWakeMessage:z.string().min(1),invitationMessage:z.string().min(1),
 });
 /** Only reviewed copy is loaded here. Absence keeps the existing read-only lounge. */
-export function launchLounge(path:string|undefined, options:Pick<LoungeRuntimeOptions,'database'|'registrationAuth'|'bell'|'onError'> & {
+export function launchLounge(path:string|undefined, options:Pick<LoungeRuntimeOptions,'database'|'registrationAuth'|'bell'|'onError'|'gameActivity'> & {
   farm:{apiBaseUrl:string;serviceToken:string;requestTimeoutMs:number};
   humanName(residentId:string):Promise<string>;
 }) {
@@ -25,6 +25,7 @@ export function launchLounge(path:string|undefined, options:Pick<LoungeRuntimeOp
   const format=(template:string,values:Record<string,string>)=>template.replace(/\{(sender|game)\}/g,(_,key:string)=>values[key]??'');
   return createLoungeRuntime({
     database:options.database,registrationAuth:options.registrationAuth,bell:options.bell,onError:options.onError,
+    ...(options.gameActivity ? {gameActivity:options.gameActivity} : {}),
     engine:new PythonGameEngineAdapter(config),economy:new GameEconomyClient(options.farm),
     petRewards:new LoungePetClient(options.farm),
     gachaReader:new LoungeGachaClient(options.farm),

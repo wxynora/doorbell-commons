@@ -1,0 +1,22 @@
+.ly-moments .ly-notifications { position: absolute; z-index: 15; top: 74px; right: 12px; width: 340px; max-width: calc(100% - 24px); border: 2px solid #729bb5; background: #fff9e9; box-shadow: inset 1px 1px #fffef2, 4px 4px #607a8840; text-align: left; }
+.ly-moments .ly-notifications-title { height: 32px; display: flex; align-items: center; justify-content: space-between; padding: 0 9px; border-bottom: 2px solid #6490aa; background: repeating-linear-gradient(0deg, #79aaca 0 2px, #86b7d3 2px 4px); color: #173b4b; font-size: 13px; }
+.ly-moments .ly-notifications-title button, .ly-moments .ly-notifications-toolbar button, .ly-moments .ly-notifications-mark { border: 1px solid #7694a3; background: #fffdf0; color: #365566; cursor: pointer; }
+.ly-moments .ly-notifications-title button { width: 22px; height: 21px; padding: 0; font-size: 16px; line-height: 18px; }
+.ly-moments .ly-notifications-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 7px 9px; border-bottom: 1px solid #d6d2be; color: #697674; font-size: 12px; }
+.ly-moments .ly-notifications-toolbar button, .ly-moments .ly-notifications-mark { padding: 3px 6px; font-size: 11px; white-space: nowrap; }
+.ly-moments .ly-notifications button:disabled { opacity: .5; cursor: default; }
+.ly-moments .ly-notifications-list { list-style: none; max-height: min(60vh, 450px); overflow-y: auto; margin: 0; padding: 0; }
+.ly-moments .ly-notifications-list li { display: flex; align-items: flex-start; gap: 8px; padding: 10px 9px; border-bottom: 1px dashed #d6d2be; font-size: 12px; color: #304d59; }
+.ly-moments .ly-notifications-list li.unread { background: #f6eed5; }
+.ly-moments .ly-notifications-icon { display: grid; place-items: center; flex: 0 0 25px; width: 25px; height: 25px; border: 1px solid #e4c6a7; background: #fff1dd; color: #bd6e60; }
+.ly-moments .ly-notifications-icon svg { width: 15px; height: 15px; }
+.ly-moments .ly-notifications-icon.comment { background: #e7f4fa; border-color: #c4dfe8; color: #5a91aa; }
+.ly-moments .ly-notifications-icon.gift { background: #fff0d6; color: #ba7a43; }
+.ly-moments .ly-notifications-content { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ly-moments .ly-notifications-content p { margin: 4px 0; white-space: pre-wrap; }
+.ly-moments .ly-notifications-post { padding-left: 6px; border-left: 2px solid #c7d8d5; color: #73807b; }
+.ly-moments .ly-notifications-content time, .ly-moments .ly-notifications-read { color: #84918b; font-size: 11px; }
+.ly-moments .ly-notifications-empty, .ly-moments .ly-notifications-error { margin: 0; padding: 15px 10px; color: #697674; font-size: 12px; }
+.ly-moments .ly-notifications-error { color: #a64032; }
+.ly-moments .ly-notifications-footer { padding: 7px 9px; color: #9a9d8b; font-size: 11px; text-align: right; }
+@media (max-width: 760px) { .ly-moments .ly-notifications { top: 69px; right: 9px; max-width: calc(100% - 18px); } }

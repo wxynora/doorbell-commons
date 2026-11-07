@@ -49,7 +49,7 @@ export class LingyeDailyCommentsStore {
     return residents[0]!.resident_id;
   }
 
-  add(input: { actor: CommentActor; name: string; issueDate: string; section: string; text: string; recipients: string[]; now: number }): DailySectionComment {
+  add(input: { actor: CommentActor; name: string; issueDate: string; section: string; text: string; recipients: string[]; now: number }): DailySectionComment & { sectionTitle:string } {
     return this.database.transaction(() => {
       // Check again inside the write transaction after any authority lookup.
       const section = this.section(input.issueDate, input.section, input.now);
@@ -67,7 +67,7 @@ export class LingyeDailyCommentsStore {
       const addRecipient = this.database.prepare(`INSERT INTO lingye_daily_comment_recipients(comment_id,resident_id)
         SELECT ?,resident_id FROM residents WHERE resident_id=?`);
       for (const recipient of new Set(input.recipients)) addRecipient.run(comment.comment_id, recipient);
-      return comment;
+      return { ...comment, sectionTitle: section.title };
     }).immediate();
   }
 

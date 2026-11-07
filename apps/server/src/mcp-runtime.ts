@@ -1,3 +1,6 @@
+import type { MomentsToolPort } from "./moments/tool.js";
+import { renderMomentsStatusCounts, type MomentsStatusNotifications } from "./moments/status-notifications.js";
+import type { MainActivitySource } from "./moments/main-activity-source.js";
 import type { SnowTournamentToolPort } from "./together/tournament/tool-registry.js";
 import { executeReporterMaterialTool } from "./daily-materials/reporter-tool.js";
 import type { DailyMaterialService } from "./daily-materials/material-service.js";
@@ -141,6 +144,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isHalloweenCandyEatOption(option: unknown): option is string {
   return typeof option === "string" && /^万圣节:eat:[^:]+:/u.test(option);
+}
+
+function isMomentsCall(params: unknown): boolean {
+  return isPlainObject(params) && params.name === "doorbell" && isPlainObject(params.arguments) &&
+    params.arguments.op === "go.moments";
 }
 
 function isReporterMaterialCall(params: unknown): boolean {
@@ -355,6 +363,9 @@ function protocolVersionError(
 }
 
 export interface DoorbellMcpRuntimeOptions {
+  momentsTools?: MomentsToolPort;
+  statusNotifications?: Pick<MomentsStatusNotifications, "report">;
+  mainActivity?: Pick<MainActivitySource, "dailyRead">;
   snowTools?: SnowTournamentToolPort;
   loungeTools?: LoungeToolExecutor;
   faultReports?: FaultReports;
@@ -362,6 +373,7 @@ export interface DoorbellMcpRuntimeOptions {
   registrationAuth: RegistrationAuthService;
   togetherActivity?: TogetherActivity;
   farmActions: FarmMcpActionExecutor;
+  farmMomentActivities?: { offer(residentId: string, events: readonly unknown[]): string };
   lingyeActions: LingyeMcpActionExecutor;
   careerExamReminders?: Pick<CareerExamReminderService, "reconcile">;
   reporterRelayService?: Pick<ReporterRelayService, "enqueue">;
@@ -472,10 +484,14 @@ export function loungeGameErrorReceipt(error: unknown): string | undefined {
 
 export class DoorbellMcpRuntime {
   readonly #faultReports: FaultReports | undefined;
+  readonly #momentsTools: MomentsToolPort | undefined;
+  readonly #statusNotifications: DoorbellMcpRuntimeOptions["statusNotifications"];
+  readonly #mainActivity: DoorbellMcpRuntimeOptions["mainActivity"];
   readonly #database: CommunityDatabase;
   readonly #registrationAuth: RegistrationAuthService;
   readonly #togetherActivity: TogetherActivity | undefined;
   readonly #farmActions: FarmMcpActionExecutor;
+  readonly #farmMomentActivities: DoorbellMcpRuntimeOptions["farmMomentActivities"];
   readonly #lingyeActions: LingyeMcpActionExecutor;
   readonly #careerExamReminders: Pick<CareerExamReminderService, "reconcile"> | undefined;
   readonly #reporterRelayService: Pick<ReporterRelayService, "enqueue"> | undefined;
@@ -501,11 +517,15 @@ export class DoorbellMcpRuntime {
   readonly #lastFarmCallAt = new Map<string, number>();
 
   constructor(options: DoorbellMcpRuntimeOptions) {
+    this.#momentsTools = options.momentsTools;
+    this.#statusNotifications = options.statusNotifications;
+    this.#mainActivity = options.mainActivity;
     this.#faultReports = options.faultReports;
     this.#database = options.database;
     this.#registrationAuth = options.registrationAuth;
     this.#togetherActivity = options.togetherActivity;
     this.#farmActions = options.farmActions;
+    this.#farmMomentActivities = options.farmMomentActivities;
     this.#lingyeActions = options.lingyeActions;
     this.#careerExamReminders = options.careerExamReminders;
     this.#reporterRelayService = options.reporterRelayService;
@@ -667,7 +687,7 @@ export class DoorbellMcpRuntime {
       case "ping":
         return isNotification ? undefined : jsonRpcSuccess(id, {});
       case "tools/list":
-        return isNotification ? undefined : jsonRpcSuccess(id, { tools: [doorbellDefinitionForRuntime(this.#loungeTools !== undefined, this.#snowTools !== undefined)] });
+        return isNotification ? undefined : jsonRpcSuccess(id, { tools: [doorbellDefinitionForRuntime(this.#loungeTools !== undefined, this.#snowTools !== undefined, this.#momentsTools !== undefined)] });
       case "tools/call":
         if (isNotification) {
           return undefined;
@@ -675,7 +695,7 @@ export class DoorbellMcpRuntime {
         try {
           const result = await this.#callTool(request.params, context);
           try {
-            return jsonRpcSuccess(id, isSnowTournamentCall(request.params) || isHalloweenCandyEatCall(request.params) || isReporterMaterialCall(request.params)
+            return jsonRpcSuccess(id, isMomentsCall(request.params) || isSnowTournamentCall(request.params) || isHalloweenCandyEatCall(request.params) || isReporterMaterialCall(request.params)
               ? result
               : this.#appendResidentNotifications(result, context));
           } catch (error) {
@@ -774,6 +794,15 @@ export class DoorbellMcpRuntime {
         message: `未开放的操作：${op}。请使用 doorbell 工具 Schema 中列出的完整 op。`,
       });
     }
+    if (registered.kind === "moments") {
+      if (!this.#momentsTools) return doorbellToolError("UNKNOWN_OP", { op, message: `未开放的操作：${op}。请使用 doorbell 工具 Schema 中列出的完整 op。` });
+      try {
+        const result = await this.#momentsTools.execute({ residentId: context.residentId }, call.args);
+        return { content: textContent(result.text), isError: !result.ok };
+      } catch (error) {
+        return this.#faultToolError("INTERNAL_ERROR", { op }, error);
+      }
+    }
     const parsed = registered.operation.argsSchema.safeParse(call.args);
     if (!parsed.success) {
       if (op === "go.newsroom.materials") return { isError: true, content: textContent(
@@ -831,8 +860,13 @@ export class DoorbellMcpRuntime {
         } else if (registered.operation.op === "go.newsroom.submit") {
           text = submitDailyObservation(this.#database.lingyeDailyStore, context.residentId, parsed.data, this.#now());
         } else {
-          const issue = this.#database.getLatestLingyeDailyIssue(this.#now());
+          const readAt = this.#now();
+          const issue = this.#database.getLatestLingyeDailyIssue(readAt);
           text = renderPublishedDaily(issue,issue ? this.#dailyComments?.forIssue(issue.issueDate) : undefined);
+          if (issue && this.#mainActivity) {
+            const share = this.#mainActivity.dailyRead(context.residentId, issue, readAt);
+            if (share) text += "\n\n" + share;
+          }
         }
         return { isError: false, content: textContent(text) };
       } catch (error) {
@@ -894,7 +928,7 @@ export class DoorbellMcpRuntime {
             }
           }
         }
-        return lingyeToolResult(
+        const reply = lingyeToolResult(
           op,
           parsed.data,
           sanitizeAndEnqueueReporterRelayWake(
@@ -904,6 +938,15 @@ export class DoorbellMcpRuntime {
             this.#onNotificationDeliveryError,
           ),
         );
+        if (result.ok && result.moment_activities?.length && this.#farmMomentActivities) {
+          try {
+            const options = this.#farmMomentActivities.offer(context.residentId, result.moment_activities);
+            if (options && reply.content[0]?.type === "text") reply.content[0].text += `\n\n${options}`;
+          } catch {
+            console.error("[moments-farm-activity] projection unavailable");
+          }
+        }
+        return reply;
       } catch (error) {
         const submissionError = dailyColumnErrorText(error) ?? dailyVoiceErrorText(error) ?? dailySubmissionErrorText(error);
         if (submissionError) return { isError: true, content: textContent(submissionError) };
@@ -982,6 +1025,16 @@ export class DoorbellMcpRuntime {
       if (shouldAppendStatus && op !== "farm.status" && !halloweenCandyEat) {
         text = await this.#appendStatusWhenAvailable(text, context);
       }
+      if (result.ok && result.moment_activities?.length && this.#farmMomentActivities) {
+        try {
+          const options = this.#farmMomentActivities.offer(context.residentId, result.moment_activities);
+          if (options) text += `\n\n${options}`;
+        } catch {
+          // Farm has already committed. Do not turn the action into a failure
+          // or ask the caller to repeat it if forwarding projection failed.
+          console.error("[moments-farm-activity] projection unavailable");
+        }
+      }
       return farmToolResult(text, result.ok, result.farm);
     } catch (error) {
       const unconfirmedMessage = op === "farm.decorate"
@@ -1051,7 +1104,14 @@ export class DoorbellMcpRuntime {
 
   #decorateActivityStatus(text: string, context: DoorbellFarmContext): string {
     const together = this.#togetherActivity?.decorateFarmStatus?.(context.residentId, text) ?? text;
-    return this.#snowTools?.decorateFarmStatus?.(context.residentId, together) ?? together;
+    const status = this.#snowTools?.decorateFarmStatus?.(context.residentId, together) ?? together;
+    try {
+      const notice = this.#statusNotifications?.report(context.residentId, renderMomentsStatusCounts);
+      return notice ? `${status}\n${notice}` : status;
+    } catch (error) {
+      try { this.#onNotificationDeliveryError(error); } catch { /* Preserve the Farm status. */ }
+      return status;
+    }
   }
 
   #appendDailyPublicationNotice(text: string): string {

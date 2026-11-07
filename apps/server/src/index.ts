@@ -1,3 +1,13 @@
+import { GameActivitySource } from "./moments/game-activity-source.js";
+import { MainActivitySource } from "./moments/main-activity-source.js";
+import { FarmActivitySource } from "./moments/farm-activity-source.js";
+import { ActivityRecovery, FarmActivityRecoveryClient } from "./moments/activity-recovery.js";
+import { MomentsRaffleFarmClient, MomentsRaffleScheduler } from "./moments/raffle.js";
+import { MomentsAgentActions } from "./moments/agent-actions.js";
+import { MomentsToolOptions } from "./moments/tool-options.js";
+import { MomentsTool } from "./moments/tool.js";
+import { MomentsGiftService } from "./moments/gift-service.js";
+import { MomentsFarmGiftClient } from "./moments/farm-gift-client.js";
 import { includeSmallSubmissionBatch } from "./daily-submissions/service.js";
 import { DailyColumnImageService } from "./daily-column-images/service.js";
 import { columnImageGenerator } from "./daily-column-images/gateway-client.js";
@@ -98,6 +108,11 @@ import { SharedMemeService } from "./shared-meme-service.js";
 const serverConfig = readDoorbellServerConfig();
 const faultReports = createFaultReports(serverConfig.databasePath);
 const database = new CommunityDatabase(serverConfig.databasePath);
+const momentsStore = database.createMomentsStore();
+const momentsGifts = new MomentsGiftService(momentsStore, new MomentsFarmGiftClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl, serviceToken: serverConfig.farmServiceToken,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+}));
 const groupMembership = new OneBotGroupMembershipClient({
   apiBaseUrl: serverConfig.oneBotApiBaseUrl,
   apiToken: serverConfig.oneBotApiToken,
@@ -321,7 +336,11 @@ const bellService = new BellService({
   onError: reportBellError,
   beforeReplay: residentId=>securityPatrolDeliveryService?.sync(residentId)??Promise.resolve(),
 });
+const momentsActions = new MomentsAgentActions({ store: momentsStore, gifts: momentsGifts });
+const momentsOptions = new MomentsToolOptions(momentsStore, momentsActions);
+const gameActivity = new GameActivitySource(momentsStore, momentsOptions, reportBellError);
 const loungeRuntime = launchLounge(process.env.DOORBELL_LOUNGE_CONFIG, {
+  gameActivity,
   humanName: async residentId => {
     const community=database.findActiveHumanCommunityByResidentId(residentId);
     if(!community || !community.farmBinding.farmHumanKey) throw new Error("player_not_active");
@@ -544,10 +563,28 @@ dailyColumnsService = new DailyColumnService({database:database.lingyeDailyStore
 bellService.addWakeSource(dailyColumnsService.wakeSource);
 void dailyColumnsService.reconcile(columnIssueDate(Date.now())).catch(error=>
   process.stderr.write(`[doorbell-daily-column] ${error instanceof Error ? error.name : "UnknownError"}\n`));
-const dailyCommentsService = new LingyeDailyCommentsService({database,farm:reporterRelayFarm});
+const momentsRaffles = database.createMomentsRaffles(momentsStore, new MomentsRaffleFarmClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl, serviceToken: serverConfig.farmServiceToken,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+}));
+const raffleScheduler = new MomentsRaffleScheduler(momentsRaffles, error => {
+  process.stderr.write(`[moments-raffle] ${error instanceof Error ? error.name : "UnknownError"}\n`);
+});
+momentsStore.setRaffleBarrier({ freezeDue: (now, id) => momentsRaffles.freezeDue(now,id), wake: () => raffleScheduler.wake(), snapshotForReadablePost: id => momentsRaffles.snapshotForReadablePost(id) });
+const farmMomentActivities = new FarmActivitySource(momentsStore, momentsOptions);
+const activityRecovery = new ActivityRecovery(momentsStore, new FarmActivityRecoveryClient({
+  apiBaseUrl: serverConfig.farmApiBaseUrl, serviceToken: serverConfig.farmServiceToken,
+  requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+}), farmMomentActivities);
+const momentsTools = new MomentsTool(momentsActions, momentsOptions, {
+  recovery: activityRecovery, raffles: momentsRaffles, raffleScheduler,
+});
+const mainActivity = new MainActivitySource(momentsStore, momentsTools, reportBellError);
+const dailyCommentsService = new LingyeDailyCommentsService({database,farm:reporterRelayFarm,mainActivity});
 const snowTournamentEligible = (residentId: string) => Boolean(database.findTogetherIdentity(residentId));
 const snowTournamentFirstOpenAt = process.env.SNOW_TOURNAMENT_FIRST_REGISTRATION_OPEN_AT;
 const snowTournament = database.createSnowTournamentDomain({
+  mainActivity,
   identity: { requireActive: async (residentId) => {
     const identity = database.findTogetherIdentity(residentId);
     if (!identity) throw new Error("resident_not_eligible");
@@ -590,6 +627,10 @@ bellService.addWakeSource(togetherStartup.bell);
 const refreshTogetherControl = () => { void togetherStartup.reconcile().catch(reportBellError); };
 process.on("SIGUSR2", refreshTogetherControl);
 const mcpRuntime = new DoorbellMcpRuntime({
+  momentsTools,
+  mainActivity,
+  farmMomentActivities,
+  statusNotifications: database.createMomentsStatusNotifications(momentsStore),
   ...(snowTournament.tools ? { snowTools: snowTournament.tools } : {}),
   dailyMaterials,
   ...(loungeRuntime ? { loungeTools: loungeRuntime.tools } : {}),
@@ -644,6 +685,8 @@ const lingyeDailyService = new LingyeDailyService({
   editorRewards:lingyeDailyRewards,
 });
 const app = buildApp({
+  momentsStore,
+  momentsGifts,
   togetherBoard: togetherStartup,
   snowTournament: snowTournament.publicService,
   ...(snowTournament.battleRead ? { snowTournamentBattle: snowTournament.battleRead } : {}),
@@ -710,6 +753,7 @@ const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? "127.0.0.1";
 
 const close = async (signal: NodeJS.Signals) => {
+  raffleScheduler.stop();
   app.log.info({ signal }, "Stopping Doorbell Commons");
   await app.close();
 };
@@ -723,6 +767,7 @@ process.once("SIGTERM", () => {
 });
 
 try {
+  await raffleScheduler.start();
   await app.listen({ host, port });
   snowTournamentClock = snowTournament.start((_id, error) => reportBellError(error));
 } catch (error) {

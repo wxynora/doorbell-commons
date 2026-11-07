@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import type { MainActivitySource } from "../../moments/main-activity-source.js";
 import type { SnowReplicaBattle, SnowTournamentResponse } from "@doorbell/protocol";
 import { SnowTournamentStore } from "./store.js";
 import { SnowTournamentService } from "./service.js";
@@ -19,6 +20,7 @@ import {SnowTournamentTeamSignals} from "./team-signals.js";
 /** Caller supplies the migrated community connection and the existing authoritative adapters. */
 export function createSnowTournamentDomain(db:Database.Database, dependencies:{
   identity:SnowTournamentIdentityPort;
+  mainActivity?:Pick<MainActivitySource,"syncSnow"|"snowShares">;
   displayName:(name:string)=>string;
   parsePublic:(value:unknown)=>SnowTournamentResponse;
   now?:()=>number;
@@ -51,10 +53,19 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
   const resultBell=runtime?.season && runtime.playerSignals && settlement
     ? new SnowTournamentResultBell(db,store,{...runtime.playerSignals,render:renderSnowResult}) : null;
   let reportSettlement:(id:string,error:unknown)=>void=()=>{};
+  const syncActivity=(id:string)=>{
+    if (!dependencies.mainActivity) return;
+    const edition=store.read(id);
+    if (!edition) return;
+    try { dependencies.mainActivity.syncSnow(edition as Parameters<MainActivitySource["syncSnow"]>[0],now()); }
+    catch (error) { reportSettlement(id,error); }
+  };
   const reconcileSettlement=(id:string)=>{
+    syncActivity(id);
     if (!settlement) return;
     void settlement.reconcile(id).then(failures=>{
       for (const failure of failures) reportSettlement(failure.id,failure.error);
+      syncActivity(id);
       resultBell?.queue(id);
     }).catch(error=>reportSettlement(id,error));
   };
@@ -84,7 +95,7 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
     ...(registrationBell ? {registrationBell} : {}),
     ...(teamSignals?{teamSignals}:{}),
     onResult:reconcileSettlement,
-  } : dependencies.schedule;
+  } : dependencies.schedule ? { ...dependencies.schedule, onResult:reconcileSettlement } : undefined;
   const battleRead=matchHost && runtime ? {
     read: (ref: {editionId:string;matchId:string}) => {
       const battle=matchHost.battleForProjection(ref);
@@ -100,6 +111,7 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
   const publicService=new SnowTournamentService(store,dependencies.parsePublic,dependencies.displayName,matchHost?.publicMatchProgress.bind(matchHost));
   tools=runtime?.season && runtime.registrationBell && playerSignals && matchHost && dependencies.economy
     ? new SnowTournamentTools(db,{store,teams,identity:dependencies.identity,publicService,host:matchHost,catalog:runtime.engine.catalog,now,
+      ...(dependencies.mainActivity ? {mainActivity:dependencies.mainActivity} : {}),
       residents:()=>{
         const rows=db.prepare("SELECT resident_id AS id,resident_name AS name FROM residents ORDER BY resident_id").all() as {id:string;name:string}[];
         return rows.filter(row=>runtime.registrationBell!.isEligible(row.id)).map(row=>({...row,name:dependencies.displayName(row.name)}));

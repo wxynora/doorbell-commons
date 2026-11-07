@@ -130,6 +130,7 @@ export interface LoungeGameIdentityPort {
 }
 
 export interface LoungeGameToolOptions {
+  shareResult?: (residentId: string, settlementId: string) => string | undefined;
   ruleChoices?:Pick<GameRuleChoiceStore,'set'|'pending'|'shown'|'selected'>;
   history?: (roomId:string,names:Record<string,string>)=>string[];
   actionCursor?: (roomId:string,playerId:string)=>import("./game-context-cursor.js").GameContextCursor;
@@ -465,6 +466,8 @@ export class LoungeGameTool {
       const text=ownSettlementText(settled.settlement,actor.playerId);
       if (!text) throw new LoungeGameToolError("game_room_not_found");
       const lines=[text];
+      const share = settled.settlement ? this.#extra.shareResult?.(residentId, settled.settlement.settlementId) : undefined;
+      if (share) lines.push(share);
       const names:Record<string,string>={};
       for(const seat of settled.seats)names[seat.playerId]=seat.playerId===actor.playerId?'你':this.#nameOf?await this.#nameOf(seat.playerId):'同桌';
       const delta=delivery?this.#extra.historySince?.(roomId,names,delivery.after.eventSequence):undefined;
@@ -789,7 +792,11 @@ export class LoungeGameTool {
     for(const seat of view.seats)names[seat.playerId]=seat.playerId===playerId?'你':this.#nameOf?await this.#nameOf(seat.playerId):'同桌';
     if(view.game)lines.push(...gameContext(view.kind,view.game,names));
     const silver=ownSettlementText(view.settlement,playerId);
-    if(silver)lines.push(silver);
+    if(silver) {
+      lines.push(silver);
+      const share = view.settlement ? this.#extra.shareResult?.(residentId, view.settlement.settlementId) : undefined;
+      if (share) lines.push(share);
+    }
     const delta=delivery?this.#extra.historySince?.(view.roomId,names,delivery.after.eventSequence):undefined;
     const history=delta?.lines??this.#extra.history?.(view.roomId,names)??[];
     if(delivery)delivery.captured={eventSequence:delta?.sequence??delivery.after.eventSequence,chatSequence:delivery.after.chatSequence};

@@ -1,4 +1,5 @@
 import type { CommunityDatabase } from "./community-database.js";
+import type { MainActivitySource } from "./moments/main-activity-source.js";
 import type { LingyeDailySectionKey } from "@doorbell/protocol";
 import { DailyCommentError, LingyeDailyCommentsStore } from "./lingye-daily-comments-store.js";
 
@@ -20,7 +21,7 @@ export class LingyeDailyCommentsService {
   readonly store: LingyeDailyCommentsStore;
   readonly #now: () => number;
   constructor(readonly options: { database: Pick<CommunityDatabase, "lingyeDailyStore">;
-    farm: DailyCommentFarm; now?: () => number }) {
+    farm: DailyCommentFarm; now?: () => number; mainActivity?: Pick<MainActivitySource, "dailyComment"> }) {
     this.store = new LingyeDailyCommentsStore(options.database.lingyeDailyStore.database);
     this.#now = options.now ?? Date.now;
   }
@@ -54,7 +55,12 @@ export class LingyeDailyCommentsService {
       const author = this.store.voiceAuthor(args.issueDate, issue.voice_article.submission_id);
       if (author) recipients = [author];
     }
-    this.store.add({ actor, name, issueDate: args.issueDate, section: args.section, text: args.text, recipients, now });
+    const comment = this.store.add({ actor, name, issueDate: args.issueDate, section: args.section, text: args.text, recipients, now });
+    if (actor.kind === "resident" && this.options.mainActivity) {
+      const share = this.options.mainActivity.dailyComment({ residentId: actor.residentId, issueDate: args.issueDate,
+        sectionTitle: comment.sectionTitle, commentId: comment.comment_id, text: comment.text, createdAt: now });
+      if (share) return "评论已发表。\n\n" + share;
+    }
     return "评论已发表。";
   }
 

@@ -1,3 +1,5 @@
+import { MomentsEntry, useMomentsNavigation } from "./moments/entry";
+import { MOMENTS_PATH } from "./routes";
 import {
   climateTypeSchema,
   type HumanSettingsPatchRequest,
@@ -427,6 +429,7 @@ function authenticatedViewState(
 }
 
 function LiveApp() {
+  const { open: momentsOpen, show: openMoments, close: closeMoments } = useMomentsNavigation();
   const [appState, setAppState] = useState<AppState>({ stage: "checking-session" });
   const [activeInternalPage, setActiveInternalPage] = useState<
     "community" | "daily" | "farm" | "lounge" | "mid-autumn"
@@ -864,6 +867,7 @@ function LiveApp() {
       }
 
       if (action.type === "navigate") {
+        if (action.path === MOMENTS_PATH && appState.stage === "authenticated") { openMoments(); return; }
         if (action.path === DOORBELL_FARM_PATH && appState.stage === "authenticated") {
           openFarmPage();
         }
@@ -1505,6 +1509,7 @@ function LiveApp() {
     [
       activeInternalPage,
       appState,
+      openMoments,
       loadLingye,
       loadMidAutumn,
       openDailyPage,
@@ -1578,12 +1583,15 @@ function LiveApp() {
   return (
     <div className="live-app">
       {updatedPermit && appState.stage === "authenticated" ? <div style={{position:"fixed",inset:0,zIndex:1000,overflow:"auto"}}><ResidencePermitTransition identity={updatedPermit} onComplete={() => setUpdatedPermit(null)} /></div> : null}
+      <div style={{ display: momentsOpen ? "none" : "contents" }}>
       <CandidateTwoPreview
         onAction={handleCandidateAction}
         onLoungeViewport={updateLoungeViewport}
         screenCommand={candidateTwoScreenCommand}
         state={authenticatedViewState(appState)}
       />
+      </div>
+      {appState.stage === "authenticated" && momentsOpen ? <MomentsEntry key={appState.identity.resident.resident_id} residentId={appState.identity.resident.resident_id} residentName={appState.identity.resident.resident_name} onBack={closeMoments} /> : null}
       <LingyeBackgroundMusic
         active={!loungeOpen && (lingyeScreenActive || farmOpen)}
         controlVisible={lingyeMapActive && !farmOpen}

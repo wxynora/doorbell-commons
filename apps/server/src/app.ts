@@ -1,3 +1,6 @@
+import type { MomentsGiftService } from "./moments/gift-service.js";
+import { registerMomentsHumanRoutes } from "./moments/human-routes.js";
+import type { MomentsStore } from "./moments/store.js";
 import { registerDailyFarmRoutes } from "./daily-farm/routes.js";
 import { registerTogetherRoutes, type TogetherBoardPort } from "./together/routes.js";
 import { registerSnowTournamentRoutes, type SnowTournamentBattleRead } from "./together/tournament/routes.js";
@@ -575,6 +578,8 @@ import {
 } from "./shared-meme-service.js";
 
 export interface BuildAppOptions {
+  momentsStore?: MomentsStore;
+  momentsGifts?: MomentsGiftService;
   togetherBoard?: TogetherBoardPort;
   snowTournament?: Pick<SnowTournamentService, "readPublic">;
   snowTournamentBattle?: SnowTournamentBattleRead;
@@ -2092,6 +2097,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     ...(options.snowTournamentBattle ? { battleRead: options.snowTournamentBattle } : {}),
   });
   if (options.snowLive) registerSnowLiveRoutes(app, { registrationAuth: options.registrationAuth, live: options.snowLive, secureCookies: options.secureCookies });
+  if (options.momentsStore) registerMomentsHumanRoutes(app, { store: options.momentsStore, gifts: options.momentsGifts, registrationAuth: options.registrationAuth, secureCookies: options.secureCookies });
   registerMidAutumnRoutes(app, { registrationAuth: options.registrationAuth, secureCookies: options.secureCookies });
   if (options.halloweenClient) {
     registerHalloweenRoutes(app, {

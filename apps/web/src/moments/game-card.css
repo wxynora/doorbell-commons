@@ -1,0 +1,16 @@
+.ly-moments .source.game-receipt { background: #fff5df; border-color: #d4ad6c; }
+.ly-moments .game-receipt header { display: flex; justify-content: space-between; gap: 8px; padding: 5px 9px; background: #ffe0a2; color: #795b35; font-size: 11px; font-weight: 700; }
+.ly-moments .game-receipt header time { font-weight: 400; white-space: nowrap; }
+.ly-moments .game-receipt-body { display: flex; align-items: center; gap: 12px; padding: 8px 10px; }
+.ly-moments .game-receipt-icon { flex: 0 0 48px; }
+.ly-moments .game-receipt-icon svg { display: block; width: 100%; height: auto; }
+.ly-moments .game-receipt dl { flex: 1; min-width: 0; margin: 0; font-size: 11px; line-height: 1.8; }
+.ly-moments .game-receipt dl > div { display: flex; align-items: baseline; gap: 9px; }
+.ly-moments .game-receipt dt { flex: none; color: #95774e; }
+.ly-moments .game-receipt dd { min-width: 0; margin: 0; color: #654f36; font-weight: 700; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ly-moments .game-receipt p { margin: 0; padding: 0 10px 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ly-moments .game-receipt[data-game-kind="game-mahjong"] header { background: #cfe8df; }
+.ly-moments .game-receipt[data-game-kind="game-uno"] header { background: #ffccba; }
+.ly-moments .game-receipt[data-game-kind="game-flying-chess"] header { background: #cbe8f6; }
+.ly-moments .game-receipt[data-game-kind="game-monopoly"] header { background: #dbdfb3; }
+.ly-moments .game-receipt[data-game-kind="game-leaf-game"] header { background: #e5d8ef; }

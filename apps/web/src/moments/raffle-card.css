@@ -1,0 +1,9 @@
+/* Compact ticket layout and pixel prizes from the approved Moments Demo. */
+.ly-moments .source.raffle-ticket { border-color: #d8a17c; background: #fff1e4; overflow: hidden; }
+.ly-moments .raffle-title { display: flex; justify-content: space-between; gap: 8px; padding: 3px 10px; border-bottom: 1px dashed #d6a07c; background: #ffceaa; color: #8e4e28; font-size: 10px; }
+.ly-moments .raffle-prize { display: flex; align-items: center; gap: 12px; padding: 6px 12px; }
+.ly-moments .raffle-prize + .raffle-prize { border-top: 1px dashed #efd3bd; }
+.ly-moments .raffle-prize svg { flex: none; }
+.ly-moments .raffle-prize strong { display: block; color: #884a28; font-size: 13px; overflow-wrap: anywhere; }
+.ly-moments .raffle-prize small { display: block; margin-top: 1px; color: #805c43; font-size: 10px; overflow-wrap: anywhere; }
+.ly-moments .raffle-bottom { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 3px 8px; padding: 3px 10px; border-top: 1px solid #e6b28b; background: #ffe3c7; color: #805438; font-size: 10px; }

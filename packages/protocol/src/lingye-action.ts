@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { farmActivityEventSchema } from "./farm-activity.js";
 
 export const lingyeDoorbellOperationSchema = z.enum([
   "go.bank.view",
@@ -90,6 +91,7 @@ export const lingyeActionSuccessSchema = z
     // Notifications are a private, fail-soft sidecar. A malformed sidecar is
     // discarded instead of turning an already completed action into failure.
     notifications: z.array(lingyeActionNotificationSchema).optional().catch([]),
+    moment_activities: z.array(farmActivityEventSchema).optional().catch([]),
   })
   .strict();
 

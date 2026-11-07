@@ -9,7 +9,7 @@ import {
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 58;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 59;
 export const SNOW_LIVE_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS snow_spectator_messages (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3145,4 +3145,94 @@ UPDATE lingye_daily_column_images SET attempt_count=1, attempted_at=generated_at
     database.pragma('user_version = 58');
   })();
 
+  if (databaseSchemaVersion < 59) database.transaction(() => {
+    database.exec(MOMENTS_SCHEMA_SQL);
+    database.pragma('user_version = 59');
+  })();
+
+}
+
+/** Shared identity/catalogue only. Content lives in one SQL table per home. */
+export const MOMENTS_SCHEMA_SQL = `
+  CREATE TABLE lingye_moments_actors (
+    actor_key TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK(kind IN ('resident','human')),
+    resident_id TEXT UNIQUE REFERENCES residents(resident_id) ON DELETE CASCADE,
+    account_id TEXT UNIQUE REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+    display_name TEXT NOT NULL,
+    CHECK((kind='resident' AND resident_id IS NOT NULL AND account_id IS NULL)
+       OR (kind='human' AND account_id IS NOT NULL AND resident_id IS NULL))
+  );
+  CREATE TABLE lingye_moments_homes (
+    home_id TEXT PRIMARY KEY REFERENCES homes(home_id) ON DELETE CASCADE,
+    table_name TEXT NOT NULL UNIQUE
+  );
+`;
+
+/** Dynamic home schemas stay with the community migrations, never in a domain store. */
+export function ensureMomentsHomeTable(database: Database.Database, homeId: string): string {
+  return database.transaction(() => {
+    const existing=database.prepare("SELECT table_name FROM lingye_moments_homes WHERE home_id=?").get(homeId) as {table_name:string}|undefined;
+    if(existing)return existing.table_name;
+    const table="lingye_moments_home_"+crypto.randomUUID().replaceAll("-","");
+    database.prepare("INSERT INTO lingye_moments_homes(home_id,table_name) VALUES(?,?)").run(homeId,table);
+    database.exec(`
+      CREATE TABLE "${table}" (
+        record_id TEXT PRIMARY KEY,
+        home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+        record_type TEXT NOT NULL CHECK(record_type IN ('post','receipt','fact','audience','like','comment','gift','option','read_cursor','notification_read','notification_reported','activity_status','raffle','raffle_prize','raffle_audience','raffle_sticker','sticker_attachment')),
+        actor_key TEXT REFERENCES lingye_moments_actors(actor_key) ON DELETE CASCADE,
+        target_home_id TEXT REFERENCES homes(home_id) ON DELETE CASCADE,
+        moment_id TEXT, short_ref TEXT, author_id TEXT REFERENCES residents(resident_id) ON DELETE CASCADE,
+        request_id TEXT, text TEXT, receipt_id TEXT, location TEXT,
+        location_supplied INTEGER CHECK(location_supplied IN (0,1)),
+        visibility TEXT CHECK(visibility IN ('public','only','except')), created_at INTEGER,
+        resident_id TEXT REFERENCES residents(resident_id) ON DELETE CASCADE,
+        source TEXT, source_id TEXT, kind TEXT, title TEXT, summary TEXT, occurred_at INTEGER,
+        position INTEGER, label TEXT, value TEXT,
+        subject_kind TEXT CHECK(subject_kind='resident'),
+        subject_id TEXT REFERENCES residents(resident_id) ON DELETE CASCADE,
+        comment_id TEXT, gift_id TEXT,
+        option_action TEXT CHECK(option_action='share'),
+        option_target TEXT,
+        read_author_id TEXT, read_at INTEGER, notification_source_id TEXT,
+        raffle_id TEXT, raffle_at INTEGER, raffle_condition TEXT, raffle_state TEXT, raffle_failure TEXT,
+        raffle_winner_resident_id TEXT, raffle_winner_doorplate TEXT,
+        sender_resident_id TEXT REFERENCES residents(resident_id) ON DELETE CASCADE,
+        sender_doorplate TEXT,
+        recipient_resident_id TEXT REFERENCES residents(resident_id) ON DELETE CASCADE,
+        recipient_doorplate TEXT,
+        item_kind TEXT CHECK(item_kind IN ('dish','bait')), item_id TEXT,
+        item_quantity INTEGER CHECK(item_quantity>0), item_name TEXT, delivered_at INTEGER,
+        purchase_total INTEGER CHECK(purchase_total>=0),
+        CHECK(record_type!='sticker_attachment' OR (moment_id IS NOT NULL AND item_id IS NOT NULL AND position IS NOT NULL AND position>=0)),
+        CHECK(record_type!='raffle_sticker' OR (raffle_id IS NOT NULL AND item_id IS NOT NULL AND position IS NOT NULL AND position>=0)),
+        CHECK(record_type NOT IN ('notification_read','notification_reported') OR (actor_key IS NOT NULL AND notification_source_id IS NOT NULL)),
+        CHECK(record_type!='activity_status' OR (resident_id IS NOT NULL AND receipt_id IS NOT NULL AND kind IS NOT NULL AND occurred_at IS NOT NULL)),
+        CHECK(record_type!='option' OR (resident_id IS NOT NULL AND option_action IS NOT NULL AND option_target IS NOT NULL)),
+        CHECK(record_type!='gift' OR (delivered_at IS NULL AND item_name IS NULL)
+          OR (delivered_at IS NOT NULL AND item_name IS NOT NULL))
+      );
+      CREATE INDEX "${table}_post" ON "${table}"(record_type,moment_id,created_at);
+      CREATE UNIQUE INDEX "${table}_short_ref" ON "${table}"(short_ref) WHERE record_type='post' AND short_ref IS NOT NULL;
+      CREATE INDEX "${table}_year" ON "${table}"(record_type,created_at,target_home_id);
+      CREATE INDEX "${table}_delivery" ON "${table}"(delivered_at,target_home_id);
+      CREATE UNIQUE INDEX "${table}_requests" ON "${table}"(record_type,actor_key,request_id) WHERE request_id IS NOT NULL;
+      CREATE UNIQUE INDEX "${table}_like" ON "${table}"(moment_id,actor_key) WHERE record_type='like';
+      CREATE UNIQUE INDEX "${table}_receipt" ON "${table}"(resident_id,source,source_id) WHERE record_type='receipt';
+      CREATE UNIQUE INDEX "${table}_fact" ON "${table}"(receipt_id,position) WHERE record_type='fact';
+      CREATE UNIQUE INDEX "${table}_notification_read" ON "${table}"(actor_key,notification_source_id) WHERE record_type='notification_read';
+      CREATE UNIQUE INDEX "${table}_notification_reported" ON "${table}"(actor_key,notification_source_id) WHERE record_type='notification_reported';
+      CREATE UNIQUE INDEX "${table}_raffle_prize" ON "${table}"(raffle_id,position) WHERE record_type='raffle_prize';
+      CREATE UNIQUE INDEX "${table}_raffle_audience" ON "${table}"(raffle_id,subject_id) WHERE record_type='raffle_audience';
+      CREATE UNIQUE INDEX "${table}_raffle_sticker" ON "${table}"(raffle_id,position) WHERE record_type='raffle_sticker';
+      CREATE UNIQUE INDEX "${table}_sticker_post" ON "${table}"(moment_id,position) WHERE record_type='sticker_attachment' AND comment_id IS NULL;
+      CREATE UNIQUE INDEX "${table}_sticker_comment" ON "${table}"(comment_id,position) WHERE record_type='sticker_attachment' AND comment_id IS NOT NULL;
+      CREATE UNIQUE INDEX "${table}_activity_status" ON "${table}"(receipt_id,kind) WHERE record_type='activity_status';
+      CREATE UNIQUE INDEX "${table}_read_cursor" ON "${table}"(actor_key,read_author_id) WHERE record_type='read_cursor';
+      CREATE UNIQUE INDEX "${table}_option" ON "${table}"(resident_id,option_action,option_target) WHERE record_type='option';
+      CREATE UNIQUE INDEX "${table}_audience" ON "${table}"(moment_id,subject_kind,subject_id) WHERE record_type='audience';
+    `);
+    return table;
+  }).immediate();
 }

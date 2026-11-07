@@ -1,3 +1,7 @@
+import { ensureMomentsHomeTable } from "./database/community-migrations.js";
+import { MomentsStore } from "./moments/store.js";
+import { MomentsStatusNotifications } from "./moments/status-notifications.js";
+import { MomentsRaffles, type RaffleFarmPort } from "./moments/raffle.js";
 import { createCommunityTogether, togetherIdentity } from "./together/community.js";
 import { createSnowTournamentDomain } from "./together/tournament/assembly.js";
 import { SnowLiveService } from "./together/live-service.js";
@@ -1243,6 +1247,18 @@ import { ConstableInterviewCandidateWakeStore } from "./constable-interview-cand
 export { LingyeDailyIdempotencyConflictError, type LingyeDailyIssueRecord, type LingyeDailyPublishResult, type LingyeDailyPublishStatus } from "./lingye-daily-store.js";
 
 export class CommunityDatabase {
+  createMomentsRaffles(store: MomentsStore, farm: RaffleFarmPort): MomentsRaffles {
+    return new MomentsRaffles(this.#database, homeId => ensureMomentsHomeTable(this.#database, homeId), store, farm);
+  }
+
+  createMomentsStatusNotifications(store: MomentsStore): MomentsStatusNotifications {
+    return new MomentsStatusNotifications(this.#database, homeId => ensureMomentsHomeTable(this.#database, homeId), store);
+  }
+
+  createMomentsStore(): MomentsStore {
+    return new MomentsStore(this.#database, homeId => ensureMomentsHomeTable(this.#database, homeId));
+  }
+
   readonly #database: Database.Database;
   readonly #lingyeDailyStore: LingyeDailyStore;
   readonly humanBulletinStore: HumanBulletinStore;

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
+import type { MainActivitySource } from "../../moments/main-activity-source.js";
 import type { SnowTournamentStore } from "./store.js";
 import type { SnowTournamentMatchHost } from "./match-host.js";
 import type { SnowTournamentTeamService, SnowTournamentIdentityPort } from "./team-service.js";
@@ -32,6 +33,7 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
   constructor(private readonly db:Database.Database,private readonly options:{
     store:SnowTournamentStore;identity:SnowTournamentIdentityPort;teams:SnowTournamentTeamService;publicService:SnowTournamentService;
     host:SnowTournamentMatchHost|null;catalog:unknown;residents:()=>{id:string;name:string}[];now?:()=>number;
+    mainActivity?:Pick<MainActivitySource,"snowShares">;
     afterMutation?:(editionId:string)=>Promise<unknown>;
     afterTeamMutation?:(editionId:string)=>void;
   }) {}
@@ -41,7 +43,11 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
   }
   private state() {return this.options.store.latest() as State|null;}
   decorateFarmStatus(actor:string,text:string) {return decorateRegistrationStatus(text,this.state(),actor,this.now());}
-  renderReply(result:unknown,_op:string,args:Record<string,unknown>) {return renderSnowReply(result,{names:new Map(this.options.residents().map(member=>[member.id,member.name])),args});}
+  renderReply(result:unknown,_op:string,args:Record<string,unknown>) {
+    const text=renderSnowReply(result,{names:new Map(this.options.residents().map(member=>[member.id,member.name])),args});
+    const shares=(result as {mainActivityShares?:string[]}|null)?.mainActivityShares??[];
+    return [text,...shares].join("\n\n");
+  }
   registrationCall(actor:string,editionId:string) {
     const state=this.options.store.read(editionId) as State|null;
     if(!state)return null;
@@ -163,7 +169,8 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
       .sort((a,b)=>Date.parse(a.scheduledAt!)-Date.parse(b.scheduledAt!))[0]:undefined;
     const pendingRegistration=overview.registration.filter(round=>round.status!=="registered");
     const seekingTeam=!own||snowTeamHasOpenSeat(own);
-    return {edition:{id:state.id,title:state.title,phase:state.phase,registrationCloseAt:state.registrationCloseAt,teamFormationCloseAt:state.teamFormationCloseAt},
+    const mainActivityShares=this.options.mainActivity?.snowShares(state as unknown as Parameters<MainActivitySource["snowShares"]>[0],actor,this.now())??[];
+    return {...(mainActivityShares.length?{mainActivityShares}:{}),edition:{id:state.id,title:state.title,phase:state.phase,registrationCloseAt:state.registrationCloseAt,teamFormationCloseAt:state.teamFormationCloseAt},
       enrolled:state.enrollments.some(member=>member.id===actor),team:publicState.teams.find(team=>team.id===own?.id)??null,
       ...(state.phase==="team_formation"&&seekingTeam?{teams:publicState.teams.filter(snowTeamHasOpenSeat),
         teamLimit:snowTeamLimit(state.enrollments.length),enrolledCount:state.enrollments.length}:{}),

@@ -1,3 +1,4 @@
+import type { GameActivitySource } from "./moments/game-activity-source.js";
 import { publishLoungeGameEffects } from './lounge-game-effects.js';
 import { pendingReactionContext } from "./games/game-reaction-context.js";
 import { WaitingSeatPresence } from "./games/waiting-seat-presence.js";
@@ -223,6 +224,7 @@ export class LoungeChatRuntime implements LoungeChatRuntimePort {
 }
 
 export interface LoungeRuntimeOptions {
+  gameActivity?: Pick<GameActivitySource, "capture" | "share">;
   bell: LoungeRuntimeBell;
   chatWakeMessage: string;
   onError(error: unknown): void;
@@ -273,6 +275,7 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     database.residentSocialStore,
     now,
     async room => {
+      options.gameActivity?.capture(room, now());
       try { publishLoungeGameEffects(room, now(), event => lounge.recordGameResult(event)); } catch (error) { options.onError(error); }
       await Promise.all(room.seats.filter(seat=>seat.controllerType==="resident" && seat.residentId).map(async seat=>{
         try { await turnWakes.replay(seat.residentId!,room.roomId); } catch(error) { options.onError(error); }
@@ -322,6 +325,7 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
   });
   const game:LoungeGameTool = new LoungeGameTool({
     gameService: games,
+    shareResult: (residentId, settlementId) => options.gameActivity?.share(residentId, settlementId),
     gameIdentity: identity,
     gameTables: tables,
     gameChat,
