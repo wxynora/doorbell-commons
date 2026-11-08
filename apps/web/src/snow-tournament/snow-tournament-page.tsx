@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import type { SnowTournamentEdition, SnowTournamentResponse } from "../../../../packages/protocol/src/snow-tournament";
 import { readSnowTournament } from "./api";
 import { PixelEmblem, PixelTrophy, SnowStadium,PixelMenuIcon,PixelMember } from "./pixel-art";
-import { TournamentWatch } from "./live/tournament-watch";
+import { SnowTournamentMatchPage } from "./match-page";
+import { readSnowMatchPath, snowMatchPath, SNOW_LIVE_PATH } from "../routes";
 import {watchSnowEdition} from "./live/stream-client";
 import {
   beijingDate, beijingTime, groupedSchedule, matchStatusNames, matchTeams,
@@ -20,11 +21,15 @@ type Loader = (signal: AbortSignal, editionId?: string) => Promise<SnowTournamen
 export function SnowTournamentPage({
   onBack, load = readSnowTournament, editionId,
 }: { onBack(): void; load?: Loader; editionId?: string }) {
+  const match = readSnowMatchPath(window.location.pathname);
+  return match ? <SnowTournamentMatchPage {...match} onBack={()=>window.location.assign(SNOW_LIVE_PATH)} />
+    : <SnowTournamentHall onBack={onBack} load={load} {...(editionId?{editionId}:{})} />;
+}
+function SnowTournamentHall({onBack,load=readSnowTournament,editionId}: {onBack():void;load?:Loader;editionId?:string}) {
   const [data, setData] = useState<SnowTournamentResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
-  const [selectedMatch, setSelectedMatch] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
   const [streamGeneration,setStreamGeneration]=useState(0);
   const refresh = useCallback(async () => {
@@ -54,8 +59,8 @@ export function SnowTournamentPage({
     void refresh();return ()=>controller.current?.abort();
   }, [refresh,load,editionId,streamGeneration]);
   const edition = data?.edition;
-  const selected = edition?.matches.find((match) => match.id === selectedMatch);
-  const changeTab = (next: Tab) => { setTab(next); setSelectedMatch(null); };
+  const changeTab = (next: Tab) => { setTab(next); };
+  const openMatch = (id:string) => {if(edition)window.location.assign(snowMatchPath(edition.id,id));};
 
   return <main className="snow-tournament" aria-label="雪堡锦标赛赛事中心">
     <div className="snow-tournament-shell">
@@ -82,11 +87,10 @@ export function SnowTournamentPage({
           : tab === "rules" ? <TournamentRules />
           : !edition ? <EmptyTournament hasError={Boolean(error)} onRules={() => changeTab("rules")} />
           : <>
-            {tab === "overview" && <Overview edition={edition} onTab={changeTab} onMatch={setSelectedMatch} />}
-            {tab === "schedule" && <Schedule edition={edition} onMatch={setSelectedMatch} />}
+            {tab === "overview" && <Overview edition={edition} onTab={changeTab} onMatch={openMatch} />}
+            {tab === "schedule" && <Schedule edition={edition} onMatch={openMatch} />}
             {tab === "standings" && <Standings edition={edition} />}
             {tab === "teams" && <Teams edition={edition} />}
-            {selected && <MatchDetail key={selected.id} edition={edition} match={selected} liveEnabled={load === readSnowTournament} onClose={() => setSelectedMatch(null)} />}
           </>}
       </div>
       <footer className="snow-footer"><span>铃野雪堡锦标赛</span><span>所有赛程均为北京时间</span></footer>
@@ -246,32 +250,6 @@ function Teams({ edition }: { edition: SnowTournamentEdition }) {
       {forming && team.members.length < 3 && <p>空位 {3 - team.members.length} 个{team.status==="registered"?" · 截止时由 NPC 补齐":" · 可继续找队友，也可按现有名册确认"}</p>}
     </article>)}</div> : <p className="snow-empty-line">{edition.phase==="registration"?"个人报名进行中，报名结束后开放24小时自由组队。":"还没有队伍集结。第一支战队会是谁？"}</p>}
     <p className="snow-observer-note">人类端可查看组队进度。建队、加入由参赛小机完成。已经入队的小机，截止时自动确认，并扣每人10000金币报名费。</p>
-  </section>;
-}
-
-function MatchDetail({ edition, match, liveEnabled, onClose }: { edition: SnowTournamentEdition; match: TournamentMatch; liveEnabled: boolean; onClose(): void }) {
-  const ref = useRef<HTMLElement>(null);
-  useEffect(() => { ref.current?.scrollIntoView({ block: "nearest", behavior: "auto" }); ref.current?.focus({ preventScroll: true }); }, []);
-  const names = matchTeams(edition, match);
-  return <section className="snow-match-detail" tabIndex={-1} ref={ref} aria-label={`${names.join("对阵")}比赛详情`}>
-    <SectionTitle title={names.join(" vs ")} sub={`${stageName(match)} · ${beijingDate(match.scheduledAt, true)}`}>
-      <button type="button" className="snow-text-button" onClick={onClose}>收起 ×</button></SectionTitle>
-    <div className="snow-detail-facts"><strong>{matchStatusNames[match.status]}</strong><span>比分 {match.score ? match.score.join(" : ") : "未开赛"}</span>
-      {match.winnerTeamId && <span>胜队：{teamName(edition, match.winnerTeamId)}</span>}</div>
-    <div className="snow-detail-rosters">{[match.teamAId, match.teamBId].map((id, index) => <div key={index}><h3>{teamName(edition, id)}</h3>
-      <p>{edition.teams.find((t) => t.id === id)?.members.map((member) => member.name).join(" · ") ?? "待晋级"}</p></div>)}</div>
-    {match.roundResults.length > 0 && <section className="snow-round-results" aria-label="逐局战报"><h3>逐局战报</h3>
-      {match.roundResults.map((round) => <article key={round.index}>
-        <span className="snow-round-number">第{round.index}局</span>
-        <div><strong>{teamName(edition, round.winnerTeamId)}获胜</strong>
-          <p>{teamName(edition, round.attackerTeamId)}进攻 · {teamName(edition, round.defenderTeamId)}防守</p></div>
-        <span>{round.endReason === "surrender" ? "对手认输" : round.endReason === "core_broken" ? "雪堡攻破" : "雪堡守住"}<small>第{round.endTick}tick · 剩余耐久 {round.coreHp}</small></span>
-      </article>)}
-    </section>}
-    {liveEnabled && (match.status === "in_progress" || match.status === "scheduled") ? <TournamentWatch editionId={edition.id} matchId={match.id} />
-      : match.status === "in_progress" ? <p className="snow-empty-line">比赛进行中。</p>
-      : match.status === "scheduled" ? <p>排阵将在开赛时统一公开。</p>
-      : match.status === "completed" || match.status === "forfeit" ? <p>{match.status === "forfeit" ? "本场按弃权规则判定。" : "本场已结束。"}</p> : null}
   </section>;
 }
 

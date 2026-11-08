@@ -36,6 +36,7 @@ function skillEffect(id:string,s:Row):string {
 function units(definitions:unknown,side:string):string {
  const records=Object.entries(row(definitions)).map(([id,value])=>{
   const u=row(value),behavior:string[]=[];
+  if(side==='defend')behavior.push(`${u.ground?'地面位':'高台位'}：${(u.ground?CFG.groundSlots:CFG.highSlots).join('、')}格`);
   if(u.heal)behavior.push(`本路前后${u.healRadius}格，每${u.attackInterval}秒治疗${u.heal}，不攻击`);
   else if(u.block)behavior.push(`地面挡${u.block}，每${u.attackInterval}秒攻击${u.attack}`);
   else if(u.range)behavior.push(`本路${side==='defend'?'向入口':'前后'}${u.range}格，每${u.attackInterval}秒${u.damageType==='spell'?'术式攻击':'攻击'}${u.attack}`);
@@ -66,13 +67,31 @@ function catalog(value:unknown,side?:string,assigned?:Set<string>):string[] {
  else if(Object.keys(skills).length){const pool=assigned?Object.fromEntries(Object.entries(skills).filter(([id])=>assigned.has(id))):skills;if(Object.keys(pool).length)out.push('本局指挥技能',skillTable(pool));}
  return out;
 }
-function options(value:unknown,name:(id:unknown)=>string):string[] {
+function options(value:unknown,name:(id:unknown)=>string,matches:Row[]=[]):string[] {
  const out:string[]=[];
  for(const option of rows(value)){
   const kind=text(option.kind),label=(labels[kind]??text(option.label))+(option.side?`（${role(option.side)}）`:kind==='handover'?`（${name(option.residentId)}）`:'');
   const call=row(option.call);
   if(call.op)out.push(label,JSON.stringify(call));
   else{const required=items(option.requires).map(text).join('、');out.push(`${label}：${option.option}${required?`；填写 ${required}`:''}`);}
+  if(kind==='command'){
+   const match=matches.find(entry=>entry.matchId===option.matchId&&entry.canCommand),battle=row(match?.battle),side=text(match?.role);
+   if(match&&['attack','defend'].includes(side)){
+    const occupied=new Set(rows(battle.visibleUnits).filter(unit=>unit.side==='defend').map(unit=>`${unit.lane}:${unit.pos}`));
+    const definitions=side==='attack'?CFG.attackerUnits:CFG.defenderUnits,commands:Row[]=[];let budget=Number(battle.ownCost);
+    for(const [unitType,definition] of Object.entries(definitions)){
+     const unit=row(definition);if(Number(unit.cost)>budget)continue;
+     if(side==='attack'){commands.push({type:'spawn',unitType,lane:1});budget-=Number(unit.cost);}
+     else{
+      const cells:readonly number[]=unit.ground?CFG.groundSlots:CFG.highSlots;
+      const target=[1,2,3].flatMap(lane=>cells.map(cell=>({lane,cell}))).find(({lane,cell})=>!occupied.has(`${lane}:${cell}`));
+      if(!target)continue;commands.push({type:'deploy',unitType,...target});occupied.add(`${target.lane}:${target.cell}`);budget-=Number(unit.cost);
+     }
+     if(commands.length===2)break;
+    }
+    out.push(`${label}示例`,JSON.stringify({op:'game.snow.command',args:{option:option.option,commands,waitTicks:30}}));
+   }
+  }
  }
  return out;
 }
@@ -113,7 +132,7 @@ function commandResult(result:Row,args:Row):string[] {
   }
  }
  if(!commands.length)out.push('本次未派兵或部署。');
- if(result.dueTick!==null&&result.dueTick!==undefined)out.push(`等待${result.waitTicks}tick，下一次决策在战斗第${result.dueTick}tick；到点由铃通知。`);
+ if(result.dueTick!==null&&result.dueTick!==undefined)out.push(`已安排${result.waitTicks}tick后响铃（战斗第${result.dueTick}tick）。`);
  return out;
 }
 export function renderSnowReply(value:unknown,context:{names:Map<string,string>;args?:Record<string,unknown>}) {
@@ -166,12 +185,12 @@ export function renderSnowReply(value:unknown,context:{names:Map<string,string>;
     if(opponent&&!rows(team.members).some(member=>member.id===opponent.member))out.push(`本局对手：${name(opponent.member)}；指挥技能：${items(opponent.skills).map(skillName).join('、')}`);
    }
    if(m.canLineup)out.push('排阵队员编号',...items(m.members).map(id=>`${name(id)}：${id}`));
-   out.push(...lineup(m.lineup,name),...renderSnowBattle(m.battle));
+   out.push(...lineup(m.lineup,name),...renderSnowBattle(m.battle,text(m.role)));
    if(!m.canReady&&!m.canCommand&&!m.canLineup&&!m.canChooseSide)out.push('当前还没轮到你上场。');
   }
   const next=row(data.nextMatch);if(next.scheduledAt)out.push(`下一场：${time(next.scheduledAt)} · 对手：${next.opponent}`);
   const current=rows(data.matches).find(m=>m.canReady||m.canCommand),assigned=current?new Set(rows(row(current.battle).ownCommanderSkills).map(s=>text(s.skill))):undefined;
-  out.push(...catalog(data.catalog,text(current?.role),assigned),...options(data.options,name));
+  out.push(...catalog(data.catalog,text(current?.role),assigned),...options(data.options,name,rows(data.matches)));
   if(data.rules)out.push('查看比赛规则',JSON.stringify(data.rules));
  }else throw Error('snow_reply_not_supported');
  return out.filter(line=>line!=='').join('\n');

@@ -13,6 +13,12 @@ const matchSchema = z.object({
   status: z.enum(["scheduled", "in_progress", "completed", "forfeit", "cancelled"]),
   scheduledAt: timestampSchema.nullable(), score: z.tuple([z.number().int(), z.number().int()]).nullable(),
   winnerTeamId: z.string().nullable(),
+  currentGameIndex: z.number().int().min(1).max(3).nullable().optional(),
+  pairings: z.array(z.object({
+    index: z.number().int().min(1).max(3),
+    attack: z.object({ id: z.string(), name: z.string(), npc: z.boolean(), automated: z.boolean() }),
+    defend: z.object({ id: z.string(), name: z.string(), npc: z.boolean(), automated: z.boolean() }),
+  })).optional(),
   replays:z.array(z.object({gameIndex:z.number().int().min(1).max(3),voidedBattleId:z.string(),replayBattleId:z.string(),
     randomSeed:z.number().int().positive(),reason:z.literal("invalid_save"),at:timestampSchema})).optional(),
   roundResults: z.array(z.object({

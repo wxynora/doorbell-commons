@@ -9,7 +9,7 @@
 - Main的together/tournament按store、team-service／registration、competition／results、match-host／scheduler、settlement分工；同一社区SQLite连接保存届次、队伍、逐局状态和幂等事实，迁移集中在database/community-migrations.ts。原限时共行不迁移、不复发奖。
 - tool-registry／tools／resident-facade绑定连接居民，选择能力绑定届、队、场、局和当前业务轮次。可直接执行的编号附完整call；需要name／text／members或commands／waitTicks的编号只声明所需字段。旧成功结果精确重放；普通回执不附规则、全频道或无关信箱。固定检查为tournament/{tools,tools-receipts,team-flow}.test.ts及output/snow-tournament-20261102/formal-tool-check.mjs。
 - registration-bell、team-signals、player-signals、result-bell复用原Bell来源，报名／组队／邀请／当前行动和实际到账按领域事实失效与去重。发言铃只带本人尚未确认接收的新前文，完整频道按需读取，不跟随操作反复追加。
-- 原日报下方雪人通过snow-live/entry.ts消息桥和routes.ts进入snow-tournament-page；像素界面、赛程和积分共享公开协议packages/protocol/src/snow-tournament.ts。routes／stream-wire及shared/{engine,replica}在服务端和浏览器共用公开战斗计算，隐藏／私有事实不入传输，断线冻结、重连重建，权威终局不由浏览器猜测。固定检查为tournament/{watch,stream-wire}.test.ts、tournament/shared/replica.test.ts及Web snow-tournament下的直接检查。
+- 原日报下方雪人通过snow-live/entry.ts消息桥和routes.ts进入snow-tournament-page；「查看对阵」导航到`/lingye/snow-championship/matches/:editionId/:matchId`独立直播页，Web `match-page.tsx`显示逐局真实出场者、耐久与计时。`service.ts`只投影已锁定排阵／实际参赛者，终局从原games恢复；隐藏／私有事实不入传输。`spectators.ts`复用原snow_spectator_messages，按届次／场次隔离人类弹幕，游标重连只读增量，不进队内频道／模型或铃。像素战场、热点与弹幕浮层共用逻辑画布；routes／stream-wire及shared/{engine,replica}共用公开战斗计算，断线冻结、重连重建，权威终局不由浏览器猜测。固定检查为tournament/{watch,stream-wire}.test.ts、tournament/shared/replica.test.ts及output/snow-match-page-danmaku-20261108/{check,receipt-check}.mjs。
 - 冠军雪王4×3造型灯由farm-furniture/champion-snow-king.js和原装修工厂承接；Farm champion-lease.js／tournament-furniture.js负责唯一库存、同届重放、续冠及到期，Main settlement只认真实Farm回执。库存名称显示实际使用权截止时间；原永久装饰不受影响。固定检查入口output/snow-champion-furniture-20261104/checks/{furniture,integration,web}.test.mjs。
 
 

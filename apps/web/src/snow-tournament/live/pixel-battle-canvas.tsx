@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { SnowPixelBattle } from "../../../../../packages/protocol/src/snow-tournament";
 import { drawSnowPixelScene, PIXEL_FIELD, pixelUnitsAtPoint, pixelUnitsInCell } from "./pixel-scene";
 import { SnowPixelTimeline } from "./timeline";
@@ -8,7 +8,7 @@ import { SnowPixelPortrait, SnowPixelUnitGuide } from "./unit-guide";
 import "./pixel-live.css";
 
 type Cell = { lane: number; position: number };
-export function SnowPixelBattleCanvas({ battle, replica, paused=false, onSelect }: { battle: SnowPixelBattle; replica?:BattleStreamUpdate; paused?:boolean; onSelect?(cell: Cell): void }) {
+export function SnowPixelBattleCanvas({ battle, replica, paused=false, onSelect, overlay }: { battle: SnowPixelBattle; replica?:BattleStreamUpdate; paused?:boolean; onSelect?(cell: Cell): void; overlay?:ReactNode }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const timeline = useRef(new SnowPixelTimeline());
   const simulation=useRef(new SnowReplicaTimeline()),usesReplica=useRef(false);
@@ -44,6 +44,8 @@ export function SnowPixelBattleCanvas({ battle, replica, paused=false, onSelect 
   }, []);
   const selectedUnits = displayed.units.filter(unit => selectedIds.includes(unit.id));
   return <div className="snow-pixel-live">
+    <div className="snow-match-hud" aria-label="当前战况"><span>{displayed.started?"本局":"准备中"} <b>{Math.floor(displayed.tick/60).toString().padStart(2,"0")}:{(displayed.tick%60).toString().padStart(2,"0")}</b> / 10:00</span>
+      <span>雪堡耐久 <b>{Number(displayed.coreHp.toFixed(2))} / {displayed.coreMaxHp}</b><meter aria-label="雪堡剩余耐久" min={0} max={displayed.coreMaxHp} value={displayed.coreHp}/></span></div>
     <div className="snow-pixel-toolbar"><span><b className="snow-pixel-role snow-pixel-role--attack">▶ 进攻</b><b className="snow-pixel-role snow-pixel-role--defend">◇ 防守</b></span><button type="button" onClick={() => setZoom(value => value === 1 ? 2 : 1)}>{zoom === 1 ? "放大看" : "看全场"}</button></div>
     <div className="snow-pixel-scroll"><div className="snow-pixel-canvas" data-pixel-canvas style={{ width: `${zoom * 100}%`, aspectRatio: `${PIXEL_FIELD.width} / ${PIXEL_FIELD.height}` }}>
       <canvas ref={canvas} width={PIXEL_FIELD.width} height={PIXEL_FIELD.height} role="img" aria-label="雪堡实时像素战场，三路十二格；兵种按实际移速连续前进" />
@@ -64,6 +66,7 @@ export function SnowPixelBattleCanvas({ battle, replica, paused=false, onSelect 
             selectedRef.current = ids.length ? null : cell; setSelected(cell); onSelect?.(cell);
           }} />;
       }))}
+      {overlay}
     </div></div>
     <section className="snow-pixel-detail" aria-live="polite">
       <h3>{selectedIds.length ? "选中的小雪团" : selected ? `第${selected.lane}路 · 第${selected.position}格` : "点击格子，看看前线"}</h3>

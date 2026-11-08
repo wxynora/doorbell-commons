@@ -16,6 +16,7 @@ import { SnowTournamentTools } from "./tools.js";
 import { renderSnowPlayerSignal } from "./player-copy.js";
 import { SnowTournamentResultBell, renderSnowResult } from "./result-bell.js";
 import {SnowTournamentTeamSignals} from "./team-signals.js";
+import { SnowTournamentSpectators } from "./spectators.js";
 
 /** Caller supplies the migrated community connection and the existing authoritative adapters. */
 export function createSnowTournamentDomain(db:Database.Database, dependencies:{
@@ -114,7 +115,7 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
     subscribe: matchHost.subscribe.bind(matchHost),
   } : null;
   const scheduler=schedule && results ? new SnowTournamentScheduler(store,teams,results,schedule.host,schedule) : null;
-  const publicService=new SnowTournamentService(store,dependencies.parsePublic,dependencies.displayName,matchHost?.publicMatchProgress.bind(matchHost));
+  const publicService=new SnowTournamentService(store,dependencies.parsePublic,dependencies.displayName,matchHost?.publicMatchProgress.bind(matchHost),new SnowTournamentSpectators(db,store,now),now);
   tools=runtime?.season && runtime.registrationBell && playerSignals && matchHost && dependencies.economy
     ? new SnowTournamentTools(db,{store,teams,identity:dependencies.identity,publicService,host:matchHost,catalog:runtime.engine.catalog,now,
       ...(dependencies.mainActivity ? {mainActivity:dependencies.mainActivity} : {}),

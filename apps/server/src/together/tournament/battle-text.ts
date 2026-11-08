@@ -8,9 +8,10 @@ export function snowPlayerGrid(battle:Pick<Battle,'visibleUnits'>) {
  for(let lane=1;lane<=3;lane++)lines.push('| 第'+lane+'路 | '+Array.from({length:12},(_,i)=>battle.visibleUnits.filter(u=>u.lane===lane&&u.pos===i+1).map(u=>(u.side==='attack'?'攻:':'守:')+u.id).join('、')||'空').join(' | ')+' |');
  return lines.join('\n');
 }
-export function renderSnowBattle(value:unknown):string[] {
+export function renderSnowBattle(value:unknown,side?:string):string[] {
  const b=value as Battle|null;if(!b?.battleId)return [];
  const out=[`战斗第${b.tick}tick · 剩余${b.ticksLeft}tick · 核心耐久${b.coreHp} · 本方费用${b.ownCost}`,snowPlayerGrid(b)];
+ if(side==='defend')out.push(`地面格子：${CFG.groundSlots.join('、')}；高台格子：${CFG.highSlots.join('、')}`);
  if(b.visibleUnits.length){
   out.push('编号 | 阵营 | 兵种 | 路 / 格 | 生命 | 护盾 | 当前状态','--- | --- | --- | --- | --- | --- | ---');
   for(const u of b.visibleUnits){

@@ -1,8 +1,16 @@
 export const DOORBELL_FARM_PATH = "/lingye/farm" as const;
 export const SNOW_LIVE_PATH = "/lingye/snow-championship" as const;
+export function snowMatchPath(editionId: string, matchId: string): string {
+  return `${SNOW_LIVE_PATH}/matches/${encodeURIComponent(editionId)}/${encodeURIComponent(matchId)}`;
+}
+export function readSnowMatchPath(pathname: string): {editionId:string;matchId:string} | null {
+  const match=pathname.match(/^\/lingye\/snow-championship\/matches\/([^/]+)\/([^/]+)\/?$/);
+  if(!match)return null;
+  try {const editionId=decodeURIComponent(match[1]!),matchId=decodeURIComponent(match[2]!);return editionId&&matchId?{editionId,matchId}:null;}catch{return null;}
+}
 export function isSnowLivePath(pathname: string): boolean {
   return pathname === SNOW_LIVE_PATH || pathname === `${SNOW_LIVE_PATH}/` ||
-    pathname === "/lingye/snow-fort-live" || pathname === "/lingye/snow-fort-live/";
+    pathname === "/lingye/snow-fort-live" || pathname === "/lingye/snow-fort-live/" || readSnowMatchPath(pathname)!==null;
 }
 export const MID_AUTUMN_PATH = "/lingye/mid-autumn" as const;
 export const CONSTABLE_INTERVIEW_PATH = "/lingye/constable-interview" as const;

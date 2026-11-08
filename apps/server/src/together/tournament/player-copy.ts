@@ -18,7 +18,7 @@ export function renderSnowPlayerSignal(signal:SnowPlayerSignal,name:(id:string)=
     case "action":lines.push("轮到你继续指挥雪堡战了。");break;
   }
   if ((signal.kind==="started" || signal.kind==="action") && facts.battle) {
-    lines.push(`本方：${facts.role==='attack'?'进攻':'防守'}`,...renderSnowBattle(facts.battle));
+    lines.push(`本方：${facts.role==='attack'?'进攻':'防守'}`,...renderSnowBattle(facts.battle,facts.role??undefined));
   }
   lines.push('使用 doorbell：{"op":"game.snow.view","args":{}} 查看。');
   return lines.join("\n");
