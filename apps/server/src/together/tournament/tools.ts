@@ -287,7 +287,7 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
         case "lineup": {
           const view=host.playerState(ref,actor,this.now());
           host.lineup(ref,actor,input.members as Parameters<typeof host.lineup>[2],this.now()>=Date.parse(view.scheduledAt!)-120_000,this.now());
-          result={ok:true,kind:"lineup",lineup:host.playerState(ref,actor,this.now()).lineup};break;
+          result={ok:true,kind:"lineup",lineup:host.playerState(ref,actor,this.now()).lineup,scheduledAt:view.scheduledAt};break;
         }
         case "confirm_lineup":host.lineup(ref,actor,host.playerState(ref,actor).lineup!.entries,true,this.now());result={ok:true,kind:"confirm_lineup",lineup:host.playerState(ref,actor,this.now()).lineup};break;
         case "ready":host.ready(ref,actor,binding.battleId!,this.now());result={ok:true,kind:"ready",battleId:binding.battleId,started:host.battleForProjection(ref)?.runtime?.started===true};break;
@@ -302,7 +302,8 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
       }
       if ((result as {ok?:boolean})?.ok===false) {
         this.db.prepare("UPDATE snow_tournament_options SET input_json=NULL WHERE option_id=?").run(id);
-        return result;
+        const view=host.playerState(ref,actor,this.now());
+        return {...result as object,...(binding.kind==='command'&&view.canCommand?{retryExamples:snowCommandExamples(id,view.role!,view.battle)}:{})};
       }
       return this.complete(id,encoded,result);
     });

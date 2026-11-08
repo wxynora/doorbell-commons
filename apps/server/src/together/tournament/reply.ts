@@ -99,8 +99,13 @@ function lineup(value:unknown,name:(id:unknown)=>string):string[] {
  const valueRow=row(value);if(!Array.isArray(valueRow.entries))return [];
  return[`${valueRow.confirmed?'已确认':'当前'}排阵`,table(['出场','队员','指挥技能'],rows(valueRow.entries).map((entry,i)=>[i+1,name(entry.member),items(entry.skills).map(skillName).join('、')]))];
 }
+function lineupNext(value:unknown,scheduledAt:unknown,phase?:unknown):string[]{
+ const draft=row(value);if(draft.confirmed||!rows(draft.entries).length||!scheduledAt)return [];
+ if(phase==='confirmation')return ['赛前讨论已结束，请确认本场排阵。',`排阵截止：${time(scheduledAt)}`];
+ return [`排阵草稿已填齐。赛前讨论将在${time(Date.parse(text(scheduledAt))-120_000)}结束，结束后才能确认排阵；最迟请在${time(scheduledAt)}前确认。`];
+}
 function commandResult(result:Row,args:Row):string[] {
- if(result.ok===false){const receipt=row(result.receipt);return[`第${result.failedCommand}条指令未执行：${receipt.message??receipt.error}。本批指令均未生效，费用未扣除。`];}
+ if(result.ok===false){const receipt=row(result.receipt);return[`第${result.failedCommand}条指令未执行：${receipt.message??receipt.error}。本批指令均未生效，费用未扣除。`,...rows(result.retryExamples).flatMap(example=>[text(example.label),JSON.stringify(example.call)])];}
  const commands=rows(args.commands),out:string[]=[];
  for(const [i,receipt]of rows(result.receipts).entries()){
   const action=commands[i]??{},f=row(receipt.facts??receipt);
@@ -113,6 +118,7 @@ function commandResult(result:Row,args:Row):string[] {
    if(f.healed!==undefined)out.push(`实际治疗：${f.healed}`);
    const effect=row(f.effect);for(const[key,label]of [['speedMult','移速倍率'],['armorMult','护甲倍率'],['intervalMult','攻击间隔倍率']] as const)if(effect[key]!==undefined)out.push(`${label}：${effect[key]}`);
    if(f.untilTick!==undefined||f.silencedUntilTick!==undefined)out.push(`生效至战斗第${f.untilTick??f.silencedUntilTick}tick`);
+   if(f.cooldownUntilTick!==undefined)out.push(`冷却至战斗第${f.cooldownUntilTick}tick`);
    for(const shield of rows(f.shields))out.push(`${shield.unitId}：新增${shield.added}护盾，至第${shield.untilTick}tick`);
    for(const shield of rows(f.dispelledShields))out.push(`${shield.unitId}：清除${shield.removed}护盾`);
   }
@@ -130,8 +136,8 @@ export function renderSnowReply(value:unknown,context:{names:Map<string,string>;
   if(typeof result.text==='string')out.push(result.text);
   else if(Array.isArray(result.receipts)||result.failedCommand)out.push(...commandResult(result,context.args??{}));
   else if(kind==='side')out.push(`攻守选择：${role(result.side)}`);
-  else if(kind==='ready')out.push(`准备：已确认；本局${result.started?'已开始':'等待另一方准备'}`);
-  else if(kind==='lineup'||kind==='confirm_lineup')out.push(...lineup(result.lineup,name));
+  else if(kind==='ready'){out.push(`准备：已确认；本局${result.started?'已开始':'等待另一方准备'}`);if(!result.started)out.push('本局开始时，铃会带来战场和可执行指令。');}
+  else if(kind==='lineup'||kind==='confirm_lineup')out.push(...lineup(result.lineup,name),...lineupNext(result.lineup,result.scheduledAt));
   else if(kind==='surrender')out.push(`本局已认输，${result.status==='attack_win'?'进攻方':'防守方'}获胜。`);
   else{
    out.push(`本次操作：${result.offerKind==='handover'?'接受队长交接':labels[kind]??kind}；结果：已完成`);
@@ -174,6 +180,7 @@ export function renderSnowReply(value:unknown,context:{names:Map<string,string>;
    }
    if(m.canLineup)out.push('排阵队员编号',...items(m.members).map(id=>`${name(id)}：${id}`));
    out.push(...lineup(m.lineup,name),...renderSnowBattle(m.battle,text(m.role)));
+   if(m.canLineup)out.push(...lineupNext(m.lineup,m.scheduledAt,m.lineupPhase));
    if(!m.canReady&&!m.canCommand&&!m.canLineup&&!m.canChooseSide)out.push('当前还没轮到你上场。');
   }
   const next=row(data.nextMatch);if(next.scheduledAt)out.push(`下一场：${time(next.scheduledAt)} · 对手：${next.opponent}`);

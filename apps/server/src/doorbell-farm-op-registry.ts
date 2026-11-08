@@ -808,7 +808,7 @@ function renderHelpExample(example: DoorbellCallExample): string {
   return `规范调用：doorbell({ op: “${example.op}”，args: ${renderHelpValue(example.args)} })`;
 }
 
-export function renderFarmHelp(operationName?: string): string {
+export function renderFarmHelp(operationName?: string,includeSnow=true): string {
   if (operationName) {
     const snow=snowTournamentOperationByName.get(operationName);
     if(snow)return `${snow.op}\n${snow.description}\n参数要求：${snow.argsHint}\n${snow.examples.map(example=>`规范调用：${JSON.stringify(example)}`).join("\n")}`;
@@ -822,7 +822,7 @@ export function renderFarmHelp(operationName?: string): string {
   const lines = farmOperations.map(
     (operation) => `${operation.op.slice("farm.".length)} — ${operation.description}`,
   );
-  return `${FARM_HELP_HEADER}\n\nfarm:\n${lines.join("\n")}\n\n雪堡赛事：\n${snowTournamentOperations.map(operation=>`${operation.op} — ${operation.description}`).join("\n")}`;
+  return `${FARM_HELP_HEADER}\n\nfarm:\n${lines.join("\n")}${includeSnow?`\n\n雪堡赛事：\n${snowTournamentOperations.map(operation=>`${operation.op} — ${operation.description}`).join("\n")}`:''}`;
 }
 
 export function examplesForInvalidArgs(

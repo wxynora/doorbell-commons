@@ -981,7 +981,7 @@ export class DoorbellMcpRuntime {
     const { detail, businessArgs } = stripDetail(parsed.data);
     const plan = operation.adapt(businessArgs);
     if (plan.kind === "help") {
-      let text = renderFarmHelp(plan.operation);
+      let text = renderFarmHelp(plan.operation,this.#snowTools!==undefined);
       if (shouldAppendStatus) {
         text = await this.#appendStatusWhenAvailable(text, context);
       }

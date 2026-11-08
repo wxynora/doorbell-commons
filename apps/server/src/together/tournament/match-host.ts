@@ -517,7 +517,12 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       for (const [index, action] of actions.entries()) {
         const receipt = this.engine.command(trial, { ...action, side, member:actor, battleId, roundId:trial.roundId, requestId: JSON.stringify(["human",key,index]) });
         if (!receipt.ok) return { ok:false as const, failedCommand:index+1, receipt };
-        receipts.push(receipt);
+        if(action.type==='commander_skill'||action.type==='unit_skill'){
+          const view=this.engine.view(trial,side) as {ownCommanderSkills?:{skill:string;readyInTicks:number}[];visibleUnits?:{id:string;unitSkillReadyInTicks?:number}[]};
+          const readyIn=action.type==='commander_skill'?view.ownCommanderSkills?.find(skill=>skill.skill===action.skill)?.readyInTicks:
+            view.visibleUnits?.find(unit=>unit.id===action.unitId)?.unitSkillReadyInTicks;
+          receipts.push(readyIn===undefined?receipt:{...receipt,facts:{...receipt.facts as object,cooldownUntilTick:trial.tick+readyIn}});
+        }else receipts.push(receipt);
       }
       round.battle = trial;
       round.batches[key] = { payload, receipts };
