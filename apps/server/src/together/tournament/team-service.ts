@@ -213,7 +213,7 @@ export class SnowTournamentTeamService {
         const roster=team.members.filter(member=>!member.npc).map(member=>member.id);
         let round=state.registrationRounds.find(round=>round.teamId===team.id&&round.status!=="cancelled");
         if(!round){round=newRegistrationRound(randomUUID(),team.id,roster);state.registrationRounds.push(round);}
-        if(round.status==="confirming")for(const residentId of roster)confirmRegistration(round,residentId,roster);
+        if(round.status==="confirming")for(const residentId of roster)if(!round.confirmed.includes(residentId))confirmRegistration(round,residentId,roster);
         if(round.status==="paying")round.deadlineConfirmedAt=at;
       }
       state.deadlineConfirmationAt=at;state.revision++;

@@ -31,7 +31,7 @@ export function weekendCalendar(closeAt: string, roundCount = 5): SnowTournament
 export function calendarForEdition(editionId:string,closeAt:string,roundCount=5):SnowTournamentCalendar {
   if(editionId!=="snow-tournament:2026-11")return weekendCalendar(closeAt,roundCount);
   return {
-    roundRobinAt:["2026-11-08T03:00:00.000Z","2026-11-08T04:00:00.000Z","2026-11-08T05:00:00.000Z"],
+    roundRobinAt:["2026-11-08T04:00:00.000Z","2026-11-08T05:00:00.000Z","2026-11-08T06:00:00.000Z"],
     semifinalAt:"2026-11-09T01:00:00.000Z",
     finalAt:"2026-11-09T02:00:00.000Z",
   };
