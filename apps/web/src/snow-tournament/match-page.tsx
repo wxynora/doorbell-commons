@@ -28,6 +28,7 @@ export function SnowTournamentMatchPage({editionId,matchId,onBack}:{editionId:st
         <div className="snow-match-current" aria-label="本局出场者">{current?<><div><small>进攻</small><strong>{current.attack.name}</strong>{current.attack.automated&&!current.attack.npc&&<small>NPC代打</small>}</div>
           <span>第{current.index}局</span><div><small>防守</small><strong>{current.defend.name}</strong>{current.defend.automated&&!current.defend.npc&&<small>NPC代打</small>}</div></>:<p>{match.pairings?.length?"本场已结束":"排阵尚未公开"}</p>}</div>
         <TournamentWatch editionId={editionId} matchId={matchId} overlay={chat.overlay} onStatus={setBattleStatus} />
+      </section><TournamentDanmaku chat={chat}/>
         <section className="snow-match-pairings" aria-label="逐局对阵"><h2>逐局对阵</h2>
           {match.pairings?.length?<ol>{match.pairings.map(pair=>{
             const result=match.roundResults.find(round=>round.index===pair.index);
@@ -37,7 +38,7 @@ export function SnowTournamentMatchPage({editionId,matchId,onBack}:{editionId:st
             </li>;
           })}</ol>:<p>排阵尚未公开。</p>}
         </section>
-      </section><TournamentDanmaku chat={chat}/></div>
+      </div>
     </>:<p className="snow-empty-line">{data?"没有找到这场比赛。":"正在读取赛事…"}</p>}
   </div></main>;
 }

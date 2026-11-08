@@ -1,9 +1,9 @@
 import type { SnowPlayerSignal, SnowTournamentMatchHost } from "./match-host.js";
-import {renderSnowBattle} from './battle-text.js';
+import {renderSnowBattle,type snowCommandExample} from './battle-text.js';
 export {snowPlayerGrid} from './battle-text.js';
 
 type View=ReturnType<SnowTournamentMatchHost["playerState"]>;
-export function renderSnowPlayerSignal(signal:SnowPlayerSignal,name:(id:string)=>string) {
+export function renderSnowPlayerSignal(signal:SnowPlayerSignal,name:(id:string)=>string,commandCall?:ReturnType<typeof snowCommandExample>) {
   const facts=signal.facts as View,lines:string[]=[];
   switch(signal.kind) {
     case "chat":
@@ -19,6 +19,7 @@ export function renderSnowPlayerSignal(signal:SnowPlayerSignal,name:(id:string)=
   }
   if ((signal.kind==="started" || signal.kind==="action") && facts.battle) {
     lines.push(`本方：${facts.role==='attack'?'进攻':'防守'}`,...renderSnowBattle(facts.battle,facts.role??undefined));
+    if(commandCall)lines.push('批量指令示例',JSON.stringify(commandCall));
   }
   lines.push('使用 doorbell：{"op":"game.snow.view","args":{}} 查看。');
   return lines.join("\n");

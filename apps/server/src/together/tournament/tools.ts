@@ -10,6 +10,7 @@ import { snowTournamentOperationByName, type SnowTournamentToolPort } from "./to
 import {snowTeamOptionLabel,snowTeamReceipt} from "./tool-presentation.js";
 import {decorateRegistrationStatus} from './registration-status.js';
 import {renderSnowReply} from './reply.js';
+import {snowCommandExample} from './battle-text.js';
 import { SNOW_TEAM_SIZE, snowTeamHasOpenSeat, snowTeamLimit } from "./roster.js";
 
 type Ref={editionId:string;matchId:string};
@@ -55,6 +56,14 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
     if(!binding)return null;
     const option=this.issue(actor,binding);
     return 'call' in option?option.call:null;
+  }
+  battleCommandCall(actor:string,ref:Ref) {
+    const state=this.options.store.read(ref.editionId) as State|null;
+    if(!state||!this.options.host)return null;
+    const binding=this.candidates(actor,state).find(entry=>entry.kind==='command'&&entry.matchId===ref.matchId);
+    if(!binding)return null;
+    const view=this.options.host.playerState(ref,actor,this.now());
+    return snowCommandExample(this.issue(actor,binding).option,view.role!,view.battle);
   }
   private facade(actor:string) {return snowTournamentForResident(actor,{...this.options,now:()=>this.now()});}
   private candidates(actor:string,state:State):Binding[] {

@@ -48,14 +48,14 @@ export function TournamentDanmaku({chat}:{chat:ReturnType<typeof useTournamentDa
   const [text,setText]=useState(""),list=useRef<HTMLDivElement>(null);
   useEffect(()=>{if(list.current)list.current.scrollTop=list.current.scrollHeight;},[chat.messages.length]);
   return <section className="snow-match-chat" aria-label="观众弹幕"><header><h2>围观席</h2><span>发点弹幕</span></header>
+    <form onSubmit={event=>{event.preventDefault();void chat.send(text).then(sent=>{if(sent)setText("");});}}>
+      <label htmlFor="snow-danmaku-text">弹幕</label><textarea id="snow-danmaku-text" rows={2} placeholder="给雪堡添点热闹…" value={text} onChange={event=>setText(event.target.value)} />
+      {chat.error&&<p role="alert">{chat.error}</p>}<button type="submit" className="snow-button" disabled={chat.sending||!text.trim()}>{chat.sending?"发送中…":"发射弹幕 ↗"}</button>
+    </form>
     <div className="snow-match-messages" ref={list} role="log" aria-label="观众消息" aria-live="polite">
       {chat.messages.length?chat.messages.map(message=><article key={message.sequence}><div><b>{message.senderName}</b>
         <time dateTime={new Date(message.createdAt).toISOString()}>{new Intl.DateTimeFormat("zh-CN",{timeZone:"Asia/Shanghai",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(message.createdAt)}</time></div><p>{message.text}</p></article>)
         :<p className="snow-empty-line">前排空着呢，来一句？</p>}
     </div>
-    <form onSubmit={event=>{event.preventDefault();void chat.send(text).then(sent=>{if(sent)setText("");});}}>
-      <label htmlFor="snow-danmaku-text">弹幕</label><textarea id="snow-danmaku-text" rows={2} placeholder="给雪堡添点热闹…" value={text} onChange={event=>setText(event.target.value)} />
-      {chat.error&&<p role="alert">{chat.error}</p>}<button type="submit" className="snow-button" disabled={chat.sending||!text.trim()}>{chat.sending?"发送中…":"发射弹幕 ↗"}</button>
-    </form>
   </section>;
 }

@@ -1,5 +1,5 @@
 import {SNOW_WAR_CONFIG as CFG} from './shared/config.mjs';
-import {renderSnowBattle} from './battle-text.js';
+import {renderSnowBattle,snowCommandExample} from './battle-text.js';
 import { snowNpcName } from "./roster.js";
 
 type Row=Record<string,unknown>;
@@ -75,22 +75,9 @@ function options(value:unknown,name:(id:unknown)=>string,matches:Row[]=[]):strin
   if(call.op)out.push(label,JSON.stringify(call));
   else{const required=items(option.requires).map(text).join('、');out.push(`${label}：${option.option}${required?`；填写 ${required}`:''}`);}
   if(kind==='command'){
-   const match=matches.find(entry=>entry.matchId===option.matchId&&entry.canCommand),battle=row(match?.battle),side=text(match?.role);
-   if(match&&['attack','defend'].includes(side)){
-    const occupied=new Set(rows(battle.visibleUnits).filter(unit=>unit.side==='defend').map(unit=>`${unit.lane}:${unit.pos}`));
-    const definitions=side==='attack'?CFG.attackerUnits:CFG.defenderUnits,commands:Row[]=[];let budget=Number(battle.ownCost);
-    for(const [unitType,definition] of Object.entries(definitions)){
-     const unit=row(definition);if(Number(unit.cost)>budget)continue;
-     if(side==='attack'){commands.push({type:'spawn',unitType,lane:1});budget-=Number(unit.cost);}
-     else{
-      const cells:readonly number[]=unit.ground?CFG.groundSlots:CFG.highSlots;
-      const target=[1,2,3].flatMap(lane=>cells.map(cell=>({lane,cell}))).find(({lane,cell})=>!occupied.has(`${lane}:${cell}`));
-      if(!target)continue;commands.push({type:'deploy',unitType,...target});occupied.add(`${target.lane}:${target.cell}`);budget-=Number(unit.cost);
-     }
-     if(commands.length===2)break;
-    }
-    out.push(`${label}示例`,JSON.stringify({op:'game.snow.command',args:{option:option.option,commands,waitTicks:30}}));
-   }
+   const match=matches.find(entry=>entry.matchId===option.matchId&&entry.canCommand);
+   const call=match?snowCommandExample(text(option.option),text(match.role),match.battle):null;
+   if(call)out.push(`${label}示例`,JSON.stringify(call));
   }
  }
  return out;
