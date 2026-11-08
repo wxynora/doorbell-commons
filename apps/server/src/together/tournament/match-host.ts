@@ -53,6 +53,7 @@ type Chat = {
   order: string[]; turn: number; until: number;
   messages: {residentId:string;text:string;at:number}[];
   receipts: Record<string,string>;
+  readThrough?:Record<string,number>;
 };
 type ActiveRound = {
   index: 0 | 1 | 2; battle: HostBattle; members: Record<Role, string>; ready: string[];
@@ -375,6 +376,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       }
       const chat=this.discussion(state,teams[index]!,slot,now);
       if (!chat || chat.order[chat.turn%chat.order.length]!==actor) throw new Error("snow_chat_not_your_turn");
+      chat.readThrough={...chat.readThrough,[actor]:chat.messages.length};
       if (text!==null) chat.messages.push({residentId:actor,text,at:now});
       chat.receipts[key]=payload;
       chat.turn++;
@@ -578,6 +580,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       lineupRevision:ownLineup?.revision??0,
       revealedLineups:state && now>=state.matchAt?structuredClone(state.lineups):null,
       messages:structuredClone(state?.chat?.[slot]?.messages??[]),
+      chatReadThrough:state?.chat?.[slot]?.readThrough?.[actor]??0,
       canChat:!!chat && chat.order[chat.turn%chat.order.length]===actor,
       chatTurn:chat?.turn??null,
       canChooseSide:team.captainId===actor && match.stage!=="round_robin" && match.status==="scheduled" &&

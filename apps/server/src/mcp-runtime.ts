@@ -60,8 +60,10 @@ import type { ReporterRelayService } from "./reporter-relay-service.js";
 
 const MCP_PROTOCOL_VERSION = "2025-06-18";
 function isSnowTournamentCall(params: unknown): boolean {
-  return isPlainObject(params) && params.name === "doorbell" && isPlainObject(params.arguments) &&
-    typeof params.arguments.op === "string" && findDoorbellOperation(params.arguments.op)?.kind === "snow";
+  if(!isPlainObject(params)||params.name!=="doorbell"||!isPlainObject(params.arguments))return false;
+  const call=params.arguments;
+  return typeof call.op==="string" && (findDoorbellOperation(call.op)?.kind==="snow" ||
+    call.op==="farm.help"&&isPlainObject(call.args)&&typeof call.args.operation==="string"&&findDoorbellOperation(call.args.operation)?.kind==="snow");
 }
 const FARM_STATUS_IDLE_MS = 10 * 60 * 1000;
 const MCP_CREDENTIAL_PATTERN = /^dbm_[A-Za-z0-9_-]{43}$/;
@@ -969,6 +971,11 @@ export class DoorbellMcpRuntime {
       }
     }
 
+    const helpOperation=(parsed.data as Record<string,unknown>).operation;
+    if(op==="farm.help"&&typeof helpOperation==="string"&&findDoorbellOperation(helpOperation)?.kind==="snow"){
+      if(!this.#snowTools)return doorbellToolError("UNKNOWN_OP",{op:helpOperation});
+      return helpToolResult(renderFarmHelp(helpOperation));
+    }
     const shouldAppendStatus = this.#noteValidFarmCall(context.residentId);
     const operation = registered.operation;
     const { detail, businessArgs } = stripDetail(parsed.data);

@@ -90,7 +90,7 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
       render:signal=>renderSnowPlayerSignal(signal,id=>{
         const row=db.prepare("SELECT resident_name FROM residents WHERE resident_id=?").get(id) as {resident_name:string}|undefined;
         return dependencies.displayName(row?.resident_name??id);
-      },signal.kind==='started'||signal.kind==='action'?tools?.battleCommandCall(signal.residentId,signal)??null:null)}) : null;
+      },signal.kind==='started'||signal.kind==='action'?tools?.battleCommandExamples(signal.residentId,signal)??[]:[])}) : null;
   if (playerSignals) matchHost?.bindSignals(playerSignals);
   const schedule=runtime?.season && matchHost ? {
     season:runtime.season, host:matchHost, isEligible:runtime.isEligible,

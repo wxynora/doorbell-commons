@@ -10,7 +10,8 @@ import { snowTournamentOperationByName, type SnowTournamentToolPort } from "./to
 import {snowTeamOptionLabel,snowTeamReceipt} from "./tool-presentation.js";
 import {decorateRegistrationStatus} from './registration-status.js';
 import {renderSnowReply} from './reply.js';
-import {snowCommandExample} from './battle-text.js';
+import {snowCommandExample,snowCommandExamples} from './battle-text.js';
+import {hasSnowPersonalResults,snowPersonalResults} from './personal-results.js';
 import { SNOW_TEAM_SIZE, snowTeamHasOpenSeat, snowTeamLimit } from "./roster.js";
 
 type Ref={editionId:string;matchId:string};
@@ -46,8 +47,7 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
   decorateFarmStatus(actor:string,text:string) {return decorateRegistrationStatus(text,this.state(),actor,this.now());}
   renderReply(result:unknown,_op:string,args:Record<string,unknown>) {
     const text=renderSnowReply(result,{names:new Map(this.options.residents().map(member=>[member.id,member.name])),args});
-    const shares=(result as {mainActivityShares?:string[]}|null)?.mainActivityShares??[];
-    return [text,...shares].join("\n\n");
+    return text;
   }
   registrationCall(actor:string,editionId:string) {
     const state=this.options.store.read(editionId) as State|null;
@@ -65,10 +65,19 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
     const view=this.options.host.playerState(ref,actor,this.now());
     return snowCommandExample(this.issue(actor,binding).option,view.role!,view.battle);
   }
+  battleCommandExamples(actor:string,ref:Ref) {
+    const state=this.options.store.read(ref.editionId) as State|null;
+    if(!state||!this.options.host)return [];
+    const binding=this.candidates(actor,state).find(entry=>entry.kind==='command'&&entry.matchId===ref.matchId);
+    if(!binding)return [];
+    const view=this.options.host.playerState(ref,actor,this.now());
+    return snowCommandExamples(this.issue(actor,binding).option,view.role!,view.battle);
+  }
   private facade(actor:string) {return snowTournamentForResident(actor,{...this.options,now:()=>this.now()});}
   private candidates(actor:string,state:State):Binding[] {
     const now=this.now(),own=state.teams.find(t=>t.status!=="withdrawn" && t.members.some(m=>m.id===actor)),result:Binding[]=[];
     const put=(binding:Omit<Binding,"editionId">)=>result.push({editionId:state.id,...binding});
+    if(hasSnowPersonalResults(state as unknown as Parameters<typeof hasSnowPersonalResults>[0],actor,now))put({kind:'personal_results'});
     if(state.phase==="registration" && now>=Date.parse(state.registrationOpenAt) && now<Date.parse(state.registrationCloseAt)) {
       if(!state.enrollments.some(member=>member.id===actor))put({kind:"register",revision:0});
       return result;
@@ -174,7 +183,8 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
     const matches=this.options.host && own ? state.matches.filter(m=>["scheduled","in_progress"].includes(m.status) && m.teamAId && m.teamBId && [m.teamAId,m.teamBId].includes(own.id))
       .map(m=>{
         const {messages:_messages,chatTurn:_chat,lineupRevision:_lineup,commandRevision:_command,...facts}=this.options.host!.playerState({editionId:state.id,matchId:m.id},actor,this.now());
-        return facts;
+        const match=publicState.matches.find(entry=>entry.id===m.id)!;
+        return {...facts,stage:match.stage,round:match.round};
       }).filter(facts=>facts.canChooseSide || this.now()>=Date.parse(facts.scheduledAt!)-600_000).sort((a,b)=>Date.parse(a.scheduledAt!)-Date.parse(b.scheduledAt!)).slice(0,1):[];
     const catalog=this.options.catalog as {attackerUnits?:unknown;defenderUnits?:unknown;commanderSkills?:Record<string,unknown>}|undefined;
     const active=matches.find(match=>match.canReady||match.canCommand);
@@ -184,8 +194,7 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
       .sort((a,b)=>Date.parse(a.scheduledAt!)-Date.parse(b.scheduledAt!))[0]:undefined;
     const pendingRegistration=overview.registration.filter(round=>round.status!=="registered");
     const seekingTeam=!own||snowTeamHasOpenSeat(own);
-    const mainActivityShares=this.options.mainActivity?.snowShares(state as unknown as Parameters<MainActivitySource["snowShares"]>[0],actor,this.now())??[];
-    return {...(mainActivityShares.length?{mainActivityShares}:{}),edition:{id:state.id,title:state.title,phase:state.phase,registrationCloseAt:state.registrationCloseAt,teamFormationCloseAt:state.teamFormationCloseAt},
+    return {edition:{id:state.id,title:state.title,phase:state.phase,registrationCloseAt:state.registrationCloseAt,teamFormationCloseAt:state.teamFormationCloseAt},
       enrolled:state.enrollments.some(member=>member.id===actor),team:publicState.teams.find(team=>team.id===own?.id)??null,
       ...(state.phase==="team_formation"&&seekingTeam?{teams:publicState.teams.filter(snowTeamHasOpenSeat),
         teamLimit:snowTeamLimit(state.enrollments.length),enrolledCount:state.enrollments.length}:{}),
@@ -237,6 +246,11 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
       return this.complete(id,encoded,snowTeamReceipt(state.receipts[id]!.result,this.options.publicService.readPublic(binding.editionId).edition!,this.options.residents()));
     }
     if (!this.candidates(actor,state).some(candidate=>stable(candidate)===row.binding_json)) return {ok:false,error:{code:"OPTION_NOT_AVAILABLE"}};
+    if(binding.kind==='personal_results'){
+      if(op!=='game.snow.choose'||Object.keys(input).some(field=>field!=='option'))return {ok:false,error:{code:'INVALID_ARGS'}};
+      const names=new Map(this.options.residents().map(resident=>[resident.id,resident.name]));
+      return {personalResults:snowPersonalResults(state as unknown as Parameters<typeof snowPersonalResults>[0],actor,this.now(),id=>names.get(id)??this.options.publicService.readPublic(binding.editionId).edition?.teams.flatMap(team=>team.members).find(member=>member.id===id)?.name??'NPC',this.options.mainActivity)};
+    }
     if(binding.kind==="channel") {
       if(op!=="game.snow.choose"||Object.keys(input).some(field=>field!=="option"))return {ok:false,error:{code:"INVALID_ARGS"}};
       const channel=this.options.host!.teamDiscussion({editionId:binding.editionId,matchId:binding.matchId!},actor,this.now());

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { snowTournamentOperations, snowTournamentOperationByName } from "./together/tournament/tool-registry.js";
 
 export interface DoorbellCallExample {
   op: string;
@@ -723,13 +724,13 @@ const nonHelpOperations: FarmOperationDefinition[] = [
   }),
 ];
 
-const operationNamesWithHelp = ["farm.help", ...nonHelpOperations.map((operation) => operation.op)];
+const operationNamesWithHelp = ["farm.help", ...nonHelpOperations.map((operation) => operation.op), ...snowTournamentOperations.map(operation=>operation.op)];
 const helpOperation = defineOperation({
   op: "farm.help",
-  description: "查看农场操作索引；指定操作时查看其参数说明与正确调用示例。",
+  description: "查看农场与雪堡赛事操作索引；指定操作时查看其参数说明与正确调用示例。",
   argsHint: "{operation?}",
   branches: [{ operation: z.enum(operationNamesWithHelp as [string, ...string[]]).optional() }],
-  exampleArgs: [{}, { operation: "farm.kitchen.sell" }],
+  exampleArgs: [{}, { operation: "farm.kitchen.sell" }, { operation: "game.snow.command" }],
   adapt: (args) => ({
     kind: "help",
     ...(typeof args.operation === "string" ? { operation: args.operation } : {}),
@@ -809,6 +810,8 @@ function renderHelpExample(example: DoorbellCallExample): string {
 
 export function renderFarmHelp(operationName?: string): string {
   if (operationName) {
+    const snow=snowTournamentOperationByName.get(operationName);
+    if(snow)return `${snow.op}\n${snow.description}\n参数要求：${snow.argsHint}\n${snow.examples.map(example=>`规范调用：${JSON.stringify(example)}`).join("\n")}`;
     const operation = farmOperationByName.get(operationName);
     if (!operation) {
       throw new Error(`Unknown farm help operation: ${operationName}`);
@@ -819,7 +822,7 @@ export function renderFarmHelp(operationName?: string): string {
   const lines = farmOperations.map(
     (operation) => `${operation.op.slice("farm.".length)} — ${operation.description}`,
   );
-  return `${FARM_HELP_HEADER}\n\nfarm:\n${lines.join("\n")}`;
+  return `${FARM_HELP_HEADER}\n\nfarm:\n${lines.join("\n")}\n\n雪堡赛事：\n${snowTournamentOperations.map(operation=>`${operation.op} — ${operation.description}`).join("\n")}`;
 }
 
 export function examplesForInvalidArgs(

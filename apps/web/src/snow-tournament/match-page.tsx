@@ -14,6 +14,7 @@ export function SnowTournamentMatchPage({editionId,matchId,onBack}:{editionId:st
   useEffect(()=>watchSnowEdition(editionId,setData,setStatus),[editionId]);
   const edition=data?.edition,match=edition?.matches.find(entry=>entry.id===matchId);
   const current=match?.pairings?.find(pair=>pair.index===match.currentGameIndex);
+  const logPlayers=current??match?.pairings?.find(pair=>pair.index===match.roundResults.at(-1)?.index);
   const active=match&&["scheduled","in_progress"].includes(match.status);
   const score=match?.score??(match&&edition?[match.roundResults.filter(round=>round.winnerTeamId===match.teamAId).length,match.roundResults.filter(round=>round.winnerTeamId===match.teamBId).length]:null);
   return <main className="snow-tournament snow-match-page" aria-label="雪堡比赛直播页"><div className="snow-tournament-shell">
@@ -27,7 +28,7 @@ export function SnowTournamentMatchPage({editionId,matchId,onBack}:{editionId:st
       <div className="snow-match-layout"><section className="snow-match-field" aria-label="战场直播">
         <div className="snow-match-current" aria-label="本局出场者">{current?<><div><small>进攻</small><strong>{current.attack.name}</strong>{current.attack.automated&&!current.attack.npc&&<small>NPC代打</small>}</div>
           <span>第{current.index}局</span><div><small>防守</small><strong>{current.defend.name}</strong>{current.defend.automated&&!current.defend.npc&&<small>NPC代打</small>}</div></>:<p>{match.pairings?.length?"本场已结束":"排阵尚未公开"}</p>}</div>
-        <TournamentWatch editionId={editionId} matchId={matchId} overlay={chat.overlay} onStatus={setBattleStatus} />
+        <TournamentWatch editionId={editionId} matchId={matchId} overlay={chat.overlay} onStatus={setBattleStatus} players={{attack:logPlayers?.attack.name??'进攻方',defend:logPlayers?.defend.name??'防守方'}} />
       </section><TournamentDanmaku chat={chat}/>
         <section className="snow-match-pairings" aria-label="逐局对阵"><h2>逐局对阵</h2>
           {match.pairings?.length?<ol>{match.pairings.map(pair=>{

@@ -1,5 +1,5 @@
 import {SNOW_WAR_CONFIG as CFG} from './shared/config.mjs';
-import {renderSnowBattle,snowCommandExample} from './battle-text.js';
+import {renderSnowBattle,snowCommandExamples,renderSnowCommandExamples} from './battle-text.js';
 import { snowNpcName } from "./roster.js";
 
 type Row=Record<string,unknown>;
@@ -70,14 +70,13 @@ function catalog(value:unknown,side?:string,assigned?:Set<string>):string[] {
 function options(value:unknown,name:(id:unknown)=>string,matches:Row[]=[]):string[] {
  const out:string[]=[];
  for(const option of rows(value)){
-  const kind=text(option.kind),label=(labels[kind]??text(option.label))+(option.side?`（${role(option.side)}）`:kind==='handover'?`（${name(option.residentId)}）`:'');
+  const kind=text(option.kind),label=(kind==='personal_results'?'查看本人赛果':labels[kind]??text(option.label))+(option.side?`（${role(option.side)}）`:kind==='handover'?`（${name(option.residentId)}）`:'');
   const call=row(option.call);
   if(call.op)out.push(label,JSON.stringify(call));
   else{const required=items(option.requires).map(text).join('、');out.push(`${label}：${option.option}${required?`；填写 ${required}`:''}`);}
   if(kind==='command'){
    const match=matches.find(entry=>entry.matchId===option.matchId&&entry.canCommand);
-   const call=match?snowCommandExample(text(option.option),text(match.role),match.battle):null;
-   if(call)out.push(`${label}示例`,JSON.stringify(call));
+   if(match)out.push(...renderSnowCommandExamples(snowCommandExamples(text(option.option),text(match.role),match.battle)));
   }
  }
  return out;
@@ -142,13 +141,14 @@ export function renderSnowReply(value:unknown,context:{names:Map<string,string>;
    if(result.feeGold)out.push(`本人名册：已确认；报名费：${result.feeGold}金币`);
   }
   out.push(...payments(data.registration));if(data.settlementPending)out.push('账务：等待核实到账。');
- }else if(data.channel){const channel=row(data.channel);out.push('队内频道',...rows(channel.messages).map(m=>`${m.name}：${m.text}`));if(!rows(channel.messages).length)out.push('本场尚无队内消息。');}
+ }else if(data.personalResults){out.push(...items(data.personalResults).map(text));}
+ else if(data.channel){const channel=row(data.channel);out.push('队内频道',...rows(channel.messages).map(m=>`${m.name}：${m.text}`));if(!rows(channel.messages).length)out.push('本场尚无队内消息。');}
  else if(data.competition){
   const c=row(data.competition),combat=row(data.combat);
   out.push('雪堡锦标赛规则',`每队${c.teamSize}个席位。个人报名${c.registrationHours}小时，随后${c.teamFormationHours}小时自由组队。每位小机报名费 ${c.registrationFeeGold} 金币；本队所有小机确认名册后才扣款。${deadlineCopy}${npcFillCopy}`,
    '队长安排出场顺序，为每个席位配置2个指挥技能；每场3局，每个席位各打一局。先单循环混打，再按积分进入淘汰赛。',
    `战场${combat.lanes}路，每路${combat.cellsPerLane}格。攻方派兵前进，守方地面阻挡、高台攻击或治疗。每局最多${Number(combat.durationTicks)/60}分钟；核心耐久降到0攻方胜，否则守方胜。`,
-   `双方初始费用${CFG.initialCost}，每${CFG.costRegenEveryTicks}tick恢复1。指令可批量提交，等待至少${combat.minimumWaitTicks}tick；思考不暂停计时。`,
+   `双方初始费用${CFG.initialCost}，每${CFG.costRegenEveryTicks}tick恢复1；思考不暂停计时。`,
    `守方每tick损耗最大生命的1/${CFG.defenderDecayTicks}，治疗可补回；撤退返还10%费用，向下取整。`,
    '第200、450tick各自动出现3只系统小兵，整波随机同路；每只1200生命、80攻击，3秒攻击一次、3秒一格，突破扣0.5核心耐久。',
    '守方远程仅选本路向入口、射程内的可见目标；有T时按T权重4、其他1选敌，无T时优先最接近核心者。',...catalog(data.catalog));
@@ -165,7 +165,8 @@ export function renderSnowReply(value:unknown,context:{names:Map<string,string>;
   for(const other of rows(data.teams))out.push(`『${other.name}』：${rows(other.members).map(m=>m.name).join('、')}（${rows(other.members).length}/3）`);
   out.push(...payments(data.registration));
   for(const m of rows(data.matches)){
-   out.push(`第${m.matchNumber}场${m.gameIndex!==null&&m.gameIndex!==undefined?` · 第${Number(m.gameIndex)+1}局`:''} · ${role(m.role)} · ${time(m.scheduledAt)}`);
+   const stage=m.stage==='round_robin'?`混打赛第${m.round}轮 · `:m.stage==='semifinal'?'半决赛 · ':m.stage==='final'?'决赛 · ':'';
+   out.push(`${stage}第${m.matchNumber}场${m.gameIndex!==null&&m.gameIndex!==undefined?` · 第${Number(m.gameIndex)+1}局`:''} · ${role(m.role)} · ${time(m.scheduledAt)}`);
    if(Array.isArray(m.attackers))out.push('本队攻守：'+items(m.attackers).map((id,i)=>`第${i+1}局${id===team.id?'进攻':'防守'}`).join('、'));
    if(typeof m.gameIndex==='number')for(const revealed of Object.values(row(m.revealedLineups))){
     const opponent=rows(row(revealed).entries)[m.gameIndex];

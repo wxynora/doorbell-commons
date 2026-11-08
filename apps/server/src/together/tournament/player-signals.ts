@@ -65,8 +65,9 @@ export class SnowTournamentPlayerSignals implements SnowSignalSink {
     if(active&&row.kind==="chat"){
       const seen=this.db.prepare(`SELECT MAX(context_count) AS count FROM snow_tournament_player_wakes
         WHERE edition_id=? AND match_id=? AND resident_id=? AND kind='chat' AND status='acked'`).get(row.edition_id,row.match_id,row.resident_id) as {count:number|null};
-      const facts=active.facts as {messages:{residentId:string}[]};
-      active={...active,facts:{...facts,messages:facts.messages.slice(seen.count??0,row.context_count).filter(message=>message.residentId!==row.resident_id)}};
+      const facts=active.facts as {messages:{residentId:string}[];chatReadThrough?:number};
+      const readThrough=Math.max(seen.count??0,facts.chatReadThrough??0);
+      active={...active,facts:{...facts,messages:facts.messages.slice(readThrough,row.context_count).filter(message=>message.residentId!==row.resident_id)}};
     }
     return {wakeId:row.wake_id,residentId:row.resident_id,reason:"together",
       status:row.status==="pending" && !active?"cancelled":row.status,

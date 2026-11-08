@@ -4,6 +4,8 @@
 
 ### 月度锦标赛
 
+- `personal-results.ts`从本届持久赛果选择本人实际参赛局，普通状态不调用全历史分享；`tools`的独立只读option经原朋友圈来源保留原回执身份，并由场／局／对手／时间区分结果。`match-host`在讨论发言／pass的原事务内保存本人已处理消息位置，`player-signals`结合ACK位置增量投影，避免先行动再ACK导致重复前文。`tool-registry`同源提供五类战斗参数与示例，`farm.help`经MCP薄分派就地读取，不请求Farm或附带无关通知；`battleCommandExamples`只给当前出场者的实际技能／单位。Web `live/deployment-log.ts`沿公开增量按本局单位编号去重派兵／部署，重连不伪造动作，隐蔽单位不被事件文案泄露。固定检查入口为`output/snow-command-help-20261108/{check,mcp-check,browser-check}.mjs`。
+
 - registration-status.ts只读当前报名期与本人登记，在两条status链持续显示报名信息，截止即撤下；不消费Bell或普通信箱。reply.ts与battle-text.ts将内部事实投影为中文回执、兵种／技能表与可见格子图，JSON仅用于真实工具调用；MCP不再序列化整份内部结果。registration-bell.ts按通知版本保存首次与本次漏调用修复，原ACK保留，修复后从当前登记排除已报名者，直接附本人有效报名能力；新届仍只发首次通知。集中迁移维护notice_revision和对应唯一键，不新增铃通道或催报时钟。固定检查为registration-status.test.ts及output/snow-tournament-status-20261105/check-{mcp,migration}.mjs。
 
 - Main的together/tournament按store、team-service／registration、competition／results、match-host／scheduler、settlement分工；同一社区SQLite连接保存届次、队伍、逐局状态和幂等事实，迁移集中在database/community-migrations.ts。原限时共行不迁移、不复发奖。
