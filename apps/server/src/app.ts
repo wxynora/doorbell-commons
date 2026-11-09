@@ -511,6 +511,8 @@ import {
 import type { HomeWeatherEngine } from "./home-weather-engine.js";
 import type { LingyeDailyCommentsService } from "./lingye-daily-comments-service.js";
 import { registerDailyCommentRoutes } from "./lingye-daily-comment-routes.js";
+import { readDailyPollForHuman, registerDailyPollRoutes } from "./daily-polls/routes.js";
+import type { DailyPollStore } from "./daily-polls/store.js";
 import {
   LingyeDailyPublishAuthenticationError,
   type LingyeDailyService,
@@ -601,6 +603,7 @@ export interface BuildAppOptions {
   lingyeDailyService?: LingyeDailyService;
   dailyMaterials?: DailyMaterialService;
   dailyComments?: LingyeDailyCommentsService;
+  dailyPolls?: DailyPollStore;
   mailboxService?: MailboxService;
   mcpAccessService?: McpAccessService;
   mcpRuntime?: DoorbellMcpRuntime;
@@ -3850,6 +3853,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       onSaved: async date => { await lingyeDailyService.columns?.reconcile(date); },
       authorize: (authorization) => lingyeDailyService.authorize(authorization) });
     if (options.dailyComments) registerDailyCommentRoutes(app,{comments:options.dailyComments,auth:options.registrationAuth});
+    if (options.dailyPolls) registerDailyPollRoutes(app, { polls: options.dailyPolls, auth: options.registrationAuth });
     registerDailyEditorRoutes(app,{daily:lingyeDailyService,auth:options.registrationAuth});
     app.get("/api/lingye-daily/latest", async (request, reply) => {
       if (!lingyeDailyReadRequestSchema.safeParse(request.query).success) {
@@ -3870,7 +3874,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         );
       }
       try {
-        await options.registrationAuth.getCurrentSession(token);
+        const session = await options.registrationAuth.getCurrentSession(token);
         const issue = lingyeDailyService.getLatest();
         let reporterPublications:
           | ReturnType<typeof lingyeDailyReporterPublicationsResponse>
@@ -3889,8 +3893,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           }
         }
         reply.header("cache-control", "no-store");
+        const poll = issue && options.dailyPolls && readDailyPollForHuman(options.dailyPolls, issue.issueDate, session.account.accountId, Date.now());
         return lingyeDailyLatestSuccessSchema.parse({
           issue: issue ? {...lingyeDailyIssueResponse(issue,lingyeDailyService.columnImages?.publishedMetadata(issue.issueDate,issue.revision)),
+            ...(poll ? { poll } : {}),
             ...(options.dailyComments ? {comment_counts:options.dailyComments.counts(issue.issueDate)} : {})} : null,
           reporter_publications: reporterPublications,
         });

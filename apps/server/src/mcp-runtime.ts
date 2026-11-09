@@ -29,6 +29,8 @@ import {
 import { renderLingyeToolText } from "./lingye-tool-result-text.js";
 import { publishedDailyNotice, renderPublishedDaily } from "./lingye-daily-read-op.js";
 import { dailySubmissionErrorText, reviewDailySubmissions, submitDailyObservation } from "./lingye-daily-submission-op.js";
+import { dailyPollErrorText, executeDailyPollVote, renderDailyPoll } from "./daily-polls/tool.js";
+import type { DailyPollStore } from "./daily-polls/store.js";
 import { dailyVoiceErrorText, type LingyeDailyVoiceService } from "./lingye-daily-voice-service.js";
 import type { DailyColumnService } from "./daily-columns/service.js";
 import { dailyColumnErrorText } from "./daily-columns/copy.js";
@@ -383,6 +385,7 @@ export interface DoorbellMcpRuntimeOptions {
   dailyVoice?: Pick<LingyeDailyVoiceService, "commission">;
   dailyColumns?: Pick<DailyColumnService, "commission">;
   dailyComments?: Pick<LingyeDailyCommentsService, "submit" | "forIssue" | "takeResidentNotifications">;
+  dailyPolls?: DailyPollStore;
   dailyMaterials?: DailyMaterialService;
   mcpEndpoint: string;
   now?: () => number;
@@ -504,6 +507,7 @@ export class DoorbellMcpRuntime {
   readonly #loungeTools: LoungeToolExecutor | undefined;
   readonly #snowTools: SnowTournamentToolPort | undefined;
   readonly #dailyComments: DoorbellMcpRuntimeOptions["dailyComments"];
+  readonly #dailyPolls: DoorbellMcpRuntimeOptions["dailyPolls"];
   readonly #dailyMaterials: DoorbellMcpRuntimeOptions["dailyMaterials"];
   readonly #allowedOrigin: string;
   readonly #now: () => number;
@@ -537,6 +541,7 @@ export class DoorbellMcpRuntime {
     this.#dailyVoice = options.dailyVoice;
     this.#dailyColumns = options.dailyColumns;
     this.#dailyComments = options.dailyComments;
+    this.#dailyPolls = options.dailyPolls;
     this.#dailyMaterials = options.dailyMaterials;
     this.#loungeTools = options.loungeTools;
     this.#snowTools = options.snowTools;
@@ -863,11 +868,19 @@ export class DoorbellMcpRuntime {
           if (!this.#dailyComments) return this.#faultToolError("INTERNAL_ERROR",{op});
           text = await this.#dailyComments.submit(context.residentId,parsed.data as {issueDate:string;section:string;text:string});
         } else if (registered.operation.op === "go.newsroom.submit") {
-          text = submitDailyObservation(this.#database.lingyeDailyStore, context.residentId, parsed.data, this.#now());
+          const args = parsed.data as { issueDate: string; text: string } | { option: string; text: string };
+          if ("option" in args) {
+            if (!this.#dailyPolls) return this.#faultToolError("INTERNAL_ERROR", { op });
+            text = executeDailyPollVote(this.#dailyPolls, context.residentId, args, this.#now());
+          } else {
+            text = submitDailyObservation(this.#database.lingyeDailyStore, context.residentId, args, this.#now());
+          }
         } else {
           const readAt = this.#now();
           const issue = this.#database.getLatestLingyeDailyIssue(readAt);
           text = renderPublishedDaily(issue,issue ? this.#dailyComments?.forIssue(issue.issueDate) : undefined);
+          const poll = issue && this.#dailyPolls?.read(issue.issueDate, { residentId: context.residentId }, readAt);
+          if (poll) text += "\n\n" + renderDailyPoll(poll);
           if (issue && this.#mainActivity) {
             const share = this.#mainActivity.dailyRead(context.residentId, issue, readAt);
             if (share) text += "\n\n" + share;
@@ -875,7 +888,7 @@ export class DoorbellMcpRuntime {
         }
         return { isError: false, content: textContent(text) };
       } catch (error) {
-        const message = dailySubmissionErrorText(error) ?? dailyCommentErrorText(error);
+        const message = dailyPollErrorText(error) ?? dailySubmissionErrorText(error) ?? dailyCommentErrorText(error);
         if (message) return { isError: true, content: textContent(message) };
         return this.#faultToolError("INTERNAL_ERROR", { op }, error);
       }

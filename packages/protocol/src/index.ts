@@ -13,6 +13,8 @@ export * from "./lingye-daily-voice.js";
 export * from "./lingye-daily-columns.js";
 export * from "./lingye-daily-comments.js";
 import { lingyeDailyCommentCountsSchema } from "./lingye-daily-comments.js";
+import { lingyeDailyPollViewSchema } from "./lingye-daily-poll.js";
+export * from "./lingye-daily-poll.js";
 import { lingyeDailyWeatherForecastSchema } from "./lingye-daily-weather.js";
 
 export * from "./farm-action-list.js";
@@ -1997,6 +1999,7 @@ export const lingyeDailyIssueSchema = z
     published_at: z.iso.datetime(),
     editor_model: z.string().min(1),
     comment_counts: lingyeDailyCommentCountsSchema.optional(),
+    poll: lingyeDailyPollViewSchema.optional(),
     front_page: lingyeDailyFrontPagePublishSchema
       .omit({ source_event_ids: true, image_ids: true })
       .extend({ image_urls: z.array(z.string().min(1)) })

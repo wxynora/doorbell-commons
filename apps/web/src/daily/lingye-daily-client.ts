@@ -2,6 +2,7 @@ import {
   lingyeDailyErrorSchema,
   lingyeDailyLatestSuccessSchema,
   lingyeDailyLikeSuccessSchema,
+  lingyeDailyPollBallotSchema,
   lingyeDailySectionCommentsSuccessSchema,
   type DailyDocument,
 } from "@doorbell/protocol";
@@ -99,6 +100,7 @@ export async function loadLatestLingyeDaily(fetchImplementation: typeof fetch = 
   if (!parsed.issue) return { issue: null, reporterPublications: reporterItems };
   return {
     issue: {
+      ...(parsed.issue.poll ? { poll: parsed.issue.poll } : {}),
       ...(parsed.issue.comment_counts ? { commentCounts: parsed.issue.comment_counts } : {}),
       ...(parsed.issue.editor_document ? {editorDocument:parsed.issue.editor_document,
         editorImageUrls:parsed.issue.editor_image_urls ?? {}} : {}),
@@ -166,6 +168,20 @@ export async function loadLatestLingyeDailyIssue(
   fetchImplementation: typeof fetch = fetch,
 ): Promise<LingyeDailyIssue | null> {
   return (await loadLatestLingyeDaily(fetchImplementation)).issue;
+}
+
+export async function voteInDailyPoll(issueDate: string, choices: number[], fetchImplementation: typeof fetch = fetch): Promise<number[]> {
+  const response = await fetchImplementation(`/api/lingye-daily/issues/${encodeURIComponent(issueDate)}/poll`, {
+    method: "POST", credentials: "same-origin",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ choices }),
+  });
+  const body: unknown = await response.json();
+  if (!response.ok) {
+    const error = lingyeDailyErrorSchema.safeParse(body);
+    throw new Error(error.success ? error.data.error.message : "投票暂时无法提交，请重试。");
+  }
+  return lingyeDailyPollBallotSchema.parse(body).choices;
 }
 
 export async function likeLingyeDailyReporterPublication(

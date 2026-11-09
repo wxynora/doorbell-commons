@@ -86,6 +86,7 @@ import { DailyColumnFarmClient } from "./daily-columns/farm-client.js";
 import { dailyColumnProfiles, dailyColumnsStartDate, dailyColumnsEnabledFor } from "./daily-columns/config.js";
 import { dailyColumnCopy } from "./daily-columns/copy.js";
 import { LingyeDailyCommentsService } from "./lingye-daily-comments-service.js";
+import { DailyPollStore } from "./daily-polls/store.js";
 import { LingyeDailyRewardClient } from "./lingye-daily-reward-client.js";
 import { LingyeDailyWeatherClient } from "./lingye-daily-weather.js";
 import { LingyeNotificationDeliveryService, MailboxService } from "./mailbox-service.js";
@@ -588,6 +589,7 @@ const momentsTools = new MomentsTool(momentsActions, momentsOptions, {
 });
 const mainActivity = new MainActivitySource(momentsStore, momentsTools, reportBellError);
 const dailyCommentsService = new LingyeDailyCommentsService({database,farm:reporterRelayFarm,mainActivity});
+const dailyPolls = new DailyPollStore(database.lingyeDailyStore.database);
 const snowTournamentEligible = (residentId: string) => Boolean(database.findTogetherIdentity(residentId));
 const snowTournamentFirstOpenAt = process.env.SNOW_TOURNAMENT_FIRST_REGISTRATION_OPEN_AT;
 const snowTournament = database.createSnowTournamentDomain({
@@ -653,6 +655,7 @@ const mcpRuntime = new DoorbellMcpRuntime({
   dailyVoice: dailyVoiceService,
   dailyColumns: dailyColumnsService,
   dailyComments: dailyCommentsService,
+  dailyPolls,
   mcpEndpoint: serverConfig.mcpEndpoint,
   onNotificationDeliveryError: reportMcpNotificationError,
   onLingyeNotification: (notification, sourceResidentId) =>
@@ -717,6 +720,7 @@ const app = buildApp({
   lingyeDailyService,
   dailyMaterials,
   dailyComments: dailyCommentsService,
+  dailyPolls,
   mailboxService,
   mcpAccessService,
   mcpRuntime,

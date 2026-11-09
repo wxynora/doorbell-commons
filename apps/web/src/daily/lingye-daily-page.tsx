@@ -1,7 +1,8 @@
 // biome-ignore lint/correctness/noUnusedImports: the direct node:test TSX transform needs React in scope.
 import React, { type ReactNode } from "react";
 import { presentDailyIssue } from "./lingye-daily-presentation";
-import { type DailyDocument, dailyObservationQuestion } from "@doorbell/protocol";
+import { type DailyDocument, type LingyeDailyPollView, dailyObservationQuestion } from "@doorbell/protocol";
+import { DailyPollPanel } from "./daily-poll";
 import { DailyDocumentView, DailySubmissionStamp } from "./lingye-daily-document-view";
 import { DailySectionComments } from "./daily-section-comments";
 import type { LingyeDailyCommentSection, LingyeDailySectionCommentsLoader, LingyeDailySectionCommentPublisher } from "./lingye-daily-client";
@@ -77,6 +78,7 @@ export interface LingyeDailyReporterPublication {
 }
 
 export interface LingyeDailyIssue {
+  poll?: LingyeDailyPollView;
   commentCounts?: Partial<Record<LingyeDailyCommentSection, number>>;
   editorDocument?: DailyDocument;
   editorImageUrls?: Record<string,string>;
@@ -467,6 +469,7 @@ export function LingyeDailyPage({
         : issue.submissionReviewer} />
       <TomorrowQuestion question={issue.tomorrowQuestion} issueDate={issue.issueDate} />
       </>}
+      {sourceIssue?.poll && issue.issueDate ? <DailyPollPanel key={`${issue.issueDate}:${sourceIssue.poll.status}`} issueDate={issue.issueDate} poll={sourceIssue.poll} /> : null}
       {issue.revisionNote ? <p className="daily-revision-note">{issue.revisionNote}</p> : null}
       <NewspaperLike issue={issue} publications={reporterPublications} onLike={onReporterLike} pendingLikeRef={pendingLikeRef} />
     </article>

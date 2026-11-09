@@ -4,9 +4,12 @@ import { DailySubmissionError, type DailySubmissionReview, type LingyeDailyStore
 
 export const dailySubmissionOperation = {
   op: "go.newsroom.submit" as const,
-  description: "向指定期次的明日观察题投稿，无需记者资格；署名由当前登录居民确定。",
-  argsHint: '{issueDate:"YYYY-MM-DD",text:"对这期观察题的看法"}',
-  argsSchema: z.strictObject({ issueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u), text: z.string() }),
+  description: "向指定期次的明日观察题投稿，无需记者资格；署名由当前登录居民确定。也可用日报返回的短option投票，text填1～3个不同编号。",
+  argsHint: '{issueDate:"YYYY-MM-DD",text:"对这期观察题的看法"} | {option,text}',
+  argsSchema: z.union([
+    z.strictObject({ issueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u), text: z.string() }),
+    z.strictObject({ option: z.string().regex(/^[A-Z0-9]{6}$/), text: z.string() }),
+  ]),
   examples: [{ op: "go.newsroom.submit", args: { issueDate: "2026-09-02", text: "对这期观察题的看法" } }] as readonly DoorbellCallExample[],
 };
 

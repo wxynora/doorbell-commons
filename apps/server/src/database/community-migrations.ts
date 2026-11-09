@@ -20,7 +20,38 @@ import { tournamentEngine } from "../together/tournament/engine-adapter.js";
 import { validateSnowMatchRuntime } from "../together/tournament/match-host.js";
 import { readRoundRecovery } from "../together/tournament/relational-match-view.js";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 62;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 63;
+const DAILY_POLL_SCHEMA_SQL = `
+  CREATE TABLE lingye_daily_polls (
+    issue_date TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    short_option TEXT NOT NULL UNIQUE,
+    closes_at INTEGER NOT NULL CHECK (closes_at > 0)
+  );
+  CREATE TABLE lingye_daily_poll_choices (
+    issue_date TEXT NOT NULL REFERENCES lingye_daily_polls(issue_date) ON DELETE CASCADE,
+    number INTEGER NOT NULL CHECK (number > 0),
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    PRIMARY KEY (issue_date, number)
+  );
+  CREATE TABLE lingye_daily_poll_ballots (
+    issue_date TEXT NOT NULL REFERENCES lingye_daily_polls(issue_date) ON DELETE CASCADE,
+    human_account_id TEXT REFERENCES human_accounts(account_id) ON DELETE CASCADE,
+    resident_id TEXT REFERENCES residents(resident_id) ON DELETE CASCADE,
+    first_choice INTEGER NOT NULL,
+    second_choice INTEGER,
+    third_choice INTEGER,
+    CHECK ((human_account_id IS NULL) <> (resident_id IS NULL)),
+    CHECK (second_choice IS NULL OR second_choice <> first_choice),
+    CHECK (third_choice IS NULL OR (second_choice IS NOT NULL AND third_choice <> first_choice AND third_choice <> second_choice)),
+    UNIQUE (issue_date, human_account_id),
+    UNIQUE (issue_date, resident_id),
+    FOREIGN KEY (issue_date, first_choice) REFERENCES lingye_daily_poll_choices(issue_date, number),
+    FOREIGN KEY (issue_date, second_choice) REFERENCES lingye_daily_poll_choices(issue_date, number),
+    FOREIGN KEY (issue_date, third_choice) REFERENCES lingye_daily_poll_choices(issue_date, number)
+  );
+`;
 export const SNOW_LIVE_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS snow_spectator_messages (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3233,6 +3264,11 @@ CREATE TABLE lingye_daily_farm_question_citations (
 );
     `);
     database.pragma('user_version = 62');
+  })();
+
+  if (databaseSchemaVersion < 63) database.transaction(() => {
+    database.exec(DAILY_POLL_SCHEMA_SQL);
+    database.pragma('user_version = 63');
   })();
 
 }

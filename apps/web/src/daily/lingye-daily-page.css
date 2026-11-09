@@ -99,6 +99,56 @@ body {
   margin-bottom: 24px;
 }
 
+.daily-poll {
+  border-block: 1px solid var(--daily-border);
+  padding-block: 12px;
+}
+
+.daily-poll-note,
+.daily-poll-summary,
+.daily-poll-results p {
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+.daily-poll-choices {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.daily-poll-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--daily-border);
+}
+
+.daily-poll-choice input { accent-color: var(--daily-blue); }
+.daily-poll-summary { display: block; }
+.daily-poll-results { padding-inline-start: 24px; }
+
+.daily-poll-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.daily-poll-actions button {
+  min-height: 0;
+  padding: 5px 12px;
+  font: inherit;
+  color: white;
+  border: 1px solid var(--daily-blue);
+  background: var(--daily-blue);
+}
+
+.daily-poll-actions button:disabled { opacity: 0.55; }
+
 .daily-section-tag {
   display: inline-block;
   margin: 0 0 8px;
