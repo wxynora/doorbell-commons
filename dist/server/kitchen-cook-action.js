@@ -1,3 +1,4 @@
+import { planKitchenCookBatch } from "../domain/kitchen/batch.js";
 import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { checkTitles } from "../titles.js";
@@ -71,6 +72,11 @@ function validRef(value) {
 }
 
 function validateBody(body) {
+  if (isRecord(body) && Object.hasOwn(body, "quantity")) {
+    if (!Number.isSafeInteger(body.quantity) || body.quantity < 1) return false;
+    const { quantity, ...single } = body;
+    return validateBody(single);
+  }
   const hasRecipe = exactKeys(body, RECIPE_REQUEST_KEYS);
   const hasMethod = exactKeys(body, REQUEST_KEYS);
   const hasItems = hasMethod || exactKeys(body, LEGACY_REQUEST_KEYS);
@@ -106,6 +112,7 @@ function fingerprint(body) {
           recipe_id: body.recipe_id ?? null,
           method_id: body.method_id ?? null,
           items: body.items ?? null,
+          ...(body.quantity === undefined ? {} : { quantity: body.quantity }),
         }),
       ),
       "utf8",
@@ -286,9 +293,11 @@ export function handleHumanKitchenCookAction(farm, body, now = Date.now(), optio
       responseFor(farm, now, options, null),
     );
     if (!response) return unavailable("The kitchen could not be read");
-    const originalReceipt = resolveChefOriginalCookingReceipt(farm, key);
-    if (originalReceipt && !reconcileOriginalCooking(farm, originalReceipt, options))
-      return unavailable("The original recipe settlement could not be reconciled");
+    for (let round = 0; round < (body.quantity ?? 1); round++) {
+      const originalReceipt = resolveChefOriginalCookingReceipt(farm, round === 0 ? key : `${key}:${round}`);
+      if (originalReceipt && !reconcileOriginalCooking(farm, originalReceipt, options))
+        return unavailable("The original recipe settlement could not be reconciled");
+    }
     return { status: 200, json: response };
   }
 
@@ -307,31 +316,33 @@ export function handleHumanKitchenCookAction(farm, body, now = Date.now(), optio
     return unavailable("The kitchen cook could not be prepared");
   }
 
+  const quantity = body.quantity ?? 1;
   let authorityResult;
+  let outcomes;
   try {
-    const cookOptions = {
-      ...options,
-      cookingReceiptId: key,
-      cookingRequestFingerprint: requestFingerprint,
-      ...(body.method_id
-        ? { methodId: body.method_id, requireMethodId: true }
-        : {}),
-    };
+    const plan = quantity > 1 ? planKitchenCookBatch(working, body, quantity, options) : null;
+    if (plan && !plan.ok) return errorResponse("cook_rejected", plan.error, current.revision);
+    const cookOptions = { ...options, cookingReceiptId: key, cookingRequestFingerprint: requestFingerprint,
+      ...(plan ? { batchPlan: plan } : {}),
+      ...(body.method_id ? { methodId: body.method_id, requireMethodId: true } : {}) };
     authorityResult = body.recipe_id
       ? kitchenCookKnownRecipe(working, body.recipe_id, now, cookOptions)
       : kitchenCook(working, body.items, now, cookOptions);
+    if (!authorityResult?.ok) {
+      if (authorityResult?.code === "human_effect_blocked")
+        return errorResponse(authorityResult.code, authorityResult.error || "The kitchen cook was rejected", current.revision, authorityResult);
+      return errorResponse("cook_rejected", authorityResult?.error || "The kitchen cook was rejected", current.revision);
+    }
+    const recipeError = authorityRecipeError(working, authorityResult, body.method_id);
+    if (recipeError) return errorResponse("cook_rejected", recipeError, current.revision);
+    outcomes = (authorityResult.results ?? [authorityResult]).map((result, index) =>
+      outcome(index === 0 ? body : {}, result));
+    for (const dish of authorityResult.extraDishes ?? [])
+      outcomes.push(outcome({}, { ...authorityResult, dish, discovered: false }));
+    if (outcomes.some(result => !result)) return unavailable("The kitchen cook returned an invalid result");
   } catch {
     return unavailable("The kitchen cook could not be executed");
   }
-  if (!authorityResult?.ok) {
-    if (authorityResult?.code === "human_effect_blocked")
-      return errorResponse(authorityResult.code, authorityResult.error || "The kitchen cook was rejected",
-        current.revision, authorityResult);
-    return errorResponse("cook_rejected", authorityResult?.error || "The kitchen cook was rejected", current.revision);
-  }
-  const recipeError = authorityRecipeError(working, authorityResult, body.method_id);
-  if (recipeError) return errorResponse("cook_rejected", recipeError, current.revision);
-
   // The old Human route performs title settlement after kitchenCook and before
   // its single save; keep that same settlement boundary on the clone.
   try {
@@ -340,11 +351,11 @@ export function handleHumanKitchenCookAction(farm, body, now = Date.now(), optio
     return unavailable("The kitchen cook title settlement was invalid");
   }
 
-  const cookOutcome = outcome(body, authorityResult);
-  if (!cookOutcome) return unavailable("The kitchen cook returned an invalid result");
+  const cookOutcome = outcomes[0];
   const response = responseFor(working, now, options, {
     receipt_id: key,
     outcome: cookOutcome,
+    ...(quantity > 1 ? { batch: { quantity, outcomes } } : {}),
   });
   if (!response) return unavailable("The kitchen resource could not be read");
 
@@ -355,15 +366,16 @@ export function handleHumanKitchenCookAction(farm, body, now = Date.now(), optio
   try {
     replaceFarm(farm.id, working, { receiptKeys: [
       { scope: "/doorbellHumanKitchenCookReceipts", receiptKey: key },
-      ...(authorityResult.cookingReceipt
-        ? [{ scope: "/chefOriginalCookingReceipts", receiptKey: authorityResult.cookingReceipt.receiptId }]
-        : []),
+      ...(authorityResult.cookingReceipts ?? (authorityResult.cookingReceipt ? [authorityResult.cookingReceipt] : []))
+        .map(receipt => ({ scope: "/chefOriginalCookingReceipts", receiptKey: receipt.receiptId })),
     ] });
   } catch {
     return unavailable("The kitchen cook could not be saved");
   }
-  if (authorityResult.cookingReceipt && !reconcileOriginalCooking(farm, authorityResult.cookingReceipt, options))
-    return unavailable("The original recipe settlement could not be reconciled");
+  for (const receipt of authorityResult.cookingReceipts ?? (authorityResult.cookingReceipt ? [authorityResult.cookingReceipt] : [])) {
+    if (!reconcileOriginalCooking(farm, receipt, options))
+      return unavailable("The original recipe settlement could not be reconciled");
+  }
   return { status: 200, json: response };
 }
 

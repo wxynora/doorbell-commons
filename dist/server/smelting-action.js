@@ -1,6 +1,6 @@
 import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
-import { craft } from "../engine.js";
+import { craftBatch } from "../domain/field/smelting-batch.js";
 import { replaceFarm } from "../store.js";
 import { projectHumanSmeltingActionResource } from "./farm-catalog-structured.js";
 import { smeltingActionRevision } from "./smelting-revision.js";
@@ -61,7 +61,7 @@ function digest(value) {
 
 function validateBody(body) {
   return (
-    exactKeys(body, REQUEST_KEYS) &&
+    (exactKeys(body, REQUEST_KEYS) || (exactKeys(body, [...REQUEST_KEYS, "quantity"]) && Number.isSafeInteger(body.quantity) && body.quantity > 0)) &&
     typeof body.farm_human_key === "string" &&
     body.farm_human_key.trim().length > 0 &&
     typeof body.expected_farm_doorplate === "string" &&
@@ -81,6 +81,7 @@ function fingerprint(body) {
     farm_human_key: body.farm_human_key,
     expected_farm_doorplate: body.expected_farm_doorplate,
     material_ids: body.material_ids,
+    ...(body.quantity === undefined ? {} : { quantity: body.quantity }),
     expected_smelting_revision: body.expected_smelting_revision,
   });
 }
@@ -162,8 +163,9 @@ export function handleHumanSmeltingAction(farm, body, now = Date.now()) {
 
   try {
     const working = cloneFarmForMutation(farm);
-    const authority = craft(working, body.material_ids, now);
-    if (!authority?.ok) {
+    const batch = craftBatch(working, body.material_ids, body.quantity ?? 1, now);
+    const authority = batch.ok ? batch.results[0] : batch;
+    if (!batch.ok) {
       return errorResponse("action_rejected", authority?.error || "The smelting action was rejected");
     }
 
@@ -174,6 +176,10 @@ export function handleHumanSmeltingAction(farm, body, now = Date.now()) {
       crop_name: authority.cropName,
       rarity: authority.rarity,
       by_recipe: authority.byRecipe === true,
+      ...((body.quantity ?? 1) > 1 ? { batch: {
+        quantity: body.quantity,
+        outcomes: batch.results.map(result => ({ crop_id: result.cropId, crop_name: result.cropName, rarity: result.rarity, by_recipe: result.byRecipe === true })),
+      } } : {}),
     });
 
     working[RECEIPTS_FIELD] = {

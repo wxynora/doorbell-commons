@@ -132,7 +132,7 @@ export function kitchenMethodToolStatus(kitchen, methodId) {
 }
 
 /** One roll per cooking action; a successful action can return at most one item. */
-export function applyChefMaterialRefund(farm, selected, qualificationLevel) {
+export function applyChefMaterialRefund(farm, selected, qualificationLevel, quantity = 1) {
     const chance = chefMaterialRefundChance(qualificationLevel);
     if (chance <= 0 || !Array.isArray(selected))
         return { applied: false, chance, itemId: null };
@@ -145,12 +145,13 @@ export function applyChefMaterialRefund(farm, selected, qualificationLevel) {
     if (candidates.length === 0)
         return { applied: false, chance, itemId: null };
     const rng = new Rng(Number.isInteger(farm?.rngState) ? farm.rngState : 1);
-    const roll = rng.next();
+    let refunded = 0;
+    for (let draw = 0; draw < quantity; draw++) if (rng.next() < chance) refunded++;
     farm.rngState = rng.state;
-    if (roll >= chance)
+    if (refunded === 0)
         return { applied: false, chance, itemId: null };
     const item = candidates[0];
     const kitchen = ensureKitchen(farm);
-    kitchen.ingredients[item.id] = (kitchen.ingredients[item.id] ?? 0) + 1;
-    return { applied: true, chance, itemId: item.id };
+    kitchen.ingredients[item.id] = (kitchen.ingredients[item.id] ?? 0) + refunded;
+    return { applied: true, chance, itemId: item.id, ...(quantity > 1 ? { quantity: refunded } : {}) };
 }

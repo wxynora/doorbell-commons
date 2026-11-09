@@ -214,7 +214,7 @@ export function listChefOriginalCookingReceipts(farm) {
  * caller must save the containing farm through its normal replaceFarm
  * authority.  This function never calls Commons or pays a resident.
  */
-export function persistChefOriginalCookingReceipt(farm, recipe, dish, options = {}, now = Date.now()) {
+function prepareChefOriginalCookingReceipt(farm, recipe, dish, options = {}, now = Date.now()) {
     const normalized = normalizeOriginalRecipe(recipe);
     if (!normalized || !isRecord(dish) || !identifier(dish.id) || !Number.isSafeInteger(now) || now < 0)
         return null;
@@ -256,10 +256,6 @@ export function persistChefOriginalCookingReceipt(farm, recipe, dish, options = 
             return null;
         return structuredClone(existing);
     }
-    farm[CHEF_ORIGINAL_COOKING_RECEIPTS_FIELD] = {
-        ...ledger,
-        [receiptId]: receipt,
-    };
     return structuredClone(receipt);
 }
 
@@ -283,4 +279,18 @@ export function replayChefOriginalCookingResult(receipt) {
         qixi: null,
         cookingReceipt: structuredClone(receipt),
     };
+}
+
+export function persistChefOriginalCookingBatch(farm, recipe, dishes, options = {}, now = Date.now()) {
+    const receipts = dishes.map((dish, index) => prepareChefOriginalCookingReceipt(farm, recipe, dish,
+        { ...options, cookingReceiptId: index === 0 ? options.cookingReceiptId : `${options.cookingReceiptId ?? `chef-cooking:${dishes[0].id}`}:${index}` }, now));
+    if (receipts.some(receipt => !receipt)) return null;
+    farm[CHEF_ORIGINAL_COOKING_RECEIPTS_FIELD] = {
+        ...(receiptLedger(farm) ?? {}), ...Object.fromEntries(receipts.map(receipt => [receipt.receiptId, receipt])),
+    };
+    return receipts;
+}
+
+export function persistChefOriginalCookingReceipt(farm, recipe, dish, options = {}, now = Date.now()) {
+    return persistChefOriginalCookingBatch(farm, recipe, [dish], options, now)?.[0] ?? null;
 }

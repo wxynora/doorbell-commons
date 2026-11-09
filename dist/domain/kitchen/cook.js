@@ -21,6 +21,7 @@ import {
     normalizeOriginalRecipes,
     originalRecipeMatchesIngredients,
     persistChefOriginalCookingReceipt,
+    persistChefOriginalCookingBatch,
     replayChefOriginalCookingResult,
     resolveChefOriginalCookingReceipt,
 } from "./original.js";
@@ -145,6 +146,9 @@ export function kitchenCook(farm, refs, now, options = {}) {
     const blocked = halloweenHumanOperationBlock({ farmId: farm.id, operation: "cook", now });
     if (blocked)
         return { ok: false, ...blocked, error: "万圣节糖果效果生效中，暂时不能做饭。" };
+    const portions = cookOptions.batchPlan?.selections ?? [picked.selected];
+    const quantity = portions.length;
+    if (cookOptions.batchPlan) picked = { ...picked, ...cookOptions.batchPlan };
     const kitchen = ensureKitchen(farm);
     kitchen.products = kitchen.products.filter((item) => !picked.usedProducts.has(item.id));
     removeFishingCatchIds(farm, picked.usedFish);
@@ -153,60 +157,38 @@ export function kitchenCook(farm, refs, now, options = {}) {
         if (kitchen.ingredients[id] <= 0)
             delete kitchen.ingredients[id];
     }
-    const materialRefund = applyChefMaterialRefund(farm, picked.selected, cookOptions.chefQualificationLevel);
-    const baseValue = picked.selected.reduce((sum, item) => sum + item.value, 0);
-    let dish;
-    let discovered = false;
-    if (recipe) {
-        if (isOriginalRecipe) {
-            // The canonical entitlement is held in Commons SQLite.  The farm
-            // save only carries the receipt, so do not mirror original ids in
-            // kitchen.knownRecipes.
-            discovered = !canUseOriginalRecipe(recipe, cookOptions);
-        }
-        else {
-            discovered = !kitchen.knownRecipes.includes(recipe.id);
-        }
-        if (discovered && !isOriginalRecipe)
-            kitchen.knownRecipes.push(recipe.id);
-        dish = {
+    const materialRefund = applyChefMaterialRefund(farm, picked.selected, cookOptions.chefQualificationLevel, quantity);
+    const discovered = Boolean(recipe && (isOriginalRecipe
+        ? !canUseOriginalRecipe(recipe, cookOptions) : !kitchen.knownRecipes.includes(recipe.id)));
+    if (discovered && !isOriginalRecipe) kitchen.knownRecipes.push(recipe.id);
+    const dishBuffMultiplier = recipe ? glimmerBuffMultiplier("dishValue", now) : 1;
+    // Generate objects and locked values only; inventory and counters are updated once below.
+    const results = portions.map((selected, index) => {
+        const baseValue = selected.reduce((sum, item) => sum + item.value, 0);
+        const dish = recipe ? {
             id: randomUUID(), recipeId: recipe.id, name: recipe.name, rarity: recipe.rarity,
-            value: Math.round(baseValue * (1 + cooking.processingFeeRate) * cooking.recyclePremium[recipe.rarity] * glimmerBuffMultiplier("dishValue", now)),
-            image: `${recipe.id}.webp`, createdAt: now, pricingVersion: COOKING_PRICE_VERSION,
-        };
-    }
-    else {
-        dish = { id: randomUUID(), recipeId: "odd_dish", name: "微妙的料理", rarity: "N", value: 1, image: "odd-dish.webp", createdAt: now, pricingVersion: COOKING_PRICE_VERSION };
-    }
-    const extraCount = recipe
-        ? halloweenCookExtraDishes({ farmId: farm.id, targetId: dish.id, now })
-        : 0;
-    const extraDishes = Array.from({ length: extraCount }, () => ({ ...dish, id: randomUUID() }));
-    kitchen.dishes.push(dish, ...extraDishes);
-    if (!recipe)
-        bumpDaily(farm, now, "oddDishes");
-    const qixi = submitQixi2026Dish(farm, kitchen, dish, now);
-    const midAutumnSeed = submitMidAutumnSeedDish(farm, kitchen, dish, now);
-    const cookingReceipt = isOriginalRecipe
-        ? persistChefOriginalCookingReceipt(farm, recipe, dish, cookOptions, now)
-        : null;
-    if (isOriginalRecipe && !cookingReceipt)
-        return { ok: false, code: "original_cooking_receipt_unavailable" };
-    stageAnnualCounters(farm, "cooking", {actor_id:farm.id,recipe_id:dish.recipeId}, {cooked:1,unlocked:discovered && !isOriginalRecipe ? 1 : 0,odd:!recipe ? 1 : 0}, now);
-    return {
-        ok: true,
-        dish,
-        recipe,
-        itemRefs: picked.selected.map((item) => item.instanceId ?? item.id),
-        discovered,
-        odd: !recipe,
-        ingredients: picked.selected.map((item) => item.name),
-        baseValue,
-        materialRefund,
-        qixi,
-        midAutumnSeed,
-        ...(cookingReceipt ? { cookingReceipt, originalRecipe: recipe } : {}),
-    };
+            value: Math.round(baseValue * (1 + cooking.processingFeeRate) * cooking.recyclePremium[recipe.rarity] * dishBuffMultiplier), image: `${recipe.id}.webp`, createdAt: now,
+            pricingVersion: COOKING_PRICE_VERSION,
+        } : { id: randomUUID(), recipeId: "odd_dish", name: "微妙的料理", rarity: "N", value: 1, image: "odd-dish.webp", createdAt: now, pricingVersion: COOKING_PRICE_VERSION };
+        return { ok: true, dish, recipe, itemRefs: selected.map(item => item.instanceId ?? item.id),
+            discovered: index === 0 && discovered, odd: !recipe, ingredients: selected.map(item => item.name), baseValue };
+    });
+    const extraCount = recipe ? halloweenCookExtraDishes({ farmId: farm.id, targetId: results[0].dish.id, now }) : 0;
+    const extraDishes = results.flatMap(({ dish }) => Array.from({ length: extraCount }, () => ({ ...dish, id: randomUUID() })));
+    const dishes = results.map(result => result.dish);
+    kitchen.dishes = kitchen.dishes.concat(dishes, extraDishes);
+    if (!recipe) bumpDaily(farm, now, "oddDishes", quantity);
+    const qixi = submitQixi2026Dish(farm, kitchen, dishes[0], now);
+    const midAutumnSeed = submitMidAutumnSeedDish(farm, kitchen, dishes[0], now);
+    const cookingReceipts = isOriginalRecipe
+        ? persistChefOriginalCookingBatch(farm, recipe, dishes, cookOptions, now) : [];
+    if (isOriginalRecipe && !cookingReceipts) return { ok: false, code: "original_cooking_receipt_unavailable" };
+    stageAnnualCounters(farm, "cooking", { actor_id: farm.id, recipe_id: results[0].dish.recipeId },
+        { cooked: quantity, unlocked: discovered && !isOriginalRecipe ? 1 : 0, odd: !recipe ? quantity : 0 }, now);
+    return { ...results[0], materialRefund, qixi, midAutumnSeed,
+        ...(quantity > 1 ? { results, extraDishes } : {}),
+        ...(cookingReceipts.length ? { cookingReceipt: cookingReceipts[0], cookingReceipts, originalRecipe: recipe } : {}) };
+
 }
 
 /** 已解锁食谱可按名称或 id 直接制作；库存取用仍复用普通下锅的真实选择与扣除逻辑。 */
