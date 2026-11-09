@@ -25,6 +25,10 @@ type ArgsShape = Record<string, z.ZodType>;
 const nonEmptyString = z.string().trim().min(1);
 const positiveInteger = z.number().int().positive();
 const termDays = z.union([z.literal(14), z.literal(30), z.literal(60)]);
+const bankRatePercent = z.number().min(0).max(20).refine(value => {
+  const ppm = Math.round(value * 10000);
+  return Number.isSafeInteger(ppm) && ppm / 10000 === value;
+}, "总利率直接填写百分数，最多四位小数。金币定存须符合所选期限的利率区间；玩家借款为 0%～20%。");
 const schoolAnswer = z
   .string()
   .trim()
@@ -107,7 +111,7 @@ export const lingyeOperations = [
     op: "go.bank.view",
     modelVisible: true,
     description:
-      "查看自己的账户、存款、兑换、贷款和信用事实，以及当前可以办理的 option；只读，不扣款。",
+      "查看自己的银行账户、存贷款利率、合同本息、兑换费用和信用状态，以及当前可以办理的 option；查看不会办理存取、兑换或借还款。",
     argsHint: '{} 或 {section:"account"|"deposits"|"exchange"|"loans"|"credit"} 或 {reference}',
     branches: [
       {},
@@ -120,9 +124,9 @@ export const lingyeOperations = [
     op: "go.bank.choose",
     modelVisible: true,
     description:
-      "提交 go.bank.view 当前返回的 option 办理银行业务。金币兑换银币时 amount 表示投入金币；玩家借款时 amount 表示银币，to 只填写对方公开门牌。",
+      "提交银行当前返回的 option 办理业务。金额使用该事项标明的币种；金币兑换银币时 amount 表示兑换本金，不含手续费。termDays 填天数。totalRatePercent 直接填写整段合同的百分比，例如 0.3 表示 0.3%、5 表示 5%，不需要换算。玩家借款的 to 填对方公开农场门牌。",
     argsHint:
-      "{option}、{option,amount}、{option,amount,termDays}、{option,amount,termDays,totalRatePpm} 或 {option,to,amount,termDays,totalRatePpm}",
+      "{option}、{option,amount}、{option,amount,termDays}、{option,amount,termDays,totalRatePercent} 或 {option,to,amount,termDays,totalRatePercent}",
     branches: [
       { option: nonEmptyString },
       { option: nonEmptyString, amount: positiveInteger },
@@ -131,14 +135,14 @@ export const lingyeOperations = [
         option: nonEmptyString,
         amount: positiveInteger,
         termDays,
-        totalRatePpm: positiveInteger,
+        totalRatePercent: bankRatePercent,
       },
       {
         option: nonEmptyString,
         to: nonEmptyString,
         amount: positiveInteger,
-        termDays,
-        totalRatePpm: positiveInteger,
+        termDays: z.number().int().min(1).max(60),
+        totalRatePercent: bankRatePercent,
       },
     ],
     exampleArgs: [{ option: "returned-option", amount: 500 }],

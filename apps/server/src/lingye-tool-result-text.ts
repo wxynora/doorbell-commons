@@ -1,3 +1,4 @@
+import { renderBankToolText } from "./economy/bank-tool-text.js";
 import type { LingyeActionResult } from "@doorbell/protocol";
 
 type LingyeSuccess = Extract<LingyeActionResult, { ok: true }>;
@@ -26,7 +27,7 @@ const CAREER_NAMES: Record<string, string> = {
 const REQUIRED_FIELD_NAMES: Record<string, string> = {
   amount: "金额",
   termDays: "期限",
-  totalRatePpm: "合同总利率",
+  totalRatePercent: "整期总利率（百分比）",
   to: "对方公开农场门牌",
   text: "说明正文",
   answers: "全部答案",
@@ -145,11 +146,6 @@ function integer(value: unknown): number | undefined {
 function numberText(value: unknown): string {
   const number = finiteNumber(value);
   return number === undefined ? "暂无法读取" : number.toLocaleString("zh-CN");
-}
-
-function percentageFromPpm(value: unknown): string {
-  const ppm = finiteNumber(value);
-  return ppm === undefined ? "暂无法读取" : `${String(ppm / 10_000)}%`;
 }
 
 function safeChineseText(value: unknown): string | undefined {
@@ -375,93 +371,6 @@ function renderQuestions(value: unknown): string[] {
     }
   }
   return lines;
-}
-
-function bankPart(data: Record<string, unknown>, key: string): unknown {
-  const current = isRecord(data.current) ? data.current : undefined;
-  if (current && current[key] !== undefined) return current[key];
-  if (data.section === key) return data.value;
-  return data[key];
-}
-
-function renderBankAccount(value: unknown): string[] {
-  if (!isRecord(value)) return [];
-  return [
-    `余额：可用金币 ${numberText(value.availableGold)}，金币活期 ${numberText(value.demandGold)}，金币定期 ${numberText(value.termGold)}；可用银币 ${numberText(value.availableSilver)}，小机可自主使用 ${numberText(value.agentSpendableSilver)}，已锁定 ${numberText(value.silverAgentLock)}。`,
-  ];
-}
-
-function renderTermDeposit(value: Record<string, unknown>, index: number): string {
-  return `- 定期存款 ${index + 1}：本金 ${numberText(value.principal)} 金币，期限 ${numberText(value.termDays)} 天，合同总利率 ${percentageFromPpm(value.totalRatePpm)}，到期日为第 ${numberText(value.maturityDay)} 天，当前${statusText(value.state)}。`;
-}
-
-function renderBankDeposits(value: unknown): string[] {
-  if (!isRecord(value)) return [];
-  const termDeposits = records(value.termDeposits);
-  const lines = [`存款：金币活期 ${numberText(value.demandGold)}。`];
-  lines.push(
-    termDeposits.length === 0 ? "定期存款：无。" : "定期存款：",
-    ...termDeposits.map(renderTermDeposit),
-  );
-  return lines;
-}
-
-function renderBankExchange(value: unknown): string[] {
-  if (!isRecord(value)) return [];
-  return [
-    `兑换：${numberText(value.goldPerSilver)} 金币可兑换 1 银币；本月个人还可兑换 ${numberText(value.residentRemainingThisMonth)} 银币，全服还可兑换 ${numberText(value.globalRemainingThisMonth)} 银币。`,
-  ];
-}
-
-function renderSystemLoan(value: Record<string, unknown>, index: number): string {
-  return `- 系统贷款 ${index + 1}：原始本金 ${numberText(value.principalOriginal)} 金币，未还本金 ${numberText(value.principalOutstanding)}，已计利息 ${numberText(value.accruedInterest)}，期限 ${numberText(value.termDays)} 天，到期日为第 ${numberText(value.dueDay)} 天，当前${statusText(value.status)}。`;
-}
-
-function renderPlayerLoan(value: Record<string, unknown>, index: number): string {
-  const role = value.role === "lender" ? "出借" : value.role === "borrower" ? "借入" : "往来";
-  const counterparty = publicFarmText(value.counterparty) ?? "对方公开农场暂无法读取";
-  return `- 玩家贷款 ${index + 1}：${role}给${counterparty}，原始本金 ${numberText(value.principalOriginal)} 银币，未还本金 ${numberText(value.principalOutstanding)}，已计利息 ${numberText(value.accruedInterest)}，合同总利率 ${percentageFromPpm(value.totalRatePpm)}，期限 ${numberText(value.termDays)} 天，当前${statusText(value.status)}。`;
-}
-
-function renderBankLoans(value: unknown): string[] {
-  if (!isRecord(value)) return [];
-  const systemLoans = records(value.systemLoans);
-  const playerLoans = records(value.playerLoans);
-  return [
-    "贷款：",
-    ...(systemLoans.length === 0 ? ["- 系统贷款：无。"] : systemLoans.map(renderSystemLoan)),
-    ...(playerLoans.length === 0 ? ["- 玩家贷款：无。"] : playerLoans.map(renderPlayerLoan)),
-  ];
-}
-
-function renderBankCredit(value: unknown): string[] {
-  if (!isRecord(value)) return [];
-  return [
-    `信用：${numberText(value.creditPoints)} 点；高消费限制：${value.highSpendRestricted === true ? "有" : value.highSpendRestricted === false ? "无" : "暂无法读取"}。`,
-  ];
-}
-
-function renderBankReference(value: unknown): string[] {
-  if (!isRecord(value) || !isRecord(value.value)) return [];
-  if (value.type === "term_deposit")
-    return ["查询到的定期存款：", renderTermDeposit(value.value, 0)];
-  if (value.type === "system_loan") return ["查询到的系统贷款：", renderSystemLoan(value.value, 0)];
-  if (value.type === "player_loan") return ["查询到的玩家贷款：", renderPlayerLoan(value.value, 0)];
-  return ["查询到一条银行记录，具体描述暂无法读取。"];
-}
-
-function bankText(op: string, result: LingyeSuccess): string {
-  const data = result.data;
-  const lines = ["🏦 铃野银行", resultMessage(result.text, "已读取铃野银行当前事实。")];
-  lines.push(...renderBankAccount(bankPart(data, "account")));
-  if (op === "go.bank.view") {
-    lines.push(...renderBankDeposits(bankPart(data, "deposits")));
-    lines.push(...renderBankExchange(bankPart(data, "exchange")));
-    lines.push(...renderBankLoans(bankPart(data, "loans")));
-  }
-  lines.push(...renderBankCredit(bankPart(data, "credit")));
-  lines.push(...renderBankReference(data.reference));
-  return [...lines, ...renderOptions("go.bank.choose", data)].join("\n");
 }
 
 function renderCareerTracks(value: unknown): string[] {
@@ -1206,6 +1115,6 @@ export function renderLingyeToolText(
   if (op === "go.newsroom.like") return result.text;
   const dialogue = npcDialogueText(op, result);
   if (dialogue !== undefined) return dialogue;
-  return op.startsWith("go.bank.") ? bankText(op, result)
+  return op.startsWith("go.bank.") ? renderBankToolText(op, result, { renderOptions, resultMessage, publicFarmText })
     : op.startsWith("go.school.") ? schoolText(op, result) : commissionText(op, result);
 }
