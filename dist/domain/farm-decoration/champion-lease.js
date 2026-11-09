@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../../farm-mutation-scope.js";
 export const CHAMPION_FURNITURE_ID="farm_decor:snow_king";
 export const CHAMPION_LEASE_MS=30*24*60*60*1000;
 
@@ -42,7 +43,7 @@ export function stageChampionFurniture(farm,input,now,state) {
     if(saved.reference!==reference) throw new Error("champion_furniture_conflict");
     return {working:null,receipt:structuredClone(saved.receipt)};
   }
-  const working=structuredClone(farm),current=currentChampionState(farm,state,now);
+  const working=cloneFarmForMutation(farm),current=currentChampionState(farm,state,now);
   const expires_at=Math.max(now+CHAMPION_LEASE_MS,championLease(farm)?.expires_at??0);
   const receipt={ok:true,...input,quantity:1,granted_at:now,expires_at};
   working.farmDecorations={...current,owned:{...current.owned,[CHAMPION_FURNITURE_ID]:1}};

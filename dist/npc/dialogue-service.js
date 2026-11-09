@@ -4,6 +4,7 @@ import { requireLingyeNpc } from "./registry.js";
 import { LINGYE_NPC_DIALOGUE_VERSION, availableLingyeNpcDialogues, getLingyeNpcDialogue } from "./dialogue-catalog.js";
 import { drawLingyeNpcGift, npcBeijingDay, npcRandomFraction } from "./gift-service.js";
 import { beijingDayIndex, ecologicalSeasonAt, plannedWeatherForDay } from "../nature.js";
+import { findWorldStateEntries, readWorldStatePaths } from "../farm-state-records.js";
 import { readRecentNpcFacts } from './recent-context.js';
 
 const randomFraction = () => randomInt(1_000_000) / 1_000_000;
@@ -42,14 +43,18 @@ export function readLingyeNpcDialogueContext(database, residentId, npcId, now = 
         worldRevision: world.revision, hour: new Date(now + 8 * 3_600_000).getUTCHours(), facts: [] };
     const hasTable = (name) => !!database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
     if (hasTable("world_components")) {
-        const nature = database.prepare("SELECT state_json FROM world_components WHERE component_key = 'nature'").get();
+        const nature = database.prepare("SELECT 1 FROM world_components WHERE component_key = 'nature'").get();
         if (nature) {
-            const natureWorld = JSON.parse(nature.state_json);
+            const day = beijingDayIndex(now);
+            const natureWorld = readWorldStatePaths(database, "nature", [["status"], ["activationDay"], ["seed"]]);
+            if (natureWorld.status === "active")
+                natureWorld.weatherRevisions = findWorldStateEntries(database, "nature", ["weatherRevisions"],
+                    { eq: { dayIndex: day } });
             const season = ecologicalSeasonAt(natureWorld, now);
             context.season = season?.name;
             context.seasonId = season?.id;
             context.seasonDay = season?.day;
-            context.weather = plannedWeatherForDay(natureWorld, beijingDayIndex(now));
+            context.weather = plannedWeatherForDay(natureWorld, day);
         }
     }
     if (npcId === "npc_songmo" && hasTable("career_exam_attempts")) {

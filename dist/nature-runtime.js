@@ -1,3 +1,4 @@
+import {cloneFarmForMutation} from "./farm-mutation-scope.js";
 // P4 正式玩法接线：部署激活、北京时间日界推进、P3 地块/病例、钓鱼与恢复结算。
 import { createHash } from "node:crypto";
 import { advancePlotRecovery } from './nature/recovery.js';
@@ -519,10 +520,10 @@ export function advanceNatureGameplay(now = Date.now(), options = {}) {
     const processDays = firstDay <= today ? Array.from({ length: today - firstDay + 1 }, (_, index) => firstDay + index) : [today];
     let committedFarms = [];
     const publicExpedition = options.publicExpedition === undefined ? getPublicExpeditionWorld() : options.publicExpedition;
-    let sourceFarms = options.farms ? options.farms.map((farm) => structuredClone(farm)) : null;
+    let sourceFarms = options.farms ? options.farms.map((farm) => cloneFarmForMutation(farm)) : null;
     for (const day of processDays) {
         const dayNow = beijingDayStart(day) + 12 * 3_600_000;
-        const farms = (sourceFarms ?? playerFarms()).map((farm) => structuredClone(farm));
+        const farms = (sourceFarms ?? playerFarms()).map((farm) => cloneFarmForMutation(farm));
         for (const farm of farms) advanceFarmGrowth(farm, beijingDayStart(day));
         const firstTogetherFlood = ongoingNatureEvents(world).some(event => isFirstTogetherFlood(publicExpedition, event));
         for (const farm of farms) {
@@ -637,7 +638,7 @@ export function commitNatureFarmReconciliation(farm, now = Date.now()) {
     const world = getNatureWorld();
     if (ongoingNatureEvents(world).length === 0)
         return false;
-    const stagedFarm = structuredClone(farm);
+    const stagedFarm = cloneFarmForMutation(farm);
     let nextWorld = structuredClone(world);
     for (const {eventId} of ongoingNatureEvents(world))
         nextWorld = reconcileFarmResolutions(nextWorld, stagedFarm, findNatureEvent(nextWorld, eventId), now);
@@ -647,7 +648,7 @@ export function commitNatureFarmReconciliation(farm, now = Date.now()) {
         replacements: [{ id: stagedFarm.id, farm: stagedFarm }],
         nextNatureWorld: nextWorld,
     });
-    Object.assign(farm, structuredClone(committed.farms[0]));
+    Object.assign(farm, cloneFarmForMutation(committed.farms[0]));
     return true;
 }
 
@@ -660,14 +661,14 @@ export function commitNatureRemovedPlot(farm, _plotId, _resolutionKind, _resolut
 
 export function collectFloodFishForFarm(farm, now = Date.now()) {
     const world = getNatureWorld();
-    const collected = collectFloodFishInPlace(structuredClone(farm), structuredClone(world), now);
+    const collected = collectFloodFishInPlace(cloneFarmForMutation(farm), structuredClone(world), now);
     if (collected.collected === 0)
         return collected;
     const committed = replaceFarmsAndNatureAtomic({
         replacements: [{ id: collected.farm.id, farm: collected.farm }],
         nextNatureWorld: collected.world,
     });
-    Object.assign(farm, structuredClone(committed.farms[0]));
+    Object.assign(farm, cloneFarmForMutation(committed.farms[0]));
     return { collected: collected.collected, names: collected.names, text: collected.text };
 }
 

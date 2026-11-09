@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { replaceFarm } from "../store.js";
 import { projectHumanBulletin, projectHumanBulletinSource } from "./bulletin-structured.js";
@@ -180,7 +181,7 @@ export function handleHumanBulletinAck(farm, body, now = Date.now()) {
     return conflict("state_conflict", "The farm bulletin has changed", source.revision);
   }
 
-  const working = structuredClone(farm);
+  const working = cloneFarmForMutation(farm);
   const nextState = readState(working);
   const scope = ackScope(body);
   let acknowledgedCount = 0;
@@ -203,7 +204,7 @@ export function handleHumanBulletinAck(farm, body, now = Date.now()) {
   working.doorbellHumanBulletinReadState = nextState;
 
   try {
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanBulletinReadState/receipts", receiptKey: body.idempotency_key }] });
   } catch {
     return {
       status: 503,

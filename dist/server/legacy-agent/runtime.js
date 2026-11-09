@@ -3,6 +3,8 @@ import { htmlAgentPage, htmlNotice, takeNonce } from "../../agent.js";
 import { AGENT_HEADERS } from "../http.js";
 import { autoPickMaterials } from "./offers.js";
 import { createLegacyAgentPages } from "./pages.js";
+import { save } from "../../store.js";
+import { withFarmMutationScope } from "../../farm-mutation-scope.js";
 
 const AGENT_FLASH_TTL = 5 * 60 * 1000;
 
@@ -41,7 +43,7 @@ export function createLegacyAgentHandler({ runFarm, resolveAgent }) {
         return { redirect: `/agent/${playKey}/view?flash=${flash}&v=${randomUUID().replace(/-/g, "").slice(0, 8)}` };
     }
 
-    function agentDo(playKey, nonce, now) {
+    function agentDoCore(playKey, nonce, now) {
         const f = resolveAgent(playKey);
         if (!f)
             return { html: htmlAgentPage(playKey, "这个 Agent 链接无效或已被撤销。", []) };
@@ -115,7 +117,15 @@ export function createLegacyAgentHandler({ runFarm, resolveAgent }) {
         return agentRedirect(playKey, { kind: "self", banner: pages.stripFooter(banner) }, now);
     }
 
-    function handleRoute({ res, url, parts, sp, now }) {
+    function agentDo(playKey, nonce, now) {
+        return withFarmMutationScope(() => {
+            const result = agentDoCore(playKey, nonce, now);
+            save();
+            return result;
+        });
+    }
+
+    function handleRouteCore({ res, url, parts, sp, now }) {
         if (parts[0] !== "agent" || parts.length < 2)
             return false;
         const playKey = parts[1];
@@ -131,8 +141,10 @@ export function createLegacyAgentHandler({ runFarm, resolveAgent }) {
             return true;
         }
         if (parts[2] === "compose") {
+            const html = pages.agentCompose(playKey, Object.fromEntries(sp), now);
+            save();
             res.writeHead(200, AGENT_HEADERS);
-            res.end(pages.agentCompose(playKey, Object.fromEntries(sp), now));
+            res.end(html);
             return true;
         }
         const f = resolveAgent(playKey);
@@ -143,13 +155,20 @@ export function createLegacyAgentHandler({ runFarm, resolveAgent }) {
         }
         if (parts[2] === "view") {
             const flash = takeFlash(playKey, url.searchParams.get("flash"), now);
+            const html = pages.renderAgentTarget(playKey, f, now, flash);
+            save();
             res.writeHead(200, AGENT_HEADERS);
-            res.end(pages.renderAgentTarget(playKey, f, now, flash));
+            res.end(html);
             return true;
         }
+        save();
         res.writeHead(302, { ...AGENT_HEADERS, Location: `/agent/${playKey}/view?v=${randomUUID().slice(0, 8)}` });
         res.end();
         return true;
+    }
+
+    function handleRoute(args) {
+        return withFarmMutationScope(() => handleRouteCore(args));
     }
 
     return {

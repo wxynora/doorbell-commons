@@ -8,7 +8,7 @@ import {
     MYSTERY_MERCHANT_SHELF_SIZE,
     renderMysteryMerchantPurchaseResult,
 } from "./mystery-merchant.js";
-import { load, save, setWorldPersistenceAdapter } from "./store.js";
+import { load, setWorldPersistenceAdapter } from "./store.js";
 import { startServer } from "./server.js";
 import { readTogetherSeason3StartupSelection } from "./together-season3/activation.js";
 assertSupportedNodeVersion();
@@ -40,16 +40,8 @@ catch (error) {
 }
 for (const sig of ["SIGINT", "SIGTERM"]) {
     process.on(sig, () => {
-        console.log("\n[main] 保存并退出…");
-        let exitCode = 0;
-        try {
-            save();
-        }
-        catch (error) {
-            exitCode = 1;
-            console.error("[main] 退出前保存失败:", error);
-        }
-        server.close((error) => process.exit(error || exitCode ? 1 : 0));
+        console.log("\n[main] 等待请求完成并退出…");
+        server.close((error) => process.exit(error ? 1 : 0));
     });
 }
 //# sourceMappingURL=index.js.map

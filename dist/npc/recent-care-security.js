@@ -1,3 +1,5 @@
+import { findFarmStateEntries, readFarmCollectionItem, readFarmStatePaths } from "../farm-state-records.js";
+
 const hasTable = (database, name) => !!database.prepare(
     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
 
@@ -31,14 +33,16 @@ function careFacts(database, residentId, now, since) {
     const day = Math.floor((now + 8 * 3_600_000) / 86_400_000);
     for (const treatment of treatments) {
         const source = JSON.parse(treatment.fact_json);
-        if (typeof source.farmDoorplate !== "string" || !Number.isSafeInteger(source.animalIndex)) continue;
+        if (typeof source.farmDoorplate !== "string" || !Number.isSafeInteger(source.animalIndex)
+            || source.animalIndex < 0) continue;
         if (!farms.has(source.farmDoorplate)) {
-            const row = database.prepare("SELECT state_json FROM farm_states WHERE farm_id = ?").get(source.farmDoorplate);
-            farms.set(source.farmDoorplate, row ? JSON.parse(row.state_json) : null);
+            farms.set(source.farmDoorplate, readFarmStatePaths(database, source.farmDoorplate,
+                [["doorbellMcpMigration", "migrationId"]]));
         }
         const farm = farms.get(source.farmDoorplate);
         if (!binding || farm?.doorbellMcpMigration?.migrationId !== binding.binding_reference) continue;
-        const animal = farm.ranch?.animals?.[source.animalIndex];
+        const animal = readFarmCollectionItem(database, source.farmDoorplate, ["ranch", "animals"],
+            { index: source.animalIndex });
         if (!animal || animal.kindId !== source.animalKindId) continue;
         const health = animal.lingyeHealth;
         if (health?.sourceId === treatment.source_id && health.status === "recovering"
@@ -47,10 +51,10 @@ function careFacts(database, residentId, now, since) {
         }
         // advanceRecoveries writes this history entry and removes lingyeHealth.
         // Merely reaching recoveryUntilDay, or completing the job, is not enough.
-        if ((!health || health.status === "healthy") && (farm.lingyeP3?.history ?? []).some(event =>
-            event.type === "animal_recovered" && event.sourceId === treatment.source_id
-            && event.animalIndex === source.animalIndex && event.recordedAt >= treatment.treated_at
-            && event.recordedAt <= now)) facts.add("recent_animal_recovered");
+        if ((!health || health.status === "healthy") && findFarmStateEntries(database, source.farmDoorplate,
+            ["lingyeP3", "history"], { eq: { type: "animal_recovered", sourceId: treatment.source_id,
+                animalIndex: source.animalIndex }, gte: { recordedAt: treatment.treated_at } })
+            .some(event => event.recordedAt <= now)) facts.add("recent_animal_recovered");
     }
     return [...facts];
 }

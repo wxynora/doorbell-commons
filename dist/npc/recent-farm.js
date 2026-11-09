@@ -1,3 +1,5 @@
+import { readFarmStatePaths } from "../farm-state-records.js";
+
 /** Read actual NPC seed purchases and successful expansion time.
  * Land tier and the untimed farm log cannot establish a recent expansion. */
 export function readRecentFarmFacts(database, residentId, npcId, now, since) {
@@ -21,13 +23,15 @@ export function readRecentFarmFacts(database, residentId, npcId, now, since) {
     const facts = purchases.length === 2 ? ["recent_seed_customer"] : [];
     const hasFarms = database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'farm_states'").get();
     if (hasFarms) {
-        const expansion = database.prepare(`SELECT 1 FROM farm_states farm
-          JOIN residents resident ON resident.resident_id = ?
-            AND json_extract(farm.state_json, '$.doorbellMcpMigration.residentId') = resident.resident_id
-            AND json_extract(farm.state_json, '$.doorbellMcpMigration.migrationId') = resident.binding_reference
-          WHERE json_type(farm.state_json, '$.lastLandExpandedAt') = 'integer'
-            AND json_extract(farm.state_json, '$.lastLandExpandedAt') >= ?
-            AND json_extract(farm.state_json, '$.lastLandExpandedAt') <= ? LIMIT 1`).get(residentId, since, now);
+        const resident = database.prepare("SELECT binding_reference FROM residents WHERE resident_id = ?").get(residentId);
+        const farms = database.prepare("SELECT farm_id FROM farm_states WHERE resident_id = ?").all(residentId);
+        const expansion = resident?.binding_reference != null && farms.some(({ farm_id }) => {
+            const farm = readFarmStatePaths(database, farm_id,
+                [["doorbellMcpMigration", "migrationId"], ["lastLandExpandedAt"]]);
+            return farm?.doorbellMcpMigration?.migrationId === resident.binding_reference
+                && Number.isInteger(farm.lastLandExpandedAt)
+                && farm.lastLandExpandedAt >= since && farm.lastLandExpandedAt <= now;
+        });
         if (expansion) facts.push('recent_land_expansion');
     }
     return facts;

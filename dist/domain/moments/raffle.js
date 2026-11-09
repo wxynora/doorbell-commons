@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../../farm-mutation-scope.js";
 import { allFarms, replaceFarmsAtomic } from "../../store.js";
 import { ensureKitchen } from "../ranch/state.js";
 import { ensureFishing } from "../../fishing.js";
@@ -41,7 +42,7 @@ export function createMomentsRaffleFarmService({farms=allFarms,commit=replaceFar
                 if(JSON.stringify(previous.request)!==JSON.stringify(request))fail("request_conflict");
                 return structuredClone(previous.result);
             }
-            const next=structuredClone(owner),held=[];
+            const next=cloneFarmForMutation(owner),held=[];
             for(const item of request.prizes) {
                 if(item.kind==="dish") {
                     const dishes=ensureKitchen(next).dishes,index=dishes.findIndex(dish=>dish.id===item.id);
@@ -57,7 +58,7 @@ export function createMomentsRaffleFarmService({farms=allFarms,commit=replaceFar
             }
             const result={...identity(request),prizes:held.map(entry=>entry.item),locked_at:now()};
             next[LEDGER]={...(next[LEDGER]??{}),[lockKey]:{request,result,held}};
-            commit([{id:next.id,farm:next}]);
+            commit([{id:next.id,farm:next,receiptKeys:[{scope:"/doorbellMomentsRaffleReceipts",receiptKey:lockKey}]}]);
             return structuredClone(result);
         },
         settle(input) {
@@ -75,7 +76,7 @@ export function createMomentsRaffleFarmService({farms=allFarms,commit=replaceFar
             }
             const recipient=request.action==="return"?owner:boundFarm(request.recipient_resident_id,request.recipient_farm_doorplate);
             if(request.action==="award"&&recipient.id===owner.id)fail("same_farm");
-            const from=structuredClone(owner),to=request.action==="return"?from:structuredClone(recipient),entry=lock.held[request.position];
+            const from=cloneFarmForMutation(owner),to=request.action==="return"?from:cloneFarmForMutation(recipient),entry=lock.held[request.position];
             if(entry.item.kind==="dish") {
                 const dishes=ensureKitchen(to).dishes;
                 if(dishes.some(dish=>dish.id===entry.dish.id))fail("item_conflict");
@@ -86,7 +87,8 @@ export function createMomentsRaffleFarmService({farms=allFarms,commit=replaceFar
             }
             const result={...request,item:entry.item,settled_at:now()};
             from[LEDGER]={...(from[LEDGER]??{}),[settleKey]:{request,result}};
-            commit(request.action==="return"?[{id:from.id,farm:from}]:[{id:from.id,farm:from},{id:to.id,farm:to}]);
+            const source={id:from.id,farm:from,receiptKeys:[{scope:"/doorbellMomentsRaffleReceipts",receiptKey:settleKey}]};
+            commit(request.action==="return"?[source]:[source,{id:to.id,farm:to,receiptKeys:[]}]);
             return structuredClone(result);
         },
     };

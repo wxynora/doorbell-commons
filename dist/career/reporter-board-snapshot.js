@@ -1,4 +1,5 @@
 import { NPC_ID } from "../config.js";
+import { readFarmStatePathsForFarms } from "../farm-state-records.js";
 import { economyGoldSpentToday } from "../daily-spend.js";
 import { buildLeaderboards } from "../leaderboard.js";
 import { currentDayIndex } from "../time.js";
@@ -33,31 +34,22 @@ function applyDayCounters(row, farm, day) {
 
 // Read before the first new-day farm write can replace yesterday's counters.
 function sealCommittedDay(database, day) {
-    const rows = database.prepare(`SELECT f.farm_id, f.position,
-      json_extract(f.state_json, '$.name') AS name,
-      json_extract(f.state_json, '$.daily') AS daily,
-      json_extract(f.state_json, '$.ranch.raidIncome') AS raid_income,
-      json_extract(f.state_json, '$.ranch.raidLoss') AS raid_loss,
-      json_extract(f.state_json, '$.titleEquipped') AS equipped,
-      json_extract(f.state_json, '$.titles') AS titles,
-      json_extract(f.state_json, '$.doorbellMcpMigration.residentId') AS resident_id,
-      json_extract(f.state_json, '$.doorbellMcpMigration.migrationId') AS binding_reference
-      FROM farm_states f WHERE f.farm_id <> ? ORDER BY f.position`).all(NPC_ID);
-    const parse = value => value === null ? undefined : JSON.parse(value);
+    const rows = database.prepare(`SELECT farm_id, position, resident_id
+      FROM farm_states WHERE farm_id <> ? ORDER BY position`).all(NPC_ID);
+    const states = readFarmStatePathsForFarms(database, rows.map(row => row.farm_id), [
+        ["name"], ["daily"], ["ranch", "raidIncome"], ["ranch", "raidLoss"],
+        ["titleEquipped"], ["titles"], ["doorbellMcpMigration", "migrationId"],
+    ]);
     const write = database.prepare(`INSERT INTO career_reporter_board_snapshots (${COLUMNS.join(",")})
       VALUES (${COLUMNS.map(() => "?").join(",")}) ON CONFLICT(day_index, farm_id) DO UPDATE SET
       ${COLUMNS.filter(key => !["day_index", "farm_id"].includes(key)).map(key => `${key}=excluded.${key}`).join(",")}`);
     for (const source of rows) {
-        const farm = {
-            daily: parse(source.daily),
-            ranch: { raidIncome: parse(source.raid_income), raidLoss: parse(source.raid_loss) },
-            titleEquipped: source.equipped, titles: parse(source.titles),
-        };
+        const farm = states.get(source.farm_id) ?? {};
         const title = equippedTitle(farm);
         const row = applyDayCounters({
-            day_index: day, farm_id: source.farm_id, farm_order: source.position, name: source.name,
+            day_index: day, farm_id: source.farm_id, farm_order: source.position, name: farm.name,
             title: title?.name ?? null, title_color: title?.color ?? null,
-            resident_id: source.resident_id, binding_reference: source.binding_reference,
+            resident_id: source.resident_id, binding_reference: farm.doorbellMcpMigration?.migrationId ?? null,
             ...Object.fromEntries(VALUE_KEYS.map(key => [key, 0])),
         }, farm, day);
         write.run(...COLUMNS.map(key => row[key]));

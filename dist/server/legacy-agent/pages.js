@@ -1,4 +1,5 @@
 import { BASE, NPC_ID, POTION_CAP_LINE, POTION_DAILY_CAP } from "../../config.js";
+import { cloneFarmForMutation, snapshotFarmMutation, planFarmMutation } from "../../farm-mutation-scope.js";
 import { cookingIngredientById, getCrop, materialById } from "../../content.js";
 import { bumpDaily } from "../../daily.js";
 import { canStealNow, ensureHumanKey, isUgcCrop, potionDailyLeft, ranchRoamLine, refreshShop, stealAvailability, stealShieldRemain, takeInbox } from "../../engine.js";
@@ -180,7 +181,7 @@ export function createLegacyAgentPages({ runFarm, resolveAgent }) {
 
     function renderAgentTarget(playKey, f, now, target) {
         if (!target || target.kind === "self" || target.kind === "shop" || target.kind === "kitchen" || target.kind === "mypage") {
-            const working = structuredClone(f);
+            const working = cloneFarmForMutation(f);
             const html = !target || target.kind === "self"
                 ? renderSelf(playKey, working, now, target?.banner)
                 : target.kind === "shop"
@@ -188,7 +189,8 @@ export function createLegacyAgentPages({ runFarm, resolveAgent }) {
                     : target.kind === "kitchen"
                         ? renderKitchenPage(playKey, working, now, target.banner)
                         : renderMyPublicPage(playKey, working, now, target.banner);
-            if (JSON.stringify(working) !== JSON.stringify(f)) {
+            const plan = planFarmMutation(working, snapshotFarmMutation(f));
+            if (plan.recordChanges.length || plan.receiptKeys.length) {
                 replaceFarm(f.id, working);
             }
             return html;

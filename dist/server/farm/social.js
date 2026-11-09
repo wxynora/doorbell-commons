@@ -4,6 +4,7 @@ import { advance, canStealNow, isUgcCrop, refreshShop, stealShieldRemain } from 
 import { tendNpc } from "../../game.js";
 import { allFarms, getFarm, playerFarms } from "../../store.js";
 import { currentDayIndex } from "../../time.js";
+import { cloneFarmForMutation } from "../../farm-mutation-scope.js";
 
 export const allowsSocial = (f, k) => f?.social?.[k] !== false;
 export const reachable = (f) => allowsSocial(f, "visit"); // 访问总闸：关=闭门 + 全封
@@ -40,14 +41,15 @@ export function visitListResult(me) {
     return { ok: true, text, farms: entries.map((entry) => ({ number: entry.number, name: entry.farm.name, aiName: entry.farm.aiName || "AI" })) };
 }
 /** 打开自家农场时看到的全服实时成熟广播；固定编号与串门列表共用。 */
-export function ripeBroadcastText(now, changedFarmIds) {
+export function ripeBroadcastText(now, changedFarmIds, ownFarmId) {
     const entries = numberedPlayerFarms().map(({ number, farm }) => {
-        advance(farm, now, changedFarmIds ? (id) => changedFarmIds.add(id) : undefined);
-        return { number, farm, ripe: farm.plots.filter((plot) => plot.crop?.ripe).length };
+        const projected = farm.id === ownFarmId ? farm : cloneFarmForMutation(farm);
+        advance(projected, now, farm.id === ownFarmId && changedFarmIds ? (id) => changedFarmIds.add(id) : undefined);
+        return { number, label: farmLabel(projected), ripe: projected.plots.filter((plot) => plot.crop?.ripe).length };
     }).filter((entry) => entry.ripe > 0);
     if (!entries.length)
         return "📣 此刻谁家菜熟了：现在没有成熟未收的菜。";
-    return `📣 此刻谁家菜熟了：\n${entries.map((entry) => `${entry.number}. ${farmLabel(entry.farm)}：${entry.ripe} 块待收`).join("\n")}`;
+    return `📣 此刻谁家菜熟了：\n${entries.map((entry) => `${entry.number}. ${entry.label}：${entry.ripe} 块待收`).join("\n")}`;
 }
 export function stolenTodayText(thief, now) {
     const day = currentDayIndex(now);
@@ -71,9 +73,10 @@ export function wanderResult(b, now, numbered = false) {
     const canSteal = canStealNow(me, now) && allowsSocial(me, "steal");
     const canWater = allowsSocial(me, "water"); // 自己关了浇水＝不显示别家「可帮浇水」
     const targets = [];
-    for (const f of allFarms()) {
-        if (f.id === meId || f.id === NPC_ID || !reachable(f))
+    for (const current of allFarms()) {
+        if (current.id === meId || current.id === NPC_ID || !reachable(current))
             continue; // 阿土不进随机池(兜底)；谢绝来访的搜不到
+        const f = cloneFarmForMutation(current);
         advance(f, now);
         refreshShop(f, now); // 让"药水套装"在串门发现里保持最新
         const ripe = (canSteal && allowsSocial(f, "steal") && !stealShieldRemain(f, now)) ? f.plots.filter((p) => p.crop?.ripe && !isUgcCrop(p.crop)).map((p) => p.id) : [];
@@ -87,7 +90,8 @@ export function wanderResult(b, now, numbered = false) {
     }
     // 没有别的农场可逛 → 默认去常驻邻居杂货郎阿土那儿（地里随时有熟的可偷，偶尔有限定种子）
     if (!targets.length) {
-        const npc = getFarm(NPC_ID);
+        const currentNpc = getFarm(NPC_ID);
+        const npc = currentNpc ? cloneFarmForMutation(currentNpc) : undefined;
         if (npc && npc.id !== meId) {
             advance(npc, now);
             tendNpc(npc, now);

@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash, randomUUID } from "node:crypto";
 import { MESSAGE_TEXT_MAX, MESSAGES_MAX } from "../config.js";
 import { bumpDaily } from "../daily.js";
@@ -157,7 +158,7 @@ function responseFor(source, target, now, result) {
 
 function restoreFarm(target, snapshot) {
   for (const key of Object.keys(target)) delete target[key];
-  Object.assign(target, structuredClone(snapshot));
+  Object.assign(target, cloneFarmForMutation(snapshot));
 }
 
 function applyFarmState(target, working) {
@@ -166,8 +167,8 @@ function applyFarmState(target, working) {
 }
 
 function withWorkingPair(source, target, sourceWorking, targetWorking, callback) {
-  const sourceBefore = structuredClone(source);
-  const targetBefore = source === target ? sourceBefore : structuredClone(target);
+  const sourceBefore = cloneFarmForMutation(source);
+  const targetBefore = source === target ? sourceBefore : cloneFarmForMutation(target);
   try {
     applyFarmState(source, sourceWorking);
     if (source !== target) applyFarmState(target, targetWorking);
@@ -178,12 +179,15 @@ function withWorkingPair(source, target, sourceWorking, targetWorking, callback)
   }
 }
 
-function commitFarmPair(source, target, sourceWorking, targetWorking) {
+function commitFarmPair(source, target, sourceWorking, targetWorking, key) {
+  const sourceEntry = { id: source.id, farm: sourceWorking, receiptKeys: [
+    { scope: "/doorbellHumanNeighborhoodMessageReceipts", receiptKey: key },
+  ] };
   replaceFarmsAtomic(source === target
-    ? [{ id: source.id, farm: sourceWorking }]
+    ? [sourceEntry]
     : [
-        { id: source.id, farm: sourceWorking },
-        { id: target.id, farm: targetWorking },
+        sourceEntry,
+        { id: target.id, farm: targetWorking, receiptKeys: [] },
       ]);
 }
 
@@ -283,8 +287,8 @@ export function handleHumanNeighborhoodMessageAction(farm, body, now = Date.now(
   const text = body.message.trim();
 
   try {
-    const sourceWorking = structuredClone(farm);
-    const targetWorking = farm === target ? sourceWorking : structuredClone(target);
+    const sourceWorking = cloneFarmForMutation(farm);
+    const targetWorking = farm === target ? sourceWorking : cloneFarmForMutation(target);
     targetWorking.messages ??= [];
     const message = {
       id: randomUUID().replace(/-/g, "").slice(0, 6),
@@ -325,7 +329,7 @@ export function handleHumanNeighborhoodMessageAction(farm, body, now = Date.now(
       [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
 
-    commitFarmPair(farm, target, sourceWorking, targetWorking);
+    commitFarmPair(farm, target, sourceWorking, targetWorking, key);
     return { status: 200, json: response };
   } catch {
     return errorResponse("farm_unavailable", "The neighborhood message could not be saved");

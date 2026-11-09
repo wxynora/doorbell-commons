@@ -1,10 +1,13 @@
+import {acceptCommittedFarmRecords} from "../../farm-mutation-scope.js";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { decorationState } from "../../domain/farm-decoration/state.js";
 import { isDecorationGachaEligible, isDecorationSaleOpen } from "../../domain/farm-decoration/catalog.js";
-import { decomposeFarmForPersistence } from "../../farm-world-sqlite-migration.js";
+import { farmRecordPath, findFarmIdByHumanKey, readFarmStatePaths,
+  readFarmStateRevision, writeFarmStatePaths } from "../../farm-state-records.js";
 import { runLingyeWorldTransaction } from "../../lingye-world-database.js";
 import { isQixi2026CropId } from "../../qixi-2026.js";
-import { normalizeFarm, playerFarms } from "../../store.js";
+import { getFarm } from "../../store.js";
+import { NPC_ID } from "../../config.js";
 
 export const GACHA_PRICE_GOLD = 500;
 export const GACHA_DAILY_LIMIT = 100;
@@ -553,101 +556,303 @@ function buildStatus({ farm, farmId, residentId, queries, lists, now }) {
   };
 }
 
-function parseStoredFarm(row) {
-  let farm;
-  try {
-    farm = JSON.parse(row.state_json);
-  } catch {
-    throw new GachaError("GACHA_STATE_INVALID", "The stored farm state is invalid");
-  }
-  if (!isObject(farm) || farm.id !== row.farm_id) {
-    throw new GachaError("GACHA_STATE_INVALID", "The stored farm identity is invalid");
-  }
-  return farm;
-}
-
-function persistedFarmState(farm) {
-  try {
-    return decomposeFarmForPersistence(farm).state;
-  } catch (error) {
-    throw new GachaError("GACHA_STATE_INVALID", "The farm state cannot be persisted", { cause: error });
-  }
-}
-
-function persistedFarmJson(farm) {
-  return stableJson(persistedFarmState(farm));
-}
-
 function assertRuntimeDatabase(database) {
   if (!database || typeof database.prepare !== "function" || typeof database.exec !== "function") {
     throw new TypeError("A shared Lingye SQLite database is required");
   }
 }
 
-/**
- * The normal Farm runtime owns an in-memory farm map.  Gacha works on an
- * isolated copy, compares that map with the durable row, and publishes the
- * copy only after the shared SQLite transaction commits.  This prevents a
- * later legacy save from writing an older in-memory farm over a draw.
- */
-export function createRuntimeFarmStateStore(database) {
+// These are the fields needed to authenticate, calculate probabilities and
+// update the balance projection. Prize inventory is read only after selection.
+const GACHA_BASE_PATHS = Object.freeze([
+  ["id"], ["humanKey"], ["doorbellMcpMigration", "residentId"],
+  ["doorbellGachaDaily"], ["doorbellGachaPity"], ["coins"], ["silver"],
+  ["farmDecorations"], ["snowTournamentFurniture", "lease"],
+]);
+const GACHA_KITCHEN_PATHS = Object.freeze([
+  ["ranch"], ["ranch", "animals"], ["ranch", "kitchen"],
+  ["ranch", "kitchen", "products"], ["ranch", "kitchen", "ingredients"],
+  ["ranch", "kitchen", "dishes"], ["ranch", "kitchen", "knownRecipes"],
+]);
+
+function pathValue(value, path) {
+  for (const key of path) {
+    if (value === null || typeof value !== "object" || !Object.hasOwn(value, key)) return undefined;
+    value = value[key];
+  }
+  return value;
+}
+
+function assignPath(target, path, value) {
+  let parent = target;
+  for (const key of path.slice(0, -1)) {
+    if (!isObject(parent[key])) parent[key] = {};
+    parent = parent[key];
+  }
+  if (value === undefined) delete parent[path.at(-1)];
+  else parent[path.at(-1)] = structuredClone(value);
+}
+
+function projectFarmPaths(farm, paths) {
+  const projected = {};
+  for (const path of paths) {
+    const value = pathValue(farm, path);
+    if (value !== undefined) assignPath(projected, path, value);
+  }
+  return projected;
+}
+
+function plotIdentity(plot) {
+  if (!isObject(plot)) return structuredClone(plot);
+  const identity = {};
+  for (const key of ["id", "plot_id"]) {
+    if (Object.hasOwn(plot, key)) identity[key] = structuredClone(plot[key]);
+  }
+  return identity;
+}
+
+function projectGachaBase(farm) {
+  const projected = projectFarmPaths(farm, GACHA_BASE_PATHS);
+  if (farm.plots !== undefined) {
+    projected.plots = Array.isArray(farm.plots) ? farm.plots.map(plotIdentity) : structuredClone(farm.plots);
+  }
+  return projected;
+}
+
+// Decoration layout needs plot identity and order, but not the crop subtrees.
+function readGachaPlots(database, farmId) {
+  const collection = database.prepare(`SELECT record_kind FROM farm_domain_records
+    WHERE farm_id=? AND record_path=?`).get(farmId, "/plots");
+  if (!collection || collection.record_kind !== "array") {
+    return readFarmStatePaths(database, farmId, [["plots"]]).plots;
+  }
+  const rows = database.prepare(`SELECT member_key,previous_key,record_kind,fields_json FROM farm_domain_records
+    WHERE farm_id=? AND parent_path=?`).all(farmId, "/plots");
+  if (rows.some(row => !["object", "value"].includes(row.record_kind))) {
+    const value = readFarmStatePaths(database, farmId, [["plots"]]).plots;
+    return Array.isArray(value) ? value.map(plotIdentity) : value;
+  }
+  const byPrevious = new Map();
+  for (const row of rows) {
+    if (byPrevious.has(row.previous_key)) throw new GachaError("GACHA_STATE_INVALID", "The farm plot order is invalid");
+    byPrevious.set(row.previous_key, row);
+  }
+  const plots = [];
+  let previous = null;
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = byPrevious.get(previous);
+    if (!row) throw new GachaError("GACHA_STATE_INVALID", "The farm plot order is invalid");
+    plots.push(plotIdentity(JSON.parse(row.fields_json)));
+    previous = row.member_key;
+  }
+  if (byPrevious.has(previous)) throw new GachaError("GACHA_STATE_INVALID", "The farm plot order is invalid");
+  return plots;
+}
+
+function checkedFarmPaths(database, farmId, paths, liveFarm) {
+  const stored = readFarmStatePaths(database, farmId, paths);
+  if (liveFarm && stableJson(stored) !== stableJson(projectFarmPaths(liveFarm, paths))) {
+    throw new GachaError("GACHA_STATE_CONFLICT", "The Farm memory state is stale");
+  }
+  return stored;
+}
+
+function recordKinds(database, farmId, paths) {
+  const rows = database.prepare(`SELECT record_path,record_kind FROM farm_domain_records
+    WHERE farm_id=? AND record_path IN (SELECT value FROM json_each(?))`)
+    .all(farmId, JSON.stringify(paths.map(farmRecordPath)));
+  return new Map(rows.map(row => [row.record_path, row.record_kind]));
+}
+
+function prizePaths(rewards) {
+  const paths = new Map();
+  const add = path => paths.set(farmRecordPath(path), path);
+  for (const reward of rewards) {
+    if (reward.category === "ingredient") add(["ranch", "kitchen", "ingredients", reward.id]);
+    else if (reward.category.endsWith("_seed")) add(["seeds", reward.id]);
+    else if (reward.category === "material" || reward.category === "sp_material") add(["materials", reward.id]);
+  }
+  return [...paths.values()];
+}
+
+function prizeKitchenShape(database, entry) {
+  const kinds = recordKinds(database, entry.farmId, GACHA_KITCHEN_PATHS);
+  const has = (path, kind) => kinds.get(farmRecordPath(path)) === kind;
+  const ranch = has(["ranch"], "object");
+  const kitchen = ranch && has(["ranch", "kitchen"], "object");
+  const coins = readFarmStatePaths(database, entry.farmId, [["ranch", "coins"]]);
+  return {
+    ranch, kitchen,
+    animals: ranch && has(["ranch", "animals"], "array"),
+    coins: ranch && Number.isSafeInteger(coins.ranch?.coins),
+    products: kitchen && has(["ranch", "kitchen", "products"], "array"),
+    ingredients: kitchen && has(["ranch", "kitchen", "ingredients"], "object"),
+    dishes: kitchen && has(["ranch", "kitchen", "dishes"], "array"),
+    knownRecipes: kitchen && has(["ranch", "kitchen", "knownRecipes"], "array"),
+    coinsValue: coins.ranch?.coins,
+  };
+}
+
+function assertKitchenMemory(entry, shape, liveFarm = entry.liveFarm) {
+  if (!liveFarm) return;
+  const ranch = liveFarm.ranch, kitchen = ranch?.kitchen;
+  const matches = (present, value, kind) => {
+    const valid = kind === "array" ? Array.isArray(value) : isObject(value);
+    if (present) return valid;
+    return !valid || (kind === "array" ? value.length === 0 : Object.keys(value).length === 0);
+  };
+  const emptyKitchen = isObject(kitchen) && Object.keys(kitchen).every(key =>
+    key === "ingredients" ? isObject(kitchen[key]) && Object.keys(kitchen[key]).length === 0
+      : ["products", "dishes", "knownRecipes"].includes(key) && Array.isArray(kitchen[key]) && kitchen[key].length === 0);
+  if (!matches(shape.ranch, ranch, "object") ||
+      (shape.kitchen ? !isObject(kitchen) : isObject(kitchen) && !emptyKitchen) ||
+      !matches(shape.animals, ranch?.animals, "array") ||
+      !matches(shape.products, kitchen?.products, "array") ||
+      !matches(shape.ingredients, kitchen?.ingredients, "object") ||
+      !matches(shape.dishes, kitchen?.dishes, "array") ||
+      !matches(shape.knownRecipes, kitchen?.knownRecipes, "array") ||
+      (shape.coins && ranch?.coins !== shape.coinsValue) ||
+      (!shape.coins && Number.isSafeInteger(ranch?.coins) && ranch.coins !== 0)) {
+    throw new GachaError("GACHA_STATE_CONFLICT", "The Farm memory state is stale");
+  }
+}
+
+function preparePrizeFarm(database, entry, rewards) {
+  const paths = prizePaths(rewards);
+  const dynamic = checkedFarmPaths(database, entry.farmId, paths, entry.liveFarm);
+  entry.prizePaths = paths;
+  entry.prizeBefore = dynamic;
+  entry.rewards = rewards;
+  const inventoryFields = [...new Set(paths.filter(path => path[0] === "seeds" || path[0] === "materials").map(path => path[0]))];
+  const inventoryKinds = inventoryFields.length
+    ? recordKinds(database, entry.farmId, inventoryFields.map(field => [field])) : new Map();
+  entry.inventoryObjects = new Map(inventoryFields.map(field => [field, inventoryKinds.get(farmRecordPath([field])) === "object"]));
+  const needsKitchen = rewards.some(reward => reward.category === "ingredient" || reward.category === "dish");
+  if (needsKitchen) {
+    entry.kitchenShape = prizeKitchenShape(database, entry);
+    assertKitchenMemory(entry, entry.kitchenShape);
+    entry.farm.ranch = { animals: [], coins: entry.kitchenShape.coins ? entry.kitchenShape.coinsValue : 0,
+      kitchen: { products: [], ingredients: {}, dishes: [], knownRecipes: [] } };
+  }
+  for (const path of paths) {
+    const value = pathValue(dynamic, path);
+    if (value !== undefined) assignPath(entry.farm, path, value);
+  }
+}
+
+function prizeUpdates(entry) {
+  const farm = entry.farm;
+  const updates = [["coins"], ["silver"], ["doorbellGachaDaily"], ["doorbellGachaPity"]];
+  if (entry.rewards.some(reward => reward.category === "decor")) {
+    updates.push(...changedPaths(entry.baseBefore.farmDecorations, farm.farmDecorations, ["farmDecorations"]));
+  }
+  const shape = entry.kitchenShape;
+  if (shape) {
+    if (!shape.ranch) updates.push(["ranch"]);
+    else {
+      if (!shape.animals) updates.push(["ranch", "animals"]);
+      if (!shape.coins) updates.push(["ranch", "coins"]);
+      if (!shape.kitchen) updates.push(["ranch", "kitchen"]);
+      else {
+        for (const field of ["products", "ingredients", "dishes", "knownRecipes"]) {
+          if (!shape[field]) updates.push(["ranch", "kitchen", field]);
+        }
+      }
+    }
+  }
+  for (const [field, exists] of entry.inventoryObjects) {
+    if (!exists) updates.push([field]);
+  }
+  for (const path of entry.prizePaths) {
+    if ((path[0] === "seeds" || path[0] === "materials") && !entry.inventoryObjects.get(path[0])) continue;
+    if (path[0] !== "ranch" || (shape?.ranch && shape?.kitchen && shape.ingredients)) updates.push(path);
+  }
+  const appended = shape?.ranch && shape?.kitchen && shape.dishes
+    ? farm.ranch.kitchen.dishes : [];
+  return { updates: updates.map(path => ({ path, value: pathValue(farm, path) })), appended };
+}
+
+function changedPaths(before, after, path) {
+  if (before === after) return [];
+  if (isObject(before) && isObject(after)) {
+    return [...new Set([...Object.keys(before), ...Object.keys(after)])]
+      .flatMap(key => changedPaths(before[key], after[key], [...path, key]));
+  }
+  return stableJson(before) === stableJson(after) ? [] : [path];
+}
+
+function stateConflict(error) {
+  if (error?.code === "farm_state_conflict" || error?.message === "farm_state_conflict")
+    return new GachaError("GACHA_STATE_CONFLICT", "The farm state changed while drawing", { cause: error });
+  return error;
+}
+
+function assertPublicationMemory(entry, liveFarm) {
+  if (!liveFarm) throw new GachaError("GACHA_FARM_NOT_FOUND", "The farm was removed while drawing");
+  if (stableJson(projectGachaBase(liveFarm)) !== stableJson(entry.baseBefore) ||
+      stableJson(projectFarmPaths(liveFarm, entry.prizePaths)) !== stableJson(entry.prizeBefore)) {
+    throw new GachaError("GACHA_STATE_CONFLICT", "The Farm memory state changed while drawing");
+  }
+  if (entry.kitchenShape) assertKitchenMemory(entry, entry.kitchenShape, liveFarm);
+  for (const [key, receipt] of Object.entries(entry.farm.doorbellGachaReceipts ?? {})) {
+    const current = liveFarm.doorbellGachaReceipts?.[key];
+    if (current && stableJson(current) !== stableJson(receipt))
+      throw new GachaError("GACHA_IDEMPOTENCY_CONFLICT", "This idempotency key was used for a different request");
+  }
+}
+
+function createRecordFarmStateStore(database, runtime) {
   assertRuntimeDatabase(database);
   return Object.freeze({
     findByHumanKey(humanKey) {
-      const liveFarm = playerFarms().find((farm) => farm?.humanKey === humanKey);
-      if (!liveFarm) return null;
-      const row = database
-        .prepare("SELECT farm_id, position, state_json FROM farm_states WHERE farm_id = ?")
-        .get(liveFarm.id);
-      if (!row) {
+      const farmId = findFarmIdByHumanKey(database, humanKey);
+      if (!farmId || (runtime && farmId === NPC_ID)) return null;
+      const liveFarm = runtime ? getFarm(farmId) : null;
+      if (runtime && !liveFarm) return null;
+      const expectedRevision = readFarmStateRevision(database, farmId);
+      if (!Number.isSafeInteger(expectedRevision))
         throw new GachaError("GACHA_STATE_CONFLICT", "The farm durable state is unavailable");
-      }
-      const storedFarm = parseStoredFarm(row);
-      const normalizedStored = normalizeFarm(structuredClone(storedFarm));
-      const normalizedLive = normalizeFarm(structuredClone(liveFarm));
-      if (persistedFarmJson(normalizedLive) !== persistedFarmJson(normalizedStored)) {
+      const farm = readFarmStatePaths(database, farmId, GACHA_BASE_PATHS);
+      const plots = readGachaPlots(database, farmId);
+      if (plots !== undefined) farm.plots = plots;
+      if (liveFarm && stableJson(projectGachaBase(liveFarm)) !== stableJson(farm))
         throw new GachaError("GACHA_STATE_CONFLICT", "The Farm memory state is stale");
-      }
-      return {
-        farmId: row.farm_id,
-        position: row.position,
-        farm: normalizedLive,
-        expectedStateJson: row.state_json,
-        expectedMemoryStateJson: persistedFarmJson(normalizedLive),
-      };
+      return { farmId, farm, liveFarm, expectedRevision, baseBefore: structuredClone(farm) };
     },
-    save({ farmId, farm, expectedStateJson }) {
-      if (typeof expectedStateJson !== "string") {
+    prepareRewards({ entry, rewards }) { preparePrizeFarm(database, entry, rewards); },
+    save({ entry }) {
+      if (!entry || !Number.isSafeInteger(entry.expectedRevision))
         throw new GachaError("GACHA_STATE_CONFLICT", "The farm state compare point is missing");
-      }
-      const stateJson = JSON.stringify(persistedFarmState(farm));
-      const result = database
-        .prepare(
-          "UPDATE farm_states SET state_json = ? WHERE farm_id = ? AND state_json = ?",
-        )
-        .run(stateJson, farmId, expectedStateJson);
-      if (Number(result?.changes) !== 1) {
-        throw new GachaError("GACHA_STATE_CONFLICT", "The farm state changed while drawing");
-      }
+      if (entry.liveFarm) assertPublicationMemory(entry, getFarm(entry.farmId));
+      const changes = prizeUpdates(entry);
+      try {
+        entry.committedRecords = writeFarmStatePaths(database, entry.farmId, changes.updates, {
+          expectedRevision: entry.expectedRevision,
+          ...(changes.appended.length ? { appendItems: [{ path: ["ranch", "kitchen", "dishes"],
+            values: changes.appended }] } : {}),
+        }).recordChanges;
+      } catch (error) { throw stateConflict(error); }
+      entry.publication = changes;
     },
-    publish({ farmId, farm, expectedMemoryStateJson }) {
-      const liveFarm = playerFarms().find((candidate) => candidate?.id === farmId);
-      if (!liveFarm) {
-        throw new GachaError("GACHA_FARM_NOT_FOUND", "The farm was removed while drawing");
+    publish({ entry }) {
+      const liveFarm = getFarm(entry.farmId);
+      assertPublicationMemory(entry, liveFarm);
+      for (const { path, value } of entry.publication.updates) assignPath(liveFarm, path, value);
+      if (entry.publication.appended.length) {
+        liveFarm.ranch.kitchen.dishes.push(...structuredClone(entry.publication.appended));
       }
-      const normalizedLive = normalizeFarm(structuredClone(liveFarm));
-      if (
-        typeof expectedMemoryStateJson === "string" &&
-        persistedFarmJson(normalizedLive) !== expectedMemoryStateJson
-      ) {
-        throw new GachaError("GACHA_STATE_CONFLICT", "The Farm memory state changed while drawing");
+      for (const [key, receipt] of Object.entries(entry.farm.doorbellGachaReceipts ?? {})) {
+        (liveFarm.doorbellGachaReceipts ??= {})[key] = structuredClone(receipt);
       }
-      const published = structuredClone(farm);
-      for (const key of Object.keys(liveFarm)) delete liveFarm[key];
-      Object.assign(liveFarm, published);
+      acceptCommittedFarmRecords(liveFarm,entry.committedRecords,Object.keys(entry.farm.doorbellGachaReceipts??{})
+        .map(receiptKey=>({scope:"/doorbellGachaReceipts",receiptKey})));
       return liveFarm;
     },
   });
+}
+
+export function createRuntimeFarmStateStore(database) {
+  return createRecordFarmStateStore(database, true);
 }
 
 function farmGachaReceipts(farm, create = false) {
@@ -769,34 +974,7 @@ export function createSqliteTransactionRunner(database) {
 }
 
 export function createSqliteFarmStateStore(database) {
-  if (!database || typeof database.prepare !== "function") {
-    throw new TypeError("A SQLite database is required");
-  }
-  return {
-    findByHumanKey(humanKey) {
-      const rows = database.prepare("SELECT farm_id, position, state_json FROM farm_states ORDER BY position").all();
-      for (const row of rows) {
-        let farm;
-        try {
-          farm = JSON.parse(row.state_json);
-        } catch {
-          throw new GachaError("GACHA_STATE_INVALID", "The farm state is invalid");
-        }
-        if (farm?.humanKey === humanKey) {
-          return { farmId: row.farm_id, position: row.position, farm };
-        }
-      }
-      return null;
-    },
-    save({ farmId, farm }) {
-      const result = database
-        .prepare("UPDATE farm_states SET state_json = ? WHERE farm_id = ?")
-        .run(JSON.stringify(farm), farmId);
-      if (Number(result?.changes) !== 1) {
-        throw new GachaError("GACHA_STATE_CONFLICT", "The farm state changed while drawing");
-      }
-    },
-  };
+  return createRecordFarmStateStore(database, false);
 }
 
 export function createSqliteReceiptStore(database) {
@@ -971,6 +1149,7 @@ export function createGachaService(options = {}) {
           throw mapEconomyError(error);
         }
       }
+      farmStore.prepareRewards?.({ entry, rewards });
       for (const reward of rewards) {
         if (!reward.currency) {
           const grantNow = reward.category === "decor" ? readNow() : now;
@@ -1008,6 +1187,7 @@ export function createGachaService(options = {}) {
         farmId: resolved.farmId,
         farm: resolved.farm,
         expectedStateJson: entry.expectedStateJson,
+        entry,
       });
       try {
         receiptStore.put({
@@ -1026,6 +1206,7 @@ export function createGachaService(options = {}) {
       committedFarm = resolved.farm;
       committedFarmMeta = {
         expectedMemoryStateJson: entry.expectedMemoryStateJson,
+        entry,
       };
       return result;
     });
@@ -1113,6 +1294,7 @@ export function createGachaService(options = {}) {
         ? null
         : pickItem(random, itemPool(lists, category, resolved.farm, selectionNow));
       const reward = makeReward(category, item, selectionNow, generateId, random, lists);
+      farmStore.prepareRewards?.({ entry, rewards: [reward] });
       let awarded = charged;
       if (reward.currency) {
         try {
@@ -1166,6 +1348,7 @@ export function createGachaService(options = {}) {
         farmId: resolved.farmId,
         farm: resolved.farm,
         expectedStateJson: entry.expectedStateJson,
+        entry,
       });
       try {
         receiptStore.put({
@@ -1184,6 +1367,7 @@ export function createGachaService(options = {}) {
       committedFarm = resolved.farm;
       committedFarmMeta = {
         expectedMemoryStateJson: entry.expectedMemoryStateJson,
+        entry,
       };
       return result;
     });

@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { toggleStar } from "../engine.js";
 import { getCrop } from "../content.js";
@@ -185,7 +186,7 @@ export function handleHumanCropCodexAction(farm, body, now = Date.now()) {
   }
 
   try {
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     const authority = applyDesiredStar(working, body);
     if (!authority?.ok) {
       return errorResponse("action_rejected", authority?.error || "The crop codex action was rejected");
@@ -202,7 +203,7 @@ export function handleHumanCropCodexAction(farm, body, now = Date.now()) {
       ...(isRecord(working[RECEIPTS_FIELD]) ? working[RECEIPTS_FIELD] : {}),
       [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanCropCodexActionReceipts", receiptKey: key }] });
     return { status: 200, json: response };
   } catch {
     return errorResponse("farm_unavailable", "The crop codex action could not be saved");

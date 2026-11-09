@@ -1,4 +1,5 @@
 import { stageAnnualCounters } from "../../annual-statistics/world-buffer.js";
+import { cloneFarmForMutation } from "../../farm-mutation-scope.js";
 import { Rng } from "../../rng.js";
 import { currentDayIndex } from "../../time.js";
 import { bumpDaily } from "../../daily.js";
@@ -108,7 +109,7 @@ export function refreshKitchenIngredients(farm, now = Date.now()) {
     let generatedFarm;
     let ingredientIds;
     try {
-        generatedFarm = structuredClone(farm);
+        generatedFarm = cloneFarmForMutation(farm);
         ingredientIds = shuffledWithFarmRng(generatedFarm, rotating)
             .slice(0, cooking.dailyRotatingCount);
         const generatedShop = { ...shop, ingredientIds: [...ingredientIds] };

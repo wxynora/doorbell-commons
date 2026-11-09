@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { kitchenSellSelected, humanBarterList, humanBarterUnlist, pushInbox } from "../engine.js";
 import { listForSale, unlistItem } from "../game.js";
@@ -420,7 +421,7 @@ function resourceResponse(farm, key, action, outcome, now, mysteryMerchantWorld)
  * save anything. Market writes return this complete resource after settlement.
  */
 export function readHumanMarket(farm, now = Date.now()) {
-  const working = structuredClone(farm);
+  const working = cloneFarmForMutation(farm);
   normalizeFarm(working);
   const projected = projectHumanFarmCatalog(working, now);
   return {
@@ -452,14 +453,14 @@ export function discoverAndBroadcastMysteryMerchant(farm, now) {
     return { farm, world: discovery.world, discovered: false };
   }
   const farms = playerFarms().map((current) => {
-    const working = structuredClone(current);
+    const working = cloneFarmForMutation(current);
     normalizeFarm(working);
     pushInbox(
       working,
       `📣 神秘商人出现在「${farm.name}」，将在 ${beijingTime(discovery.endsAt)} 离开。\n${MYSTERY_MERCHANT_MARKET_GUIDANCE}`,
       now,
     );
-    return { id: working.id, farm: working };
+    return { id: working.id, farm: working, receiptKeys: [] };
   });
   const committed = replaceFarmsAndMysteryMerchantAtomic({
     replacements: farms,
@@ -478,7 +479,7 @@ export function handleHumanMarketAction(farm, body, now = Date.now()) {
 
   if (body.action === "browse") {
     try {
-      const working = structuredClone(farm);
+      const working = cloneFarmForMutation(farm);
       normalizeFarm(working);
       const currentRevision = marketActionRevision(working, now);
       if (currentRevision !== body.expected_revision) {
@@ -543,7 +544,7 @@ export function handleHumanMarketAction(farm, body, now = Date.now()) {
 
   if (body.action === "mystery-merchant-buy") {
     try {
-      const working = structuredClone(farm);
+      const working = cloneFarmForMutation(farm);
       normalizeFarm(working);
       const result = buyMysteryMerchantOffers({
         world: getMysteryMerchantWorld(),
@@ -584,7 +585,9 @@ export function handleHumanMarketAction(farm, body, now = Date.now()) {
         [body.idempotency_key]: createHumanMarketActionReceipt(requestFingerprint, response),
       };
       replaceFarmAndMysteryMerchantAtomic({
-        replacement: { id: farm.id, farm: working },
+        replacement: { id: farm.id, farm: working, receiptKeys: [
+          { scope: "/doorbellHumanMarketActionReceipts", receiptKey: body.idempotency_key },
+        ] },
         nextMysteryMerchantWorld: result.world,
       });
       return { status: 200, json: response };
@@ -596,7 +599,7 @@ export function handleHumanMarketAction(farm, body, now = Date.now()) {
   let ugcSnapshot;
   try {
     ugcSnapshot = structuredClone(dumpUgc());
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     normalizeFarm(working);
     const result = callSingleFarmAuthority(working, body, now);
     const valid = body.action === "list"
@@ -631,7 +634,9 @@ export function handleHumanMarketAction(farm, body, now = Date.now()) {
     };
     const nextUgc = structuredClone(dumpUgc());
     loadUgc(ugcSnapshot);
-    replaceFarmsAtomic([{ id: farm.id, farm: working }], nextUgc);
+    replaceFarmsAtomic([{ id: farm.id, farm: working, receiptKeys: [
+      { scope: "/doorbellHumanMarketActionReceipts", receiptKey: body.idempotency_key },
+    ] }], nextUgc);
     return { status: 200, json: response };
   } catch {
     if (ugcSnapshot !== undefined) loadUgc(ugcSnapshot);

@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { advance, humanHarvestAll, humanHarvestLeft, pushSocialInbox } from "../engine.js";
 import { rollSeasonHarvest } from "../season-events.js";
@@ -111,7 +112,7 @@ function handleHumanHarvestAssistInAction(farm, body, now = Date.now(), options 
   if (current.revision !== body.expected_revision)
     return errorResponse("state_conflict", "The farm field has changed", current.revision);
 
-  const working = structuredClone(farm);
+  const working = cloneFarmForMutation(farm);
   try {
     // Keep this order identical to the legacy /ui/<humanKey>/harvest route.
     advance(working, now);
@@ -190,7 +191,7 @@ function handleHumanHarvestAssistInAction(farm, body, now = Date.now(), options 
       ...(working.doorbellHumanHarvestReceipts ?? {}),
       [key]: createMinimalHumanActionReceipt(fp, response),
     };
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanHarvestReceipts", receiptKey: key }] });
     return { status: 200, json: response };
   } catch {
     // Any partial engine result or failed save is discarded with the clone;

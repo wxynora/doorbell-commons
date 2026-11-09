@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { humanBarterAccept } from "../engine.js";
 import { buyFromMarket } from "../game.js";
@@ -263,8 +264,8 @@ export function handleHumanCrossFarmMarketAction(buyer, seller, body, now = Date
   const ugcBefore = structuredClone(dumpUgc());
   let nextUgc;
   try {
-    const buyerWorking = structuredClone(buyer);
-    const sellerWorking = structuredClone(seller);
+    const buyerWorking = cloneFarmForMutation(buyer);
+    const sellerWorking = cloneFarmForMutation(seller);
     normalizeFarm(buyerWorking);
     normalizeFarm(sellerWorking);
     const result = callAuthority(body, sellerWorking, buyerWorking, now);
@@ -290,8 +291,10 @@ export function handleHumanCrossFarmMarketAction(buyer, seller, body, now = Date
     loadUgc(ugcBefore);
     replaceFarmsAtomic(
       [
-        { id: buyer.id, farm: buyerWorking },
-        { id: seller.id, farm: sellerWorking },
+        { id: buyer.id, farm: buyerWorking, receiptKeys: [
+          { scope: "/doorbellHumanMarketActionReceipts", receiptKey: body.idempotency_key },
+        ] },
+        { id: seller.id, farm: sellerWorking, receiptKeys: [] },
       ],
       nextUgc,
     );

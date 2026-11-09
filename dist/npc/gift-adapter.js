@@ -1,3 +1,4 @@
+import {cloneFarmForMutation,currentFarmMutationScope,snapshotFarmMutation} from "../farm-mutation-scope.js";
 import { animals, cooking, cookingIngredientById, cookingProductById, cookingRecipeById } from "../content.js";
 import { createFarmWorldSqlitePersistence } from "../farm-world-sqlite-persistence.js";
 import { COOKING_PRICE_VERSION } from "../domain/kitchen/pricing.js";
@@ -21,7 +22,7 @@ export function createLingyeNpcGiftAdapter({ database, economyCommands, getFarmF
                 throw new Error("lingye_npc_gift_resident_binding_invalid");
             const stored = database.prepare("SELECT farm_id FROM farm_states WHERE farm_id = ?").get(farm.id);
             if (!stored) throw new Error("lingye_npc_gift_farm_not_persisted");
-            const working = structuredClone(farm);
+            const working = cloneFarmForMutation(farm);
             let name;
             let financialReceipt = null;
             if (kind === "gold") {
@@ -75,8 +76,8 @@ export function createLingyeNpcGiftAdapter({ database, economyCommands, getFarmF
                 // Receiving a meal does not discover its recipe or count as cooking.
             }
             else throw new Error("lingye_npc_gift_kind_invalid");
-            persistence.commitMutation({
-                farms: [{ id: farm.id, state: working }], components: [],
+            const committed = persistence.commitMutation({
+                farms: [{ id: farm.id, state: working, before: farm, receiptKeys: [] }], components: [],
                 // The caller owns the outer COMMIT and delays live publication.
                 durableBoundary: true,
             });
@@ -94,6 +95,8 @@ export function createLingyeNpcGiftAdapter({ database, economyCommands, getFarmF
                         farm.doorbellMcpMigration.balanceProjection = working.doorbellMcpMigration.balanceProjection;
                     }
                     else ensureKitchen(farm) && (farm.ranch.kitchen = working.ranch.kitchen);
+                    const scope=currentFarmMutationScope();
+                    if (scope) scope.farms.set(farm.id,snapshotFarmMutation(farm,committed.farmPlans.get(farm.id)));
                 },
             };
         },

@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { refreshKitchenIngredients } from "../engine.js";
 import { replaceFarm } from "../store.js";
@@ -170,7 +171,7 @@ export function handleHumanKitchenShopRefresh(farm, body, now = Date.now(), opti
   }
 
   try {
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     if (!Number.isSafeInteger(working.coins) || working.coins < 0) {
       return errorResponse("farm_unavailable", "The farm coins balance is invalid", 503);
     }
@@ -234,7 +235,7 @@ export function handleHumanKitchenShopRefresh(farm, body, now = Date.now(), opti
         : {}),
       [body.idempotency_key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanKitchenShopRefreshReceipts", receiptKey: body.idempotency_key }] });
     return { status: 200, json: response };
   } catch {
     return errorResponse("farm_unavailable", "The kitchen ingredient refresh could not be saved", 503);

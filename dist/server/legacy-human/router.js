@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { cloneFarmForMutation, snapshotFarmMutation, planFarmMutation } from "../../farm-mutation-scope.js";
 
 import {
     advance,
@@ -38,6 +39,7 @@ import {
 import { buyFromMarket, dispatch } from "../../game.js";
 import {
     allFarms,
+    captureLiveFarmMutation,
     getFarm,
     getGlimmerWorld,
     getPublicExpeditionWorld,
@@ -123,30 +125,51 @@ export async function handleLegacyHumanRoute({
         res.writeHead(403, AGENT_HEADERS);
         return res.end("人类端探险目前只支持协助掷骰。");
     }
+    // Read the form before touching a live farm: another request can complete
+    // while the request body is arriving.
+    const section = parts[2];
+    const act = parts[3];
+    const needsForm = method === "POST" && (
+        section === "title" ||
+        section === "market" && ["buy", "list", "trade", "unlist"].includes(act) ||
+        section === "cooking" && ["buy-ingredient", "buy-recipe", "cook", "use", "sell", "sell-fish", "sell-treasure"].includes(act) ||
+        section === "qixi" && isQixiLantern2026Active(now) ||
+        section === "ranch" && ["collect", "sell-product", "feed", "remit", "dress", "decorate", "wear", "takeoff", "place", "unplace", "upgrade", "name-animal", "name-pet", "name-goose", "pin", "variant", "dispatch-raid", "catch-raid"].includes(act) ||
+        section === "ta" && ["names", "welcome", "design", "message", "craft", "social"].includes(act) ||
+        section === "expedition" && act === "roll" || section === "codex" && act === "star"
+    );
+    const formBody = needsForm ? await readFormBody(req) : undefined;
+    if (needsForm) {
+        f = allFarms().find(farm => farm.humanKey === key);
+        if (!f) {
+            res.writeHead(404, AGENT_HEADERS);
+            return res.end(uiInvalid());
+        }
+    }
     const raidSettlement = settleDueRanchRaids(now);
     if (raidSettlement.settled > 0) {
         f = allFarms().find((farm) => farm.humanKey === key);
     }
     if (method === "GET")
-        f = structuredClone(f);
+        f = cloneFarmForMutation(f);
+    else
+        captureLiveFarmMutation(f);
     advance(f, now);
     if (!f.humanFrontendSeen) {
         f.humanFrontendSeen = true;
         replaceFarm(f.id, f);
-        f = method === "GET" ? structuredClone(getFarm(f.id)) : getFarm(f.id);
+        f = method === "GET" ? cloneFarmForMutation(getFarm(f.id)) : getFarm(f.id);
     } // 伴侣已打开前端 → Agent 页"先发链接"新手任务可撤掉
-    const section = parts[2];
     const persistHumanReadFarm = () => {
         const current = getFarm(f.id);
-        if (method === "GET" && current && JSON.stringify(f) !== JSON.stringify(current))
-            replaceFarm(f.id, f);
+        if (method === "GET" && current) {
+            const plan = planFarmMutation(f, snapshotFarmMutation(current));
+            if (plan.recordChanges.length || plan.receiptKeys.length) replaceFarm(f.id, f);
+        }
     };
     const renderHuman = (html) => {
         if (method !== "GET")
             return html;
-        const publicWorld = structuredClone(getPublicExpeditionWorld());
-        const publicFarms = playerFarms().map((farm) => structuredClone(farm));
-        advancePublicExpedition(publicWorld, publicFarms, now);
         const notices = takeRanchNotices(f, section);
         persistHumanReadFarm();
         return uiHumanNotices(html, notices);
@@ -183,7 +206,7 @@ export async function handleLegacyHumanRoute({
     }
     // 🎖️ 佩戴称号：主页名字旁的下拉提交到这里。POST /ui/<key>/title → 存 titleEquipped → 303 跳回主页。
     if (section === "title" && method === "POST") {
-        const form = await readFormBody(req);
+        const form = formBody;
         checkTitles(f); // 佩戴前补结算解锁
         equipTitle(f, String(form.id ?? "").trim());
         save();
@@ -194,7 +217,7 @@ export async function handleLegacyHumanRoute({
     if (section === "market") {
         const act = parts[3];
         if (method === "POST" && ["buy", "list", "trade", "unlist"].includes(act)) {
-            const form = await readFormBody(req);
+            const form = formBody;
             const splitRef = (raw) => {
                 const value = String(raw ?? "");
                 const at = value.indexOf(":");
@@ -253,7 +276,7 @@ export async function handleLegacyHumanRoute({
     if (section === "cooking") {
         const act = parts[3];
         if (method === "POST" && ["buy-ingredient", "buy-recipe", "cook", "use", "sell", "sell-fish", "sell-treasure"].includes(act)) {
-            const form = await readFormBody(req);
+            const form = formBody;
             let flash;
             let result;
             if (act === "buy-ingredient") {
@@ -353,7 +376,7 @@ export async function handleLegacyHumanRoute({
         const world = getQixiLantern2026World();
         const reconciled = reconcileQixiLantern2026Farm(f, world, now);
         if (method === "POST") {
-            const form = await readFormBody(req);
+            const form = formBody;
             const act = parts[3];
             let changed = false;
             let showLetter = false;
@@ -442,7 +465,7 @@ export async function handleLegacyHumanRoute({
     if (section === "ranch") {
         const act = parts[3];
         if (method === "POST" && (act === "collect" || act === "sell-product" || act === "feed" || act === "remit" || act === "dress" || act === "decorate" || act === "wear" || act === "takeoff" || act === "place" || act === "unplace" || act === "upgrade" || act === "name-animal" || act === "name-pet" || act === "name-goose" || act === "pin" || act === "variant" || act === "dispatch-raid" || act === "catch-raid")) {
-            const form = await readFormBody(req);
+            const form = formBody;
             let flash;
             const ai = f.aiName || f.name || "对方";
             if (act === "dispatch-raid") {
@@ -548,7 +571,7 @@ export async function handleLegacyHumanRoute({
     if (section === "ta") {
         const act = parts[3];
         if (method === "POST" && (act === "names" || act === "welcome" || act === "design" || act === "message" || act === "craft" || act === "social")) {
-            const form = await readFormBody(req);
+            const form = formBody;
             let flash;
             const ai = f.aiName || f.name || "小克";
             if (act === "names") {
@@ -685,7 +708,7 @@ export async function handleLegacyHumanRoute({
     if (section === "expedition") {
         const act = parts[3];
         if (method === "POST" && act === "roll") {
-            await readFormBody(req);
+            // The body was consumed before advancing the live farm.
             const flash = expRoll(f, true, now).text;
             checkTitles(f); // 默契称号：伴侣摇骰赢一场战斗会 +1 默契度
             save();
@@ -698,7 +721,7 @@ export async function handleLegacyHumanRoute({
     // 📖 图鉴册：唯一「能写」的部分=星标收藏。POST star 切换喜欢的作物 → 303 跳回（PRG），带 anchor 回到原栏位。
     if (section === "codex") {
         if (method === "POST" && parts[3] === "star") {
-            const form = await readFormBody(req);
+            const form = formBody;
             const r = toggleStar(f, String(form.id ?? "").trim());
             if (r.ok)
                 save();

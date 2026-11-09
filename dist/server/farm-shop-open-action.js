@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { refreshShop } from "../engine.js";
 import { replaceFarm } from "../store.js";
@@ -144,7 +145,7 @@ export function handleHumanFarmShopOpen(farm, body, now = Date.now()) {
   }
 
   try {
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     const beforeRefreshAt = Number(working.shop?.refreshAt);
     refreshShop(working, now);
     const projected = projectHumanFarmCatalog(working, now);
@@ -162,7 +163,7 @@ export function handleHumanFarmShopOpen(farm, body, now = Date.now()) {
       ...(isRecord(working[RECEIPTS_FIELD]) ? working[RECEIPTS_FIELD] : {}),
       [body.idempotency_key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanFarmShopOpenReceipts", receiptKey: body.idempotency_key }] });
     return { status: 200, json: response };
   } catch {
     return errorResponse("farm_unavailable", "The farm shop could not be refreshed", 503);

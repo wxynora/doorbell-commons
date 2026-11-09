@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import {
   animalById,
@@ -362,7 +363,7 @@ export function handleHumanRanchResidentAction(farm, body, now = Date.now()) {
   }
 
   try {
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     const ref = residentRef(working, body.resident_type, body.kind_id);
     if (!knownResidentTarget(working, body.resident_type, body.kind_id, ref)) {
       return errorResponse("action_rejected", "The selected ranch resident does not exist");
@@ -402,7 +403,7 @@ export function handleHumanRanchResidentAction(farm, body, now = Date.now()) {
         : {}),
       [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanRanchResidentActionReceipts", receiptKey: key }] });
     return { status: 200, json: response };
   } catch {
     // The original farm is untouched until replaceFarm.  Its own save failure

@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { designCrop } from "../engine.js";
 import { replaceFarmsAtomic } from "../store.js";
@@ -185,7 +186,7 @@ export function handleHumanOriginalPlantAction(farm, body, now = Date.now()) {
   let ugcSnapshot;
   try {
     ugcSnapshot = structuredClone(dumpUgc());
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     const authorityResult = designCrop(working, {
       name: body.payload.name,
       latin: body.payload.latin,
@@ -220,7 +221,9 @@ export function handleHumanOriginalPlantAction(farm, body, now = Date.now()) {
     };
     const nextUgc = structuredClone(dumpUgc());
     loadUgc(ugcSnapshot);
-    replaceFarmsAtomic([{ id: farm.id, farm: working }], nextUgc);
+    replaceFarmsAtomic([{ id: farm.id, farm: working, receiptKeys: [
+      { scope: "/doorbellHumanOriginalPlantActionReceipts", receiptKey: key },
+    ] }], nextUgc);
     return { status: 200, json: response };
   } catch {
     if (ugcSnapshot !== undefined) loadUgc(ugcSnapshot);

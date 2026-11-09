@@ -1,3 +1,5 @@
+import {cloneFarmForMutation} from "./farm-mutation-scope.js";
+import { FARM_IDENTITY_SCHEMA_SQL, migrateFarmRecordsV3ToV4 } from "./farm-state-schema.js";
 import { measureFarmPhase } from "./server/farm-request-timing.js";
 import { manualPerformanceWorkflow, registerManualPublication } from "./career/reporter-manual-publication.js";
 import { installAnnualStatisticsSchema } from "./annual-statistics/schema.js";
@@ -41,6 +43,7 @@ import {
 import { createChefStoreFarmAdapter } from "./career/chef-store-farm-adapter.js";
 import { installLoungePetSchema } from "./lounge-pet/schema.js";
 import { installEconomySchema } from "./economy/economy-schema.js";
+import { clearCommittedFarmBalanceProjections, installFarmBalanceProjectionTracking } from "./farm-balance-projection.js";
 import { EconomyError } from "./economy/economy-errors.js";
 import { EconomyService } from "./economy/economy-service.js";
 import { installSecuritySchema, LingyeSecurityService } from "./security/index.js";
@@ -81,7 +84,7 @@ import { installHalloweenSchema } from "./halloween/schema.mjs";
 import { advanceLingyeNpcWorld } from "./npc/world-schedule.js";
 import { createLingyeNpcBusinessObserver } from "./npc/business-affinity-integration.js";
 
-export const LINGYE_WORLD_SCHEMA_VERSION = 3;
+export const LINGYE_WORLD_SCHEMA_VERSION = 4;
 const LINGYE_WORLD_SCHEMA_VERSION_2 = 2;
 
 const FARM_WORLD_PERSISTENCE_SCHEMA_SQL = `
@@ -107,7 +110,7 @@ const FARM_WORLD_PERSISTENCE_SCHEMA_SQL = `
 `;
 
 const FARM_WORLD_PERSISTENCE_TABLES = Object.freeze({
-    farm_states: Object.freeze(["farm_id", "position", "state_json"]),
+    farm_states: Object.freeze(["farm_id", "position", "resident_id", "state_revision"]),
     farm_action_receipts: Object.freeze([
         "farm_id",
         "scope",
@@ -115,7 +118,7 @@ const FARM_WORLD_PERSISTENCE_TABLES = Object.freeze({
         "payload_hash",
         "result_json",
     ]),
-    world_components: Object.freeze(["component_key", "state_json"]),
+    world_components: Object.freeze(["component_key"]),
 });
 
 function assertFarmWorldPersistenceSchema(database) {
@@ -153,7 +156,7 @@ function migrateLingyeWorldSchemaV2ToV3(database) {
     runLingyeWorldTransaction(database, () => {
         installHalloweenSchema(database);
         database.prepare("UPDATE lingye_world_schema_meta SET schema_version = ? WHERE singleton_id = 1")
-            .run(LINGYE_WORLD_SCHEMA_VERSION);
+            .run(3);
     });
 }
 
@@ -208,7 +211,7 @@ export function installLingyeWorldSchema(database) {
           registered_at INTEGER NOT NULL
         );
 
-        ${FARM_WORLD_PERSISTENCE_SCHEMA_SQL}
+        ${FARM_IDENTITY_SCHEMA_SQL}
       `);
         });
     }
@@ -226,6 +229,10 @@ export function installLingyeWorldSchema(database) {
         version = database
             .prepare("SELECT schema_version FROM lingye_world_schema_meta WHERE singleton_id = 1")
             .get();
+    }
+    if (version?.schema_version === 3) {
+        runLingyeWorldTransaction(database, () => migrateFarmRecordsV3ToV4(database));
+        version = database.prepare("SELECT schema_version FROM lingye_world_schema_meta WHERE singleton_id=1").get();
     }
     if (version?.schema_version !== LINGYE_WORLD_SCHEMA_VERSION)
         throw new Error(`Unsupported Lingye world schema version: ${version?.schema_version ?? "missing"}`);
@@ -302,6 +309,7 @@ export function installLingyeWorldSchema(database) {
         ON lingye_cross_store_operations(status, created_at, action_key);
     `);
     installEconomySchema(database);
+    installFarmBalanceProjectionTracking(database);
     installLoungePetSchema(database);
     installCareerSchema(database);
     installSecuritySchema(database);
@@ -364,6 +372,11 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
     const generateOperationId = options.generateOperationId ?? randomUUID;
     return (world, context, writeWorld, persistenceHints = null) => {
         const ownsDurableTransaction = !database.isTransaction;
+        // Read before starting our transaction: entries visible here came from
+        // a completed transaction, not this farm's balance update below.
+        const priorPendingResidents = ownsDurableTransaction && context?.balanceAuthority !== "ledger"
+            ? new Set(database.prepare("SELECT resident_id FROM farm_balance_projection_pending").all().map(row => row.resident_id))
+            : new Set();
         const publications = [];
         const result = runLingyeWorldTransaction(database, () => {
             const now = options.now?.() ?? Date.now();
@@ -375,7 +388,7 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 if ((!farm?.doorbellMcpMigration?.migrationId && !farm?.[PENDING_COUNTERS] && !farm?.[PENDING_REPORTER_MATERIALS]) ||
                     (candidateFarmIds && !candidateFarmIds.has(farm.id)))
                     return farm;
-                const staged = structuredClone(farm);
+                const staged = cloneFarmForMutation(farm);
                 publications.push({ target: farm, staged });
                 return staged;
             });
@@ -412,7 +425,7 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 const existing = publications.find(entry => entry.staged === world.farms[index]);
                 if (existing) return existing.staged;
                 const target = world.farms[index];
-                const staged = structuredClone(target);
+                const staged = cloneFarmForMutation(target);
                 publications.push({target, staged});
                 world.farms[index] = staged;
                 candidateFarmIds?.add(farmId);
@@ -433,7 +446,15 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                     continue;
                 const migration = farm.doorbellMcpMigration;
                 const residentId = migration.residentId;
-                const account = backend.trustedQueries.getAccount(residentId);
+                const accountRow = database.prepare(
+                    "SELECT available_gold, available_silver FROM economy_accounts WHERE resident_id = ?",
+                ).get(residentId);
+                if (!accountRow)
+                    throw new EconomyError("ACCOUNT_NOT_FOUND", { residentId });
+                const account = { availableGold: accountRow.available_gold, availableSilver: accountRow.available_silver };
+                if (!ledgerAuthority && priorPendingResidents.has(residentId) &&
+                    (farm.coins !== account.availableGold || farm.silver !== account.availableSilver))
+                    throw new Error("farm_balance_projection_pending");
                 if (ledgerAuthority) {
                     // A caller-owned SQL transaction may contain only the
                     // receipt-only Chef completion. Balance projection waits
@@ -441,6 +462,11 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                     // its explicit post-commit sync.
                     if (!ownsDurableTransaction)
                         continue;
+                    if (persistenceHints?.pendingBalanceProjection === true &&
+                        farm.coins === account.availableGold && farm.silver === account.availableSilver) {
+                        persistenceFarmIds.add(farm.id);
+                        continue;
+                    }
                     farm.coins = account.availableGold;
                     farm.silver = account.availableSilver;
                     migration.balanceProjection = {
@@ -521,6 +547,8 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 world.farms.filter(farm => committedFarmIds.has(farm.id)),
                 now,
             );
+            if (ownsDurableTransaction)
+                clearCommittedFarmBalanceProjections(database, world.farms, committedFarmIds);
             return written;
         });
         for (const { target, staged } of publications) {

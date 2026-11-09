@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../../farm-mutation-scope.js";
 const common = "snow_fort_participant";
 const outcomes = ["snow_fort_winner", "snow_fort_loser"];
 
@@ -33,7 +34,7 @@ export function stageTogetherTitles(farm, input) {
   if (!validTogetherTitles(input)) throw new Error("invalid_together_reward");
   assertTogetherTitleReplay([farm], input);
   if (Object.hasOwn(farm.togetherTitleRewards ?? {}, input.grant_id)) return null;
-  const working = structuredClone(farm);
+  const working = cloneFarmForMutation(farm);
   working.titles = [...new Set([...(working.titles ?? []), ...input.titles])];
   working.togetherTitleRewards = {
     ...(working.togetherTitleRewards ?? {}),

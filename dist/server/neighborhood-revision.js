@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { currentDayIndex } from "../time.js";
 import { allFarms } from "../store.js";
-import { allUgc } from "../ugc.js";
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -22,13 +21,16 @@ function digest(value) {
 }
 
 function farmSnapshot(farm) {
-  const snapshot = structuredClone(farm);
-  if (isRecord(snapshot)) {
-    for (const key of Object.keys(snapshot)) {
-      if (key.startsWith("doorbellHuman") && key.endsWith("Receipts")) delete snapshot[key];
-    }
-  }
-  return snapshot;
+  return {
+    id: farm.id,
+    name: farm.name,
+    aiName: farm.aiName,
+    visit: farm.social?.visit !== false,
+    message: farm.social?.message !== false,
+    guestbook: farm.guestbook !== false,
+    blocked: Array.isArray(farm.blocked) ? farm.blocked : [],
+    messages: Array.isArray(farm.messages) ? farm.messages : [],
+  };
 }
 
 /** Covers public farm state, social gates, guestbooks, rankings and original crops. */
@@ -42,6 +44,5 @@ export function neighborhoodMessageActionRevision(farm, now = Date.now()) {
       .filter((entry) => entry && typeof entry.id === "string")
       .sort((left, right) => left.id.localeCompare(right.id))
       .map(farmSnapshot),
-    ugc: structuredClone(allUgc()),
   })}`;
 }

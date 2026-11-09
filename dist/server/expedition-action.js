@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { expRoll } from "../expedition.js";
 import { replaceFarm } from "../store.js";
@@ -182,7 +183,7 @@ export function handleHumanExpeditionAction(farm, body, now = Date.now()) {
   }
 
   try {
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     const authorityResult = expRoll(working, true, now);
     if (authorityResult?.ok !== true) {
       return errorResponse(
@@ -207,7 +208,7 @@ export function handleHumanExpeditionAction(farm, body, now = Date.now()) {
         : {}),
       [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanExpeditionActionReceipts", receiptKey: key }] });
     return { status: 200, json: response };
   } catch {
     return {

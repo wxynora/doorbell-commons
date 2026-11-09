@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { replaceFarm, getNatureWorld } from "../store.js";
 import { natureSnapshot } from "../nature.js";
@@ -55,7 +56,7 @@ export function handleHumanFarmDecorationSave(farm, body, now = Date.now()) {
     if (body.expected_revision !== revision) return error("state_conflict", revision);
     const layout=loading||renaming?savedLayoutSlots(farm).find(s=>s.slot===(renaming?body.rename_slot:body.load_slot))?.layout:body.layout;
     if((loading||renaming)&&!layout)return error("layout_slot_empty");
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     if(renaming)renameLayoutSlot(working,body.rename_slot,body.name);
     else {
       const state = decorationState(farm,now), invalid = validateDecorationLayout(farm, layout, state.owned);
@@ -65,7 +66,7 @@ export function handleHumanFarmDecorationSave(farm, body, now = Date.now()) {
     }
     const out = response(working, now, { receipt_id: body.idempotency_key });
     working.doorbellHumanFarmDecorationReceipts = { ...receipts, [body.idempotency_key]: createMinimalHumanActionReceipt(fingerprint, out) };
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanFarmDecorationReceipts", receiptKey: body.idempotency_key }] });
     return { status: 200, json: out };
   } catch { return error("farm_unavailable"); }
 }

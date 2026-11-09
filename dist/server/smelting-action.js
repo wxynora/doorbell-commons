@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { craft } from "../engine.js";
 import { replaceFarm } from "../store.js";
@@ -160,7 +161,7 @@ export function handleHumanSmeltingAction(farm, body, now = Date.now()) {
   }
 
   try {
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     const authority = craft(working, body.material_ids, now);
     if (!authority?.ok) {
       return errorResponse("action_rejected", authority?.error || "The smelting action was rejected");
@@ -179,7 +180,7 @@ export function handleHumanSmeltingAction(farm, body, now = Date.now()) {
       ...(isRecord(working[RECEIPTS_FIELD]) ? working[RECEIPTS_FIELD] : {}),
       [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanSmeltingActionReceipts", receiptKey: key }] });
     return { status: 200, json: response };
   } catch {
     return errorResponse("farm_unavailable", "The smelting action could not be saved");

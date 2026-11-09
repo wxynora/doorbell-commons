@@ -2,6 +2,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {createDecorationDraft,reviseDecorationDraft,evaluateDecorationDraft} from './decorate-draft.js';
 import {decorationViewText,decorationSummary,decorationIssuesText} from './decorate-receipt.js';
 import {createMinimalHumanActionReceipt,replayMinimalHumanActionReceipt} from '../../minimal-action-receipt.js';
+import {cloneFarmForMutation} from '../../farm-mutation-scope.js';
 
 const record=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const canonical=v=>Array.isArray(v)?v.map(canonical):record(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
@@ -36,8 +37,8 @@ export function createDecorationAction({resourceOf,stateOf,revisionOf,commit,uui
     }
     const pending=params.reset===true?{}:farm.doorbellFarmDecorationDrafts??{};
     if(params.reset===true&&!params.changes){
-      const working=structuredClone(farm);delete working.doorbellFarmDecorationDrafts;
-      commit(farm.id,working);
+      const working=cloneFarmForMutation(farm);delete working.doorbellFarmDecorationDrafts;
+      commit(farm.id,working,{receiptKeys:[]});
       return response(true,`未保存的装修草稿已放弃，已保存布局未改动。\n${decorationViewText(farm,resource)}`);
     }
     // Object insertion order is persisted; move a revised draft to the end below.
@@ -57,11 +58,11 @@ export function createDecorationAction({resourceOf,stateOf,revisionOf,commit,uui
       draft=createDecorationDraft(resource,params.changes);
     }
     const revision=revisionOf(farm),result=evaluateDecorationDraft(farm,resource,draft,{uuid});
-    const working=structuredClone(farm);
+    const working=cloneFarmForMutation(farm);
     working.doorbellFarmDecorationDrafts=Object.fromEntries([...Object.entries(pending).filter(([key])=>key!==id),[id,result.draft]]);
     if(!result.ok||params.preview===true){
       // Persist before acknowledging retention; a commit failure escapes as a service fault.
-      commit(farm.id,working);
+      commit(farm.id,working,{receiptKeys:[]});
       return result.ok?response(true,`装修预览，尚未保存。\n草稿编号：${id}\n${decorationSummary(result.draft)}\n${decorationViewText(farm,{...resource,layout:result.layout})}`):
         response(false,decorationIssuesText(id,result.issues,resource));
     }
@@ -72,7 +73,7 @@ export function createDecorationAction({resourceOf,stateOf,revisionOf,commit,uui
     delete working.doorbellFarmDecorationDrafts[id];
     if(Object.keys(working.doorbellFarmDecorationDrafts).length===0)delete working.doorbellFarmDecorationDrafts;
     working.doorbellLastDecorationReceipt=id;
-    commit(farm.id,working);
+    commit(farm.id,working,{receiptKeys:[{scope:'/doorbellHumanFarmDecorationReceipts',receiptKey:id}]});
     return response(true,`装修已保存。\n草稿编号：${id}\n${stable.summary}\n${decorationViewText(farm,resourceOf(farm))}`);
   };
 }

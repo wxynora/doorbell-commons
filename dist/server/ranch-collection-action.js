@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { ranchCollect } from "../engine.js";
 import { playerFarms, replaceFarm } from "../store.js";
@@ -229,10 +230,6 @@ function resultFor(before, working, authorityResult, key, beforeProductIds) {
   };
 }
 
-function farmsForCollection(farm, working) {
-  return playerFarms().map((entry) => (entry === farm ? working : structuredClone(entry)));
-}
-
 /**
  * Collect all pending ranch output through the existing ranchCollect
  * authority.  This action deliberately does not advance time, refresh a
@@ -295,13 +292,13 @@ export function handleHumanRanchCollection(farm, body, now = Date.now()) {
   }
 
   try {
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     const beforeProductIds = new Set(
       Array.isArray(working?.ranch?.kitchen?.products)
         ? working.ranch.kitchen.products.map((item) => item?.id)
         : [],
     );
-    const authorityResult = ranchCollect(working, farmsForCollection(farm, working), now);
+    const authorityResult = ranchCollect(working, [working], now);
     if (!authorityResult?.ok) {
       if (authorityResult?.code === "human_effect_blocked")
         return errorResponse(authorityResult.code, authorityResult.error || "The ranch collection was rejected",
@@ -323,7 +320,7 @@ export function handleHumanRanchCollection(farm, body, now = Date.now()) {
         : {}),
       [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanRanchCollectionReceipts", receiptKey: key }] });
     return { status: 200, json: response };
   } catch {
     return {

@@ -12,20 +12,24 @@ export function installGuestbookJudgments(db){
   CREATE TABLE IF NOT EXISTS guestbook_similarity_pairs(
     farm_id TEXT NOT NULL,left_key TEXT NOT NULL,right_key TEXT NOT NULL,score REAL NOT NULL,
     PRIMARY KEY(farm_id,left_key,right_key));
-  CREATE TRIGGER IF NOT EXISTS guestbook_similarity_new_message AFTER UPDATE OF state_json ON farm_states
-  WHEN coalesce(json_extract(OLD.state_json,'$.messages'),'[]') <> coalesce(json_extract(NEW.state_json,'$.messages'),'[]')
-  BEGIN
-    INSERT OR IGNORE INTO guestbook_similarity_jobs(farm_id,message_id,message_at,status,payload)
-    SELECT NEW.farm_id,json_extract(m.value,'$.id'),json_extract(m.value,'$.at'),'queued',
+  DROP TRIGGER IF EXISTS guestbook_similarity_new_message;`);
+}
+
+// Called inside the same transaction as an existing farm's message changes.
+// Both lists come from that mutation; no other farm or world state is read.
+export function enqueueGuestbookMessageChanges(db,farmId,beforeMessages,afterMessages){
+  const before=JSON.stringify(beforeMessages??[]),after=JSON.stringify(afterMessages??[]);
+  if(before===after || !db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='guestbook_similarity_jobs'").get())return;
+  return db.prepare(`INSERT OR IGNORE INTO guestbook_similarity_jobs(farm_id,message_id,message_at,status,payload)
+    SELECT ?,json_extract(m.value,'$.id'),json_extract(m.value,'$.at'),'queued',
       json_object('message',json(m.value),'previous',json((
         SELECT coalesce(json_group_array(json(value)),'[]') FROM
-          (SELECT value FROM json_each(OLD.state_json,'$.messages') ORDER BY key DESC LIMIT 10)
+          (SELECT value FROM json_each(?) ORDER BY key DESC LIMIT 10)
       )))
-    FROM json_each(NEW.state_json,'$.messages') m
-    WHERE NOT EXISTS(SELECT 1 FROM json_each(OLD.state_json,'$.messages') old
+    FROM json_each(?) m
+    WHERE NOT EXISTS(SELECT 1 FROM json_each(?) old
       WHERE json_extract(old.value,'$.id')=json_extract(m.value,'$.id')
-      AND json_extract(old.value,'$.at')=json_extract(m.value,'$.at'));
-  END;`);
+      AND json_extract(old.value,'$.at')=json_extract(m.value,'$.at'))`).run(farmId,before,after,before);
 }
 
 export function configureGuestbookJudgments(db,judge=configuredGuestbookJudge()){

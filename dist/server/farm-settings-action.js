@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { dispatch } from "../game.js";
 import { replaceFarm } from "../store.js";
@@ -172,7 +173,7 @@ export function handleHumanFarmSettingsAction(farm, body, now = Date.now()) {
   }
 
   try {
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     const action = applySupportedAction(working, body, now);
     if (!action?.ok) return errorResponse("action_rejected", action?.error || "The settings action was rejected");
 
@@ -186,7 +187,7 @@ export function handleHumanFarmSettingsAction(farm, body, now = Date.now()) {
         : {}),
       [body.idempotency_key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanFarmSettingsActionReceipts", receiptKey: body.idempotency_key }] });
     return { status: 200, json: response };
   } catch {
     return { status: 503, json: { error: { code: "farm_unavailable", message: "The farm settings could not be saved" } } };

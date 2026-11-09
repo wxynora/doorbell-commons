@@ -11,6 +11,7 @@ import { TOGETHER_SEASON3_STORY_ID, normalizeTogetherSeason3State } from "./toge
 import { season3HumanData, season3Text } from "./together-season3/presentation.js";
 import { togetherSeason3Content } from "./together-season3/content.js";
 import { takeSeason3AiNotices } from "./together-season3/notifications.js";
+import { captureLiveFarmMutation } from "./store.js";
 
 const DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../content");
 export const publicExpeditionContent = JSON.parse(readFileSync(resolve(DIR, "public-expedition.json"), "utf8"));
@@ -214,8 +215,13 @@ function farmRewardState(farm) {
     state.grants = Array.isArray(state.grants) ? state.grants : [];
     return state;
 }
+function settledRewardIsNormalized(farm, issueId) {
+    const state = farm.publicExpeditionRewards;
+    const validIds = list => Array.isArray(list) && list.every(id => typeof id === "string") && new Set(list).size === list.length;
+    return !!state && validIds(state.issues) && state.issues.includes(issueId) && validIds(state.endings) && Array.isArray(state.grants);
+}
 
-export function settlePublicExpeditionRewards(world, farms = [], now = Date.now()) {
+export function settlePublicExpeditionRewards(world, farms = [], now = Date.now(), onBeforeFarm) {
     if (!world?.endingId)
         return [];
     const issueId = String(world.storyId);
@@ -235,6 +241,10 @@ export function settlePublicExpeditionRewards(world, farms = [], now = Date.now(
         const tier = contributorIds.has(farmId) ? "contribution" : participantIds.has(farmId) ? "choice" : null;
         if (!tier)
             continue;
+        if (settledRewardIsNormalized(farm, issueId))
+            continue;
+        onBeforeFarm?.(farm);
+        captureLiveFarmMutation(farm);
         const state = farmRewardState(farm);
         if (state.issues.includes(issueId))
             continue;
@@ -469,15 +479,15 @@ function resumeCooldown(world) {
         openChoice(world, 4);
 }
 
-export function advancePublicExpedition(world, farms = [], now = Date.now()) {
+export function advancePublicExpedition(world, farms = [], now = Date.now(), onBeforeFarm) {
     // Season 3 reads/commands advance through its joint durable service, not
     // through the legacy choice/cooldown/reopen-vote state machine.
     if (world.storyId === TOGETHER_SEASON3_STORY_ID) return world;
     for (const archived of world.archives ?? [])
         if (archived?.endingId)
-            settlePublicExpeditionRewards(archived, farms, now);
+            settlePublicExpeditionRewards(archived, farms, now, onBeforeFarm);
     if (world.endingId)
-        settlePublicExpeditionRewards(world, farms, now);
+        settlePublicExpeditionRewards(world, farms, now, onBeforeFarm);
     const today = currentDayIndex(now);
     if (world.phase === "cooldown" && world.cooldown && now >= world.cooldown.readyAt)
         resumeCooldown(world);

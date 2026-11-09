@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { takeTargetEffect, applyEffect } from './effects.mjs';
+import { applyEffect } from './effects.mjs';
 import { HalloweenStore } from './store.mjs';
 
 const actionScope = new AsyncLocalStorage();
@@ -15,7 +15,7 @@ class FarmActionEffects {
     this.store = service.store;
     this.db = service.db;
     this.context = Object.freeze({ ...context });
-    this.virtualStates = new Map();
+    this.reservedEffects = new Map();
     this.pending = [];
     this.byTarget = new Map();
     this.plantReceipts = new Map();
@@ -37,19 +37,17 @@ class FarmActionEffects {
       return this.result(previous, base);
     }
 
-    let state = this.virtualStates.get(farmId);
-    if (!state) {
-      state = this.store.load(farmId);
-      this.virtualStates.set(farmId, state);
-    }
-    const taken = takeTargetEffect(state.eatenEffects, { kind, now, targetAt, effective: true, caught, actorSide });
-    const pending = { farmId, kind, targetId, now, targetAt, caught, effect: taken.effect };
-    if (taken.effect) {
-      state.eatenEffects = taken.queue;
+    const reserved = this.reservedEffects.get(farmId) ?? [];
+    const taken = this.store.firstEatenEffect(farmId, { kind, now, targetAt, caught, actorSide, excluded: reserved });
+    const effect = taken?.entry.effect ?? null;
+    const pending = { farmId, kind, targetId, now, targetAt, caught, effect };
+    if (taken && effect) {
+      reserved.push(taken.id);
+      this.reservedEffects.set(farmId, reserved);
       this.pending.push(pending);
     }
     this.byTarget.set(key, pending);
-    return this.result(taken.effect, base);
+    return this.result(effect, base);
   }
 
   result(effect, base) {
@@ -82,11 +80,7 @@ class FarmActionEffects {
     };
     const kind = kinds[operation];
     if (!kind || !Number.isSafeInteger(now)) return null;
-    const state = this.store.load(farmId);
-    const expiresAt = Math.max(0, ...state.eatenEffects
-      .filter(entry => entry.actorSide === 'human' && entry.effect?.kind === kind &&
-        entry.eatenAt <= now && entry.expiresAt > now)
-      .map(entry => entry.expiresAt));
+    const expiresAt = this.store.blockedUntil(farmId, kind, now);
     return expiresAt ? { code: 'human_effect_blocked', operation, expires_at: expiresAt } : null;
   }
 
@@ -135,9 +129,8 @@ class FarmActionEffects {
     if (!this.pending.length) return;
     if (!this.db.isTransaction) throw new Error('halloween_effect_commit_transaction_required');
     if (!world || !Array.isArray(world.farms)) throw new TypeError('invalid_halloween_world');
-    const states = new Map();
-    // Re-read once inside the write transaction to retain conflict/replay
-    // checks; the earlier action-local lookup is not a commit authority.
+    // Re-read the selected target inside the write transaction: the earlier
+    // action-local lookup is not a commit authority.
     const plantReceipts = new Map();
     for (const target of this.pending) {
       if (target.persisted) continue;
@@ -146,18 +139,13 @@ class FarmActionEffects {
         if (!sameEffect(existing, target.effect)) throw new Error('halloween_effect_receipt_conflict');
         continue;
       }
-      let state = states.get(target.farmId);
-      if (!state) {
-        state = this.store.load(target.farmId);
-        states.set(target.farmId, state);
-      }
-      const taken = takeTargetEffect(state.eatenEffects, { kind: target.kind, now: target.now,
-        targetAt: target.targetAt, effective: true, caught: target.caught, actorSide: this.context.side });
-      if (!sameEffect(taken.effect, target.effect)) throw new Error('halloween_effect_changed_before_commit');
-      state.eatenEffects = taken.queue;
+      const taken = this.store.firstEatenEffect(target.farmId, { kind: target.kind, now: target.now,
+        targetAt: target.targetAt, caught: target.caught, actorSide: this.context.side });
+      if (!sameEffect(taken?.entry.effect ?? null, target.effect)) throw new Error('halloween_effect_changed_before_commit');
+      if (!taken || this.store.removeEatenEffect(target.farmId, taken.id) !== 1)
+        throw new Error('halloween_effect_changed_before_commit');
       this.store.saveEffectReceipt(target.farmId, target.kind, target.targetId, target.effect, target.now);
     }
-    for (const [farmId, state] of states) this.store.save(farmId, state);
   }
 }
 

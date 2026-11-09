@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { refreshKitchenShop } from "../engine.js";
 import { replaceFarm } from "../store.js";
@@ -129,7 +130,7 @@ export function handleHumanKitchenShopOpen(farm, body, now = Date.now(), options
   }
 
   try {
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     const beforeShop = JSON.stringify(working.ranch?.kitchen?.shop ?? null);
     const beforeCoins = working.coins;
     const beforeSilver = working.silver;
@@ -152,7 +153,7 @@ export function handleHumanKitchenShopOpen(farm, body, now = Date.now(), options
       ...(isRecord(working[RECEIPTS_FIELD]) ? working[RECEIPTS_FIELD] : {}),
       [body.idempotency_key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanKitchenShopOpenReceipts", receiptKey: body.idempotency_key }] });
     return { status: 200, json: response };
   } catch {
     return errorResponse("farm_unavailable", "The kitchen shop could not be opened", 503);

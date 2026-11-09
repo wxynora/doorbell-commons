@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { ranchPlaceDecoration, ranchUnplaceDecoration } from "../engine.js";
 import { playerFarms, replaceFarm } from "../store.js";
@@ -185,7 +186,7 @@ export function handleHumanRanchDecorationAction(farm, body, now = Date.now()) {
   }
 
   try {
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     const authorityResult = callAuthority(working, body.action, body.decoration_id);
     if (!authorityResult?.ok) {
       return errorResponse(
@@ -214,7 +215,7 @@ export function handleHumanRanchDecorationAction(farm, body, now = Date.now()) {
         : {}),
       [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanRanchDecorationActionReceipts", receiptKey: key }] });
     return { status: 200, json: response };
   } catch {
     return {

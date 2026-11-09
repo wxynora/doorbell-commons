@@ -7,6 +7,11 @@ import { natureSnapshot } from "../nature.js";
 import { getNatureWorld } from "../store.js";
 import { currentDayIndex, currentSeason } from "../time.js";
 import { equippedTitle } from "../titles.js";
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
+import { LEGACY_FARM_RECEIPT_SCOPES } from "../farm-world-sqlite-migration.js";
+import { farmRecordPath } from "../farm-state-records.js";
+
+const RECEIPT_PATHS = new Set(LEGACY_FARM_RECEIPT_SCOPES.map(({ path }) => farmRecordPath(path)));
 
 const SEASON_IDS_BY_NAME = {
     "春": "spring",
@@ -85,17 +90,18 @@ function nextShanghaiMidnight(dayIndex) {
     return new Date((dayIndex + 1) * 86_400_000 - 8 * 3_600_000).toISOString();
 }
 
-function stripReceipts(value) {
+function stripReceipts(value, path = "") {
     if (Array.isArray(value))
-        return value.map(stripReceipts);
+        return value.map((nested, index) => stripReceipts(nested, `${path}/${index}`));
     if (!value || typeof value !== "object")
         return value;
     const result = {};
-    for (const [key, nested] of Object.entries(value)) {
+    for (const key of Object.keys(value)) {
+        const nestedPath = path + farmRecordPath([key]);
         if ((key.startsWith("doorbellHuman") && key.endsWith("Receipts")) ||
-            key === "doorbellHumanBulletinReadState")
+            key === "doorbellHumanBulletinReadState" || RECEIPT_PATHS.has(nestedPath))
             continue;
-        result[key] = stripReceipts(nested);
+        result[key] = stripReceipts(value[key], nestedPath);
     }
     return result;
 }
@@ -133,7 +139,7 @@ export function projectHumanField(farm, now = Date.now()) {
     // Lazy growth is projected on a clone.  This keeps field reads pure while
     // making the revision match the exact pre-action state after the old
     // Human UI's leading `advance(farm, now)` call.
-    const projectedFarm = structuredClone(farm);
+    const projectedFarm = cloneFarmForMutation(farm);
     advance(projectedFarm, now);
     const title = equippedTitle(projectedFarm);
     const plots = projectedFarm.plots
@@ -146,7 +152,7 @@ export function projectHumanField(farm, now = Date.now()) {
         throw new Error("Farm land tier is unavailable");
     const pendingLandUpgrade = nextUpgradeReq(projectedFarm);
     const landUpgradePreview = pendingLandUpgrade
-        ? upgradeLand(structuredClone(projectedFarm), now)
+        ? upgradeLand(cloneFarmForMutation(projectedFarm), now)
         : null;
     const welcome = typeof projectedFarm.welcome === "string" && projectedFarm.welcome.trim()
         ? projectedFarm.welcome.trim()

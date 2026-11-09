@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import {
   catchRanchRaid,
@@ -229,8 +230,9 @@ function actionResult(body, authorityResult, target) {
  * Commit one or more already-cloned farm states through the store's explicit
  * multi-farm delta. No authority is called against live farm objects.
  */
-function commitFarmStates(entries) {
-  replaceFarmsAtomic(entries.map(({ actual, working }) => ({ id: actual.id, farm: working })));
+function commitFarmStates(entries, receiptFarm, key) {
+  replaceFarmsAtomic(entries.map(({ actual, working }) => ({ id: actual.id, farm: working,
+    receiptKeys: working === receiptFarm ? [{ scope: "/doorbellHumanRanchInteractionActionReceipts", receiptKey: key }] : [] })));
 }
 
 function storeReceipt(working, key, requestFingerprint, response) {
@@ -329,9 +331,9 @@ export function handleHumanRanchInteractionAction(farm, body, now = Date.now()) 
   let workingTarget;
   let workingOwner;
   try {
-    workingFarm = structuredClone(farm);
-    workingTarget = target === farm ? workingFarm : structuredClone(target);
-    workingOwner = owner === farm ? workingFarm : structuredClone(owner);
+    workingFarm = cloneFarmForMutation(farm);
+    workingTarget = target === farm ? workingFarm : cloneFarmForMutation(target);
+    workingOwner = owner === farm ? workingFarm : cloneFarmForMutation(owner);
   } catch {
     return unavailable("The ranch interaction could not be prepared");
   }
@@ -396,17 +398,17 @@ export function handleHumanRanchInteractionAction(farm, body, now = Date.now()) 
 
   try {
     if (target === farm && owner === farm) {
-      commitFarmStates([{ actual: farm, working: workingFarm }]);
+      commitFarmStates([{ actual: farm, working: workingFarm }], receiptFarm, key);
     } else if (body.action === "dispatch") {
       commitFarmStates([
         { actual: farm, working: workingFarm },
         { actual: target, working: workingTarget },
-      ]);
+      ], receiptFarm, key);
     } else {
       commitFarmStates([
         { actual: target, working: workingTarget },
         { actual: owner, working: workingOwner },
-      ]);
+      ], receiptFarm, key);
     }
   } catch {
     return unavailable("The ranch interaction could not be saved");

@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { qixiLantern2026PrivateData } from "../qixi-lantern-2026.js";
 
 const EVENT_ID = "qixi-lantern-2026";
@@ -32,7 +33,7 @@ function projectSide(lamp) {
 }
 
 export function projectQixiMemorial(farm, now = Date.now()) {
-    const privateData = qixiLantern2026PrivateData(structuredClone(farm), now);
+    const privateData = qixiLantern2026PrivateData(cloneFarmForMutation(farm), now);
     return {
         subject: { farm_doorplate: String(farm.id) },
         data: {

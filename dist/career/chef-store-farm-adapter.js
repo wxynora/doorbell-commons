@@ -1,3 +1,4 @@
+import {cloneFarmForMutation} from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { MARKET_FEE } from "../config.js";
 import {
@@ -436,7 +437,7 @@ export function createChefStoreFarmAdapter(options = {}) {
         const parsed = parseListingReference(input.listingReference);
         const sourceListing = findMarketListing(farm, parsed);
         const receipt = createListingReceipt(input, sourceListing, now);
-        const nextFarm = structuredClone(farm);
+        const nextFarm = cloneFarmForMutation(farm);
         nextFarm.market = marketEntries(nextFarm).filter((entry) => entry !== sourceListing &&
             !(isRecord(entry) && entry.kind === parsed.kind && entry.id === parsed.id));
         nextFarm[CHEF_STORE_LISTINGS_FIELD] = {
@@ -469,7 +470,7 @@ export function createChefStoreFarmAdapter(options = {}) {
         if (receipt === undefined)
             return { listingReceiptId };
         assertListingReceiptMatches(receipt, { leaseId, ownerResidentId });
-        const nextFarm = structuredClone(farm);
+        const nextFarm = cloneFarmForMutation(farm);
         restoreMarketListing(nextFarm, receipt.sourceListing, receipt.quantity);
         const nextListings = cloneReceipts(
             nextFarm,
@@ -488,8 +489,8 @@ export function createChefStoreFarmAdapter(options = {}) {
     }
 
     function applyInventory(input, sellerFarm, buyerFarm, receipt, now) {
-        const sellerNext = structuredClone(sellerFarm);
-        const buyerNext = structuredClone(buyerFarm);
+        const sellerNext = cloneFarmForMutation(sellerFarm);
+        const buyerNext = cloneFarmForMutation(buyerFarm);
         const listings = cloneReceipts(
             sellerNext,
             CHEF_STORE_LISTINGS_FIELD,
@@ -571,15 +572,23 @@ export function createChefStoreFarmAdapter(options = {}) {
             updatedAt: now,
         };
         orders[receipt.orderId] = completed;
-        const nextSeller = structuredClone(currentSeller);
+        const nextSeller = cloneFarmForMutation(currentSeller);
         nextSeller[CHEF_STORE_ORDER_RECEIPTS_FIELD] = orders;
+        let deferred;
         try {
-            replaceFarm(currentSeller.id, nextSeller);
+            const deferPublication = database?.isTransaction === true;
+            const replacement = replaceFarm(currentSeller.id, nextSeller, { deferPublication });
+            if (deferPublication && typeof replacement?.publish === "function") {
+                deferred = () => {
+                    if (database.isTransaction) throw new Error("chef_store_publication_before_commit");
+                    return replacement.publish();
+                };
+            }
         }
         catch {
             fail("chef_store_farm_order_receipt_authority_unavailable");
         }
-        return { orderReceiptId: receipt.orderId, paymentReceiptId };
+        return { orderReceiptId: receipt.orderId, paymentReceiptId, ...(deferred ? { publish: deferred } : {}) };
     }
 
     function executeOrder(rawInput) {
@@ -628,7 +637,7 @@ export function createChefStoreFarmAdapter(options = {}) {
             price: listing.price,
             sourceListing: listing.sourceListing,
         }, now);
-        const pendingSeller = structuredClone(sellerFarm);
+        const pendingSeller = cloneFarmForMutation(sellerFarm);
         const pendingOrders = cloneReceipts(
             pendingSeller,
             CHEF_STORE_ORDER_RECEIPTS_FIELD,
@@ -697,7 +706,7 @@ export function createChefStoreFarmAdapter(options = {}) {
                 isRecord(receipt) && receipt.kind === LISTING_RECEIPT_KIND && receipt.leaseId === row.lease_id);
             if (matches.length === 0)
                 continue;
-            const nextFarm = structuredClone(farm);
+            const nextFarm = cloneFarmForMutation(farm);
             const nextListings = cloneReceipts(
                 nextFarm,
                 CHEF_STORE_LISTINGS_FIELD,
@@ -775,7 +784,7 @@ export function createChefStoreFarmAdapter(options = {}) {
                 leaseRow(database, receipt.leaseId) === null);
             if (orphaned.length === 0)
                 continue;
-            const nextFarm = structuredClone(farm);
+            const nextFarm = cloneFarmForMutation(farm);
             const nextListings = cloneReceipts(
                 nextFarm,
                 CHEF_STORE_LISTINGS_FIELD,

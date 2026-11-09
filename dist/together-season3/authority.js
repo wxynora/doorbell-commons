@@ -1,6 +1,7 @@
 // Read-only bridges to existing Farm authorities. Nothing in this module awards
 // money/experience, treats an object, collects a fish, or saves a farm.
 import { plotAgronomyIssues } from "../career/p3-world.js";
+import { findFarmStateEntries, readFarmCollectionItem, readFarmStatePaths } from "../farm-state-records.js";
 import { normalizeTogetherSeason3State } from "./runtime.js";
 import { collectSeason3HarvestReceipts } from "./harvest.js";
 
@@ -66,32 +67,26 @@ function targetSourceBelongsToEvent(database, row, state) {
     if (sourceType !== expectedType || row.object_type !== expectedObjectType
         || !Number.isSafeInteger(objectIndex)
         || row.object_id !== `${source.farm_doorplate}:${agronomy ? "plot" : "animal"}:${objectIndex}`) return false;
-    const target = database.prepare(`SELECT
-        json_extract(state_json, '$.doorbellMcpMigration.migrationId') AS binding_reference,
-        json_extract(state_json, '$.plots') AS plots_json,
-        json_extract(state_json, '$.ranch.animals') AS animals_json,
-        json_extract(state_json, '$.lingyeP3.history') AS history_json
-      FROM farm_states WHERE farm_id = ?`).get(source.farm_doorplate);
-    if (!target || !identifier(target.binding_reference)) return false;
-    const owner = database.prepare("SELECT resident_id FROM residents WHERE binding_reference = ?").get(target.binding_reference);
+    const target = readFarmStatePaths(database, source.farm_doorplate, [["doorbellMcpMigration", "migrationId"]]);
+    const binding = target?.doorbellMcpMigration?.migrationId;
+    if (!identifier(binding)) return false;
+    const owner = database.prepare("SELECT resident_id FROM residents WHERE binding_reference = ?").get(binding);
     if (!owner || owner.resident_id !== row.owner_resident_id) return false;
     const sameSource = (entry) => entry?.sourceId === row.source_id && entry?.natureEventId === state.eventId;
     if (agronomy) {
-        const plots = parse(target.plots_json, []);
-        requireValue(Array.isArray(plots));
-        const plot = plots.find((entry) => entry.id === source.plot_id);
+        const plot = readFarmCollectionItem(database, source.farm_doorplate, ["plots"], { id: source.plot_id });
         if (plot && plotAgronomyIssues(plot).some(sameSource)) return true;
     }
     else {
-        const animals = parse(target.animals_json, []);
-        requireValue(Array.isArray(animals));
-        if (sameSource(animals[source.animal_index]?.lingyeHealth)) return true;
+        const animal = source.animal_index >= 0 ? readFarmCollectionItem(database, source.farm_doorplate,
+            ["ranch", "animals"], { index: source.animal_index }) : undefined;
+        if (sameSource(animal?.lingyeHealth)) return true;
     }
-    const history = parse(target.history_json, []);
-    requireValue(Array.isArray(history));
-    return history.some((entry) => sameSource(entry)
-        && entry.type === (agronomy ? "agronomy_harvested" : "animal_recovered")
-        && (agronomy ? entry.plotId === source.plot_id : entry.animalIndex === source.animal_index));
+    return findFarmStateEntries(database, source.farm_doorplate, ["lingyeP3", "history"], { eq: {
+        sourceId: row.source_id, natureEventId: state.eventId,
+        type: agronomy ? "agronomy_harvested" : "animal_recovered",
+        [agronomy ? "plotId" : "animalIndex"]: objectIndex,
+    } }).length > 0;
 }
 
 function careerReceipts(database, farm, state, now) {

@@ -1,5 +1,7 @@
+import { captureComponentMutation } from "./farm-mutation-scope.js";
 export const ugcById = new Map();
 export function registerUgc(crop) {
+    captureComponentMutation("ugc", dumpUgc());
     ugcById.set(crop.id, crop);
 }
 export function allUgc() {

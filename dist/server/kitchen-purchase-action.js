@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { kitchenBuy } from "../engine.js";
 import { replaceFarm } from "../store.js";
@@ -249,7 +250,7 @@ export function handleHumanKitchenPurchase(farm, body, now = Date.now(), options
   try {
     // Work on a clone so authority rejection, malformed legacy state, and a
     // failed save cannot leak a partial silver/inventory/shop mutation.
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     if (!Number.isSafeInteger(working.silver) || working.silver < 0) {
       return {
         status: 503,
@@ -309,7 +310,7 @@ export function handleHumanKitchenPurchase(farm, body, now = Date.now(), options
         : {}),
       [body.idempotency_key]: createMinimalHumanActionReceipt(requestFingerprint, response),
     };
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanKitchenPurchaseReceipts", receiptKey: body.idempotency_key }] });
     return { status: 200, json: response };
   } catch {
     return {

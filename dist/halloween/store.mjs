@@ -8,9 +8,15 @@ export function canonical(value) {
   return value;
 }
 
-export function emptyHousehold() {
-  return { version: 1, eatenEffects: [] };
-}
+// The same target groups used by takeTargetEffect. Keeping the target in the
+// SQL predicate avoids loading unrelated effects from the household queue.
+const TARGET_EFFECTS = Object.freeze({
+  harvest: ['harvest_gold', 'human_harvest_gold'],
+  ranch_collect: ['human_ranch_yield'], cook: ['human_cook_extra'],
+  plant: ['plant_time', 'plant_time_add'],
+  fish: ['fishing_junk', 'fishing_junk_add'],
+  dog_block: ['dog_block_probability_add'], theft: ['theft_caught_gold'],
+});
 
 export class HalloweenStore {
   constructor(database, eventId) { this.db = database; this.eventId = eventId; }
@@ -27,42 +33,39 @@ export class HalloweenStore {
       throw error;
     }
   }
-  load(farmId) {
-    const row = this.db.prepare('SELECT state_json FROM halloween_households WHERE event_id=? AND farm_id=?').get(this.eventId, farmId);
-    if (!row) return emptyHousehold();
-    const state = JSON.parse(row.state_json);
-    this.restoreEatenEffectSides(farmId, state);
-    return state;
+  addEatenEffect(farmId, entry) {
+    this.db.prepare(`INSERT INTO halloween_eaten_effects
+      (event_id,farm_id,candy_id,actor_side,effect_kind,eaten_at,expires_at,entry_json)
+      VALUES (?,?,?,?,?,?,?,?)`)
+      .run(this.eventId, farmId, entry.candyId ?? null, entry.actorSide ?? null,
+        entry.effect?.kind ?? null, entry.eatenAt ?? null, entry.expiresAt ?? null, JSON.stringify(entry));
   }
-  restoreEatenEffectSides(farmId, state) {
-    const pending = (state.eatenEffects ?? []).filter(entry => !['ai', 'human'].includes(entry.actorSide));
-    if (!pending.length) return;
-    const rows = this.db.prepare(`SELECT command_json FROM halloween_receipts
-      WHERE event_id=? AND farm_id=? AND json_extract(command_json,'$.op')='eat'`)
-      .all(this.eventId, farmId);
-    const sideByCandy = new Map();
-    for (const row of rows) {
-      try {
-        const command = JSON.parse(row.command_json);
-        const side = command?.side;
-        const candyId = command?.args?.candyId;
-        const target = command?.args?.target ?? 'self';
-        if (['ai', 'human'].includes(side) && ['self', 'other'].includes(target) &&
-            typeof candyId === 'string' && candyId) {
-          const eaterSide = target === 'other' ? side === 'ai' ? 'human' : 'ai' : side;
-          sideByCandy.set(candyId, eaterSide);
-        }
-      } catch { /* malformed legacy receipts cannot prove actor ownership */ }
-    }
-    for (const entry of pending) {
-      const side = sideByCandy.get(entry.candyId);
-      if (side) entry.actorSide = side;
-    }
+  activeEatenEffects(farmId, side, now) {
+    return this.db.prepare(`SELECT entry_json FROM halloween_eaten_effects
+      WHERE event_id=? AND farm_id=? AND actor_side=? AND expires_at>?
+      ORDER BY effect_id`).all(this.eventId, farmId, side, now).map(row => JSON.parse(row.entry_json));
   }
-  save(farmId, state) {
-    this.db.prepare(`INSERT INTO halloween_households VALUES (?,?,?)
-      ON CONFLICT(event_id,farm_id) DO UPDATE SET state_json=excluded.state_json`)
-      .run(this.eventId, farmId, JSON.stringify(state));
+  firstEatenEffect(farmId, { kind, now, targetAt = now, caught = false, actorSide = 'ai', excluded = [] }) {
+    const kinds = TARGET_EFFECTS[kind];
+    if (!kinds) throw new TypeError('invalid_target');
+    if (kind === 'theft' && !caught) return null;
+    const placeholders = kinds.map(() => '?').join(',');
+    const row = this.db.prepare(`SELECT effect_id,entry_json FROM halloween_eaten_effects
+      WHERE event_id=? AND farm_id=? AND actor_side=? AND effect_kind IN (${placeholders})
+        AND eaten_at<=? AND expires_at>?
+        AND effect_id NOT IN (SELECT value FROM json_each(?))
+      ORDER BY effect_id LIMIT 1`).get(this.eventId, farmId, actorSide, ...kinds, targetAt, now, JSON.stringify(excluded));
+    return row ? { id: row.effect_id, entry: JSON.parse(row.entry_json) } : null;
+  }
+  blockedUntil(farmId, kind, now) {
+    const row = this.db.prepare(`SELECT MAX(expires_at) AS expires_at FROM halloween_eaten_effects
+      WHERE event_id=? AND farm_id=? AND actor_side='human' AND effect_kind=?
+        AND eaten_at<=? AND expires_at>?`).get(this.eventId, farmId, kind, now, now);
+    return Math.max(0, row.expires_at ?? 0);
+  }
+  removeEatenEffect(farmId, effectId) {
+    return this.db.prepare('DELETE FROM halloween_eaten_effects WHERE event_id=? AND farm_id=? AND effect_id=?')
+      .run(this.eventId, farmId, effectId).changes;
   }
   receipt(farmId, requestId, command) {
     const row = this.db.prepare('SELECT command_json,result_json FROM halloween_receipts WHERE event_id=? AND farm_id=? AND request_id=?').get(this.eventId, farmId, requestId);

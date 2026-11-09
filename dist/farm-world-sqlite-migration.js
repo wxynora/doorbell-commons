@@ -1,3 +1,4 @@
+import { encodeStateRecords, decodeStateRecords, writeRecordChanges, recordFromRow } from "./farm-state-records.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
     existsSync,
@@ -227,7 +228,7 @@ function locateLedger(farm, scope) {
     return { owner, key, ledger };
 }
 
-export function decomposeFarmForPersistence(farm, receiptKeys) {
+export function decomposeFarmForPersistence(farm, receiptKeys, options = {}) {
     if (!isRecord(farm) || typeof farm.id !== "string" || farm.id.length === 0)
         fail("farm_world_invalid", "A persisted farm must have a valid id");
     const selected = receiptKeys === undefined ? null : new Map();
@@ -279,6 +280,7 @@ export function decomposeFarmForPersistence(farm, receiptKeys) {
         }
         delete owner[located.key];
     }
+    if (options.receiptsOnly === true) return {receipts};
     assertJsonCompatible(state);
     return { state: structuredClone(state), receipts };
 }
@@ -362,35 +364,33 @@ export function exportFarmWorldFromDatabase(database, options = {}) {
         assertDatabaseIntegrity(database);
     assertPersistenceSchema(database);
     const world = { format: WORLD_FORMAT, version: WORLD_VERSION };
-    const components = database
-        .prepare("SELECT component_key, state_json FROM world_components ORDER BY component_key")
-        .all();
-    for (const row of components) {
-        if (Object.hasOwn(world, row.component_key) || row.component_key === "farms")
-            fail("farm_database_corrupt", `Duplicate or reserved world component: ${row.component_key}`);
-        world[row.component_key] = parseStoredJson(row.state_json, `component:${row.component_key}`);
+    // Startup/export is the only whole-world read. These temporary maps are
+    // released with this call; ordinary commits receive exact entity changes.
+    const group = (rows,key) => {
+        const result=new Map();
+        for (const row of rows) {
+            if (!result.has(row[key])) result.set(row[key],new Map());
+            result.get(row[key]).set(row.record_path,recordFromRow(row));
+        }
+        return result;
+    };
+    const worldRecords=group(database.prepare("SELECT * FROM world_domain_records").all(),"component_key");
+    for (const {component_key:key} of database.prepare("SELECT component_key FROM world_components").all()) {
+        if (Object.hasOwn(world,key) || key === "farms") fail("farm_database_corrupt", "Reserved world component");
+        world[key] = decodeStateRecords(worldRecords.get(key)??new Map());
     }
-    const farms = database
-        .prepare("SELECT farm_id, state_json FROM farm_states ORDER BY position")
-        .all()
-        .map((row) => {
-            const farm = parseStoredJson(row.state_json, `farm:${row.farm_id}`);
-            if (!isRecord(farm) || farm.id !== row.farm_id)
-                fail("farm_database_corrupt", `Stored farm identity does not match: ${row.farm_id}`);
-            return farm;
-        });
-    const farmById = new Map(farms.map((farm) => [farm.id, farm]));
-    const receipts = database
-        .prepare(`SELECT farm_id, scope, receipt_key, payload_hash, result_json
-                  FROM farm_action_receipts
-                  ORDER BY farm_id, scope, receipt_key`)
-        .all();
-    for (const row of receipts) {
-        const farm = farmById.get(row.farm_id);
-        if (!farm)
-            fail("farm_database_corrupt", `Farm receipt has no farm: ${row.farm_id}`);
-        assignReceipt(farm, row);
+    const farmRecords=group(database.prepare("SELECT * FROM farm_domain_records").all(),"farm_id");
+    const receiptRows=new Map();
+    for (const row of database.prepare("SELECT farm_id,scope,receipt_key,payload_hash,result_json FROM farm_action_receipts").all()) {
+        if (!receiptRows.has(row.farm_id)) receiptRows.set(row.farm_id,[]);
+        receiptRows.get(row.farm_id).push(row);
     }
+    const farms=database.prepare("SELECT farm_id,position FROM farm_states ORDER BY position").all().map(row=>{
+        const farm=decodeStateRecords(farmRecords.get(row.farm_id)??new Map());
+        if (!isRecord(farm)||farm.id!==row.farm_id) fail("farm_database_corrupt","Stored farm identity does not match");
+        for (const receipt of receiptRows.get(row.farm_id)??[]) assignReceipt(farm,receipt);
+        return farm;
+    });
     world.farms = farms;
     return validateWorld(world);
 }
@@ -464,11 +464,11 @@ export function importFarmWorldToDatabase(database, sourceWorld) {
         ...decomposeFarmForPersistence(farm),
     }));
     const insertComponent = database.prepare(`
-      INSERT INTO world_components (component_key, state_json)
-      VALUES (?, ?)
+      INSERT INTO world_components (component_key)
+      VALUES (?)
     `);
     const insertFarm = database.prepare(`
-      INSERT INTO farm_states (farm_id, position, state_json)
+      INSERT INTO farm_states (farm_id, position, resident_id)
       VALUES (?, ?, ?)
     `);
     const insertReceipt = database.prepare(`
@@ -477,10 +477,13 @@ export function importFarmWorldToDatabase(database, sourceWorld) {
       ) VALUES (?, ?, ?, ?, ?)
     `);
     runLingyeWorldTransaction(database, () => {
-        for (const component of components)
-            insertComponent.run(component.key, JSON.stringify(component.value));
+        for (const component of components) {
+            insertComponent.run(component.key);
+            writeRecordChanges(database,"world",component.key,[...encodeStateRecords(component.value)].map(([path,after])=>({path,after})));
+        }
         for (const farm of farms) {
-            insertFarm.run(farm.state.id, farm.position, JSON.stringify(farm.state));
+            insertFarm.run(farm.state.id, farm.position, farm.state.doorbellMcpMigration?.residentId ?? null);
+            writeRecordChanges(database,"farm",farm.state.id,[...encodeStateRecords(farm.state)].map(([path,after])=>({path,after})));
             for (const receipt of farm.receipts) {
                 insertReceipt.run(
                     receipt.farmId,

@@ -8,6 +8,7 @@ import { hasDamagedPublicName } from "../../game.js";
 import {
     allFarms,
     createDoorbellFarm,
+    captureLiveFarmMutation,
     DoorbellFarmCreationError,
     DoorbellWelcomeRewardError,
     findDoorbellFarmCreation,
@@ -140,6 +141,7 @@ export async function handleDoorbellMcpMigration(req, res, method, runtime) {
         if (binding.error)
             return internalServiceError(res, binding.error.status, binding.error.code, binding.error.message);
         const farm = binding.farm;
+        captureLiveFarmMutation(farm);
         const migrationId = String(body.migration_id);
         const residentId = String(body.resident_id);
         const existing = farm.doorbellMcpMigration;
@@ -157,7 +159,7 @@ export async function handleDoorbellMcpMigration(req, res, method, runtime) {
                 // Replays still pass through the coordinator so an existing
                 // farm migration and its resident/account rows are checked in
                 // the same durable transaction.
-                withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => save());
+                withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => save({ farmIds: [farm.id], componentKeys: [], forceFarmCoordinator: true }));
             }
             catch (error) {
                 if (previousAgentKey !== undefined)
@@ -179,7 +181,7 @@ export async function handleDoorbellMcpMigration(req, res, method, runtime) {
             legacyMcpRevoked: true,
         };
         try {
-            withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => save());
+            withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => save({ farmIds: [farm.id], componentKeys: [], forceFarmCoordinator: true }));
         }
         catch (error) {
             if (hadPreviousAgentKey)

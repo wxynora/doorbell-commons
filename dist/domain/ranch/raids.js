@@ -15,6 +15,7 @@ import { ranchAnimalCurrentProduceValue } from "./value.js";
 import { patrolGooseSkinCatchBonus } from "./skins.js";
 import { maybeApplyRanchRaidInjury, ranchHealthActionBlocked } from "../../career/p3-world.js";
 import { halloweenHumanOperationBlock } from "../../halloween/action-effects.mjs";
+import { captureLiveFarmMutation } from "../../store.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 export const RANCH_RAID_DAILY_CAP = 10000;
@@ -111,6 +112,8 @@ export function catchRanchRaid(target, owners, raidId, now) {
             return { ok: false, error: "这只动物不在你家。" };
         if (now >= raid.endsAt)
             return { ok: false, error: "它已经结束潜伏、跑回自己家了。" };
+        captureLiveFarmMutation(owner);
+        captureLiveFarmMutation(target);
         const compensation = ranchRaidCoins(raid, now);
         owner.ranch.coins += raid.reservedCoins - compensation;
         if (compensation > 0) {
@@ -170,7 +173,7 @@ export function settleRanchRaids(farms, now) {
     let gooseCaught = 0;
     for (const owner of farms) {
         const ranch = owner.ranch;
-        if (!ranch?.raids?.length)
+        if (!ranch?.raids?.some(raid => !(raid.endsAt > now)))
             continue;
         const active = [];
         for (const raid of ranch.raids) {

@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { checkTitles } from "../titles.js";
 import { dishSystemRecycleSilver, kitchenCook, kitchenCookKnownRecipe } from "../engine.js";
@@ -301,7 +302,7 @@ export function handleHumanKitchenCookAction(farm, body, now = Date.now(), optio
 
   let working;
   try {
-    working = structuredClone(farm);
+    working = cloneFarmForMutation(farm);
   } catch {
     return unavailable("The kitchen cook could not be prepared");
   }
@@ -352,7 +353,12 @@ export function handleHumanKitchenCookAction(farm, body, now = Date.now(), optio
     [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
   };
   try {
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [
+      { scope: "/doorbellHumanKitchenCookReceipts", receiptKey: key },
+      ...(authorityResult.cookingReceipt
+        ? [{ scope: "/chefOriginalCookingReceipts", receiptKey: authorityResult.cookingReceipt.receiptId }]
+        : []),
+    ] });
   } catch {
     return unavailable("The kitchen cook could not be saved");
   }

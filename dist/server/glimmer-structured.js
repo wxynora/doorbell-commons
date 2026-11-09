@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { glimmer, glimmerVariants, glimmerEncounters, titles } from "../content.js";
 import { glimmerHumanData, glimmerVariantSpriteInfo } from "../glimmer.js";
 
@@ -122,7 +123,7 @@ function projectCaptureCooldown(farm, now) {
  * selects the fields that the structured Human UI is allowed to receive.
  */
 export function projectHumanGlimmer(farm, world, now = Date.now()) {
-  const projectedFarm = structuredClone(farm);
+  const projectedFarm = cloneFarmForMutation(farm);
   const view = glimmerHumanData(projectedFarm, structuredClone(world), now);
   const open = view.open === true;
   const data = {

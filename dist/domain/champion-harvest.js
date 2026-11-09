@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 export const CHAMPION_HARVEST_PERCENT = 15;
 export const CHAMPION_HARVEST_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -19,7 +20,7 @@ export function stageChampionHarvestGrant(farm, input, now) {
         ok: true, ...input, bonus_percent: CHAMPION_HARVEST_PERCENT,
         granted_at: now, expires_at: now + CHAMPION_HARVEST_MS,
     };
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     (working.snowTournamentHarvest ??= {})[input.grant_id] = {
         receipt, fishing: 0, ranch: 0,
     };

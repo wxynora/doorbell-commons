@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 
 import { landTierByLevel } from "../content.js";
@@ -93,7 +94,7 @@ export function handleHumanLandUpgrade(farm, body, now = Date.now()) {
     if (current.revision !== body.expected_revision)
         return errorResponse("state_conflict", "The farm field has changed", current.revision);
 
-    const working = structuredClone(farm);
+    const working = cloneFarmForMutation(farm);
     try {
         advance(working, now);
         const previousLand = landSnapshot(working);
@@ -115,7 +116,7 @@ export function handleHumanLandUpgrade(farm, body, now = Date.now()) {
             ...(working.doorbellHumanLandUpgradeReceipts ?? {}),
             [key]: createMinimalHumanActionReceipt(fp, response),
         };
-        replaceFarm(farm.id, working);
+        replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanLandUpgradeReceipts", receiptKey: key }] });
         return { status: 200, json: response };
     }
     catch {

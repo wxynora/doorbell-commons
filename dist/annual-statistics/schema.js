@@ -25,11 +25,13 @@ export function installAnnualStatisticsSchema(database) {
       accepted_jobs=accepted_jobs+1,accepted_commissions=accepted_commissions+excluded.accepted_commissions,
       first_at=min(first_at,excluded.first_at),last_at=max(last_at,excluded.last_at);`;
   database.exec(`
+    DROP TRIGGER IF EXISTS annual_cooking_original_recipe;
+    DROP TRIGGER IF EXISTS annual_cooking_original_unlock;
     CREATE TRIGGER IF NOT EXISTS annual_cooking_original_recipe AFTER INSERT ON career_chef_original_recipes
     BEGIN
       INSERT INTO annual_cooking_statistics (year,actor_id,recipe_id,unlocked,first_at,last_at)
       SELECT ${year("NEW.created_at")},farm_id,NEW.recipe_id,1,NEW.created_at,NEW.created_at
-      FROM farm_states WHERE json_extract(state_json,'$.doorbellMcpMigration.residentId')=NEW.resident_id
+      FROM farm_states WHERE resident_id=NEW.resident_id
       ON CONFLICT(year,actor_id,recipe_id) DO UPDATE SET unlocked=max(unlocked,1),
         first_at=min(first_at,excluded.first_at),last_at=max(last_at,excluded.last_at);
     END;
@@ -42,7 +44,7 @@ export function installAnnualStatisticsSchema(database) {
     BEGIN
       INSERT INTO annual_cooking_statistics (year,actor_id,recipe_id,unlocked,first_at,last_at)
       SELECT ${year("NEW.created_at")},farm_id,NEW.recipe_id,1,NEW.created_at,NEW.created_at
-      FROM farm_states WHERE json_extract(state_json,'$.doorbellMcpMigration.residentId')=NEW.resident_id
+      FROM farm_states WHERE resident_id=NEW.resident_id
       ON CONFLICT(year,actor_id,recipe_id) DO UPDATE SET unlocked=max(unlocked,1),
         first_at=min(first_at,excluded.first_at),last_at=max(last_at,excluded.last_at);
     END;

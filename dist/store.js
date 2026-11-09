@@ -1,4 +1,6 @@
 import { measureFarmPhase } from "./server/farm-request-timing.js";
+import { withFarmMutationScope, currentFarmMutationScope, captureFarmMutation, captureComponentMutation, cloneFarmForMutation, snapshotFarmMutation, planFarmMutation } from "./farm-mutation-scope.js";
+import { encodeStateRecords, stateRecordChanges } from "./farm-state-records.js";
 // 农场仓库：唯一 id、内存索引、JSON 存档（含 rngState）、健壮读档。
 import { createHash, randomInt } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -43,6 +45,8 @@ let worldCommitCoordinator = null;
 let worldPersistenceAdapter = null;
 let startupSettlementPending = false;
 let startupSettlementReconciliationPending = false;
+// Read once with the loaded world and released before the server listens.
+let startupBefore = null;
 const worldCommitContext = new AsyncLocalStorage();
 setNatureWorldProvider(() => natureWorld);
 const DOORBELL_WELCOME_SILVER = 200;
@@ -118,12 +122,15 @@ export function normalizeFarm(f) {
     return f;
 }
 export function createFarm(name, opts) {
+    return withFarmMutationScope(() => {
     const farm = makeFarm(name, undefined, opts);
     while (farms.has(farm.id))
         farm.id = genCode(); // 门牌号撞号兜底（6 位空间大，几乎不会触发）
+    currentFarmMutationScope().farms.set(farm.id, null);
     farms.set(farm.id, farm);
     save();
     return farm;
+    });
 }
 function doorbellFarmCreationFingerprint(name, opts) {
     return createHash("sha256").update(JSON.stringify([
@@ -146,6 +153,7 @@ export function findDoorbellFarmCreation(creationId, name, opts) {
     return { created: false, farm };
 }
 export function createDoorbellFarm(creationId, name, opts) {
+    return withFarmMutationScope(() => {
     const existing = findDoorbellFarmCreation(creationId, name, opts);
     if (existing)
         return existing;
@@ -159,6 +167,8 @@ export function createDoorbellFarm(creationId, name, opts) {
         requestFingerprint: doorbellFarmCreationFingerprint(name, opts),
         createdAt: farm.createdAt,
     };
+    currentFarmMutationScope().farms.set(farm.id, null);
+    captureComponentMutation("doorbellFarmCreations", doorbellFarmCreations);
     farms.set(farm.id, farm);
     doorbellFarmCreations.push(record);
     try {
@@ -170,17 +180,26 @@ export function createDoorbellFarm(creationId, name, opts) {
         throw error;
     }
     return { created: true, farm };
+    });
 }
-export const getFarm = (id) => farms.get(id);
+export const getFarm = (id) => {
+    const farm = farms.get(id);
+    if (farm) captureFarmMutation(farm);
+    return farm;
+};
+export function captureLiveFarmMutation(farm) {
+    if (farm && farms.get(farm.id) === farm) captureFarmMutation(farm);
+}
 export const allFarms = () => [...farms.values()];
 /** 真实玩家农场（排除常驻 NPC 阿土）——排行榜等"只算玩家"的地方用。 */
 export const playerFarms = () => [...farms.values()].filter((f) => f.id !== NPC_ID);
-export const getGlimmerWorld = () => glimmerWorld;
-export const getPublicExpeditionWorld = () => publicExpeditionWorld;
-export const getQixiLantern2026World = () => qixiLantern2026World;
-export const getNatureWorld = () => natureWorld;
-export const getMysteryMerchantWorld = () => mysteryMerchantWorld;
+export const getGlimmerWorld = () => { captureComponentMutation("glimmer", glimmerWorld); return glimmerWorld; };
+export const getPublicExpeditionWorld = () => { captureComponentMutation("publicExpedition", publicExpeditionWorld); return publicExpeditionWorld; };
+export const getQixiLantern2026World = () => { captureComponentMutation("qixiLantern2026", qixiLantern2026World); return qixiLantern2026World; };
+export const getNatureWorld = () => { captureComponentMutation("nature", natureWorld); return natureWorld; };
+export const getMysteryMerchantWorld = () => { captureComponentMutation("mysteryMerchant", mysteryMerchantWorld); return mysteryMerchantWorld; };
 export function advanceStoredMysteryMerchantWorld({ now, catalog, shelfSize, drawInt }) {
+    return withFarmMutationScope(() => {
     const normalizedCatalog = normalizeMysteryMerchantCatalog(catalog);
     const farmIds = playerFarms().map((farm) => farm.id);
     if (farmIds.length === 0)
@@ -195,6 +214,7 @@ export function advanceStoredMysteryMerchantWorld({ now, catalog, shelfSize, dra
     if (!next.changed)
         return next;
     const staged = normalizeMysteryMerchantWorld(next.world);
+    captureComponentMutation("mysteryMerchant", mysteryMerchantWorld);
     commitWorld(worldSnapshot(farms.values(), dumpUgc(), natureWorld, staged), {
         farmIds: [],
         componentKeys: ["mysteryMerchant"],
@@ -202,9 +222,12 @@ export function advanceStoredMysteryMerchantWorld({ now, catalog, shelfSize, dra
     });
     mysteryMerchantWorld = staged;
     return { changed: true, world: mysteryMerchantWorld };
+    });
 }
 export function commitNatureWorld(next) {
+    return withFarmMutationScope(() => {
     const staged = normalizeNatureWorld(next);
+    captureComponentMutation("nature", natureWorld);
     commitWorld(worldSnapshot(farms.values(), dumpUgc(), staged), {
         farmIds: [],
         componentKeys: ["nature"],
@@ -212,13 +235,14 @@ export function commitNatureWorld(next) {
     });
     natureWorld = staged;
     return natureWorld;
+    });
 }
 export function activateStoredNatureWorld({ now, seed }) {
     return commitNatureWorld(activateNatureWorld(natureWorld, { now, seed }));
 }
 export function advanceStoredNatureWorld(now) {
     const next = advanceNatureWorld(natureWorld, now);
-    if (JSON.stringify(next) === JSON.stringify(natureWorld))
+    if (stateRecordChanges(encodeStateRecords(natureWorld), encodeStateRecords(next)).length === 0)
         return natureWorld;
     return commitNatureWorld(next);
 }
@@ -363,6 +387,7 @@ export function applyGlimmerAchievementRewardBackfill(farmValues = farms.values(
 }
 /** Doorbell 欢迎礼物：服务端 humanKey 定位、grantId 全局幂等，不复制到农场旧通知。 */
 export function grantDoorbellWelcomeReward(humanKey, grantId, now = Date.now(), chooseIndex = randomInt) {
+    return withFarmMutationScope(() => {
     const normalizedHumanKey = typeof humanKey === "string" ? humanKey : "";
     const normalizedGrantId = typeof grantId === "string" ? grantId.trim() : "";
     if (!normalizedHumanKey || !normalizedGrantId) {
@@ -387,6 +412,8 @@ export function grantDoorbellWelcomeReward(humanKey, grantId, now = Date.now(), 
     if (!seed) {
         throw new DoorbellWelcomeRewardError(503, "reward_catalog_unavailable", "No SSR seed is available");
     }
+    captureFarmMutation(farm);
+    captureComponentMutation("doorbellWelcomeRewardGrants", doorbellWelcomeRewardGrants);
     normalizeFarm(farm);
     const previousSilver = farm.silver;
     const previousSeedCount = farm.seeds[seed.id] ?? 0;
@@ -413,10 +440,13 @@ export function grantDoorbellWelcomeReward(humanKey, grantId, now = Date.now(), 
         throw error;
     }
     return { applied: true, ...grant };
+    });
 }
 export function insertFarm(farm) {
+    return withFarmMutationScope(() => {
     if (farms.has(farm.id))
         throw new Error(`farm id already exists: ${farm.id}`);
+    currentFarmMutationScope().farms.set(farm.id, null);
     farms.set(farm.id, normalizeFarm(farm));
     try {
         save();
@@ -425,24 +455,42 @@ export function insertFarm(farm) {
         farms.delete(farm.id);
         throw err;
     }
+    });
 }
-export function replaceFarm(id, farm) {
+export function replaceFarm(id, farm, options = {}) {
+    return withFarmMutationScope(() => {
     const before = farms.get(id);
     if (!before)
         throw new Error(`farm not found: ${id}`);
+    if (before === farm && !currentFarmMutationScope().farms.has(id))
+        throw new Error(`farm_mutation_before_missing:${id}`);
+    captureFarmMutation(before);
     farm.id = id;
     const staged = normalizeFarm(farm);
     const position = [...farms.keys()].indexOf(id);
     const nextFarms = [...farms.values()].map((current) => current.id === id ? staged : current);
     const world = worldSnapshot(nextFarms);
-    commitWorld(world, { farmIds: [id], componentKeys: [], allowCrossDomain: false });
-    if (before !== staged) {
-        for (const key of Object.keys(before))
-            delete before[key];
-        Object.assign(before, staged);
-    }
-    farms.set(id, before);
-    return before;
+    const mutationScope = currentFarmMutationScope();
+    const committed = commitWorld(world, { farmIds: [id], componentKeys: [], allowCrossDomain: false,
+        ...(options.receiptKeys === undefined ? {} : { receiptKeysByFarm: { [id]: options.receiptKeys } }) });
+    let published = false;
+    const publish = () => {
+        if (published) return before;
+        if (before !== staged) {
+            for (const key of Object.keys(before))
+                delete before[key];
+            Object.assign(before, staged);
+        }
+        farms.set(id, before);
+        // A nested Chef receipt write rebases only when its owner publishes
+        // after the real outer COMMIT, never when its savepoint is released.
+        if (committed?.durableBoundary === false && currentFarmMutationScope() === mutationScope && committed.farmPlans?.has(id))
+            mutationScope.farms.set(id, snapshotFarmMutation(before, committed.farmPlans.get(id)));
+        published = true;
+        return before;
+    };
+    return options.deferPublication === true ? { publish } : publish();
+    });
 }
 function worldSnapshot(
     farmValues = farms.values(),
@@ -494,6 +542,8 @@ function mergePersistenceHints(base, additional) {
     const durableValues = [left.durableBoundary, right.durableBoundary]
         .filter((value) => value !== undefined);
     return {
+        ...left,
+        ...right,
         farmIds: [...new Set([...(left.farmIds ?? []), ...(right.farmIds ?? [])])],
         componentKeys: [...new Set([...(left.componentKeys ?? []), ...(right.componentKeys ?? [])])],
         // Coordinator additions identify balance/counter projections. They do
@@ -507,12 +557,58 @@ function mergePersistenceHints(base, additional) {
 }
 function commitWorld(world, hints = null) {
     const context = worldCommitContext.getStore() ?? null;
-    const write = (additionalHints = null) => worldPersistenceAdapter
-        ? worldPersistenceAdapter.commitLegacySnapshot(world, mergePersistenceHints(hints, additionalHints))
-        : writeWorldAtomic(world);
-    return measureFarmPhase("worldCommit", () => worldCommitCoordinator
-        ? worldCommitCoordinator(world, context, write, hints)
+    const scope = currentFarmMutationScope();
+    if (worldPersistenceAdapter && !scope)
+        throw new Error("farm_mutation_scope_missing");
+    let effectiveHints = hints;
+    if (scope) {
+        const byId = new Map(world.farms.map(farm => [farm.id, farm]));
+        const farmIds = new Set(hints?.pendingBalanceProjection === true || hints?.forceFarmCoordinator === true
+            ? hints.farmIds ?? [] : []);
+        const componentKeys = new Set();
+        for (const [id, before] of scope.farms) {
+            const farm = byId.get(id);
+            if (!farm) throw new Error(`farm_mutation_target_missing:${id}`);
+            const plan = planFarmMutation(farm, before, hints?.receiptKeysByFarm?.[id]);
+            if (before === null || plan.recordChanges.length || plan.receiptKeys.length) farmIds.add(id);
+        }
+        for (const [key, before] of scope.components) {
+            if (!Object.hasOwn(world, key)) throw new Error(`farm_component_target_missing:${key}`);
+            if (stateRecordChanges(before ?? new Map(), encodeStateRecords(world[key])).length) componentKeys.add(key);
+        }
+        for (const id of farmIds)
+            if (!scope.farms.has(id)) throw new Error(`farm_mutation_before_missing:${id}`);
+        for (const key of componentKeys)
+            if (!scope.components.has(key)) throw new Error(`farm_component_before_missing:${key}`);
+        effectiveHints = { ...hints, farmIds: [...farmIds], componentKeys: [...componentKeys],
+            farmBefore: scope.farms, componentBefore: scope.components };
+        if (worldPersistenceAdapter && !farmIds.size && !componentKeys.size)
+            return { farms: [], components: [], durableBoundary: true, farmPlans: new Map(), componentPlans: new Map() };
+    }
+    const write = (additionalHints = null) => {
+        if (!worldPersistenceAdapter) return writeWorldAtomic(world);
+        // Coordinator hooks stage cross-farm copies before mutating them. The
+        // corresponding live object is still the durable before-image here.
+        for (const id of additionalHints?.farmIds ?? []) {
+            if (!scope.farms.has(id)) {
+                const live = farms.get(id);
+                if (!live) throw new Error(`farm_mutation_before_missing:${id}`);
+                captureFarmMutation(live);
+            }
+        }
+        return worldPersistenceAdapter.commitLegacySnapshot(world, mergePersistenceHints(effectiveHints, additionalHints));
+    };
+    const result = measureFarmPhase("worldCommit", () => worldCommitCoordinator
+        ? worldCommitCoordinator(world, context, write, effectiveHints)
         : write());
+    if (scope && result?.durableBoundary !== false) {
+        const byId = new Map(world.farms.map(farm => [farm.id, farm]));
+        for (const [id, records] of result?.farmPlans ?? [])
+            scope.farms.set(id, snapshotFarmMutation(byId.get(id), records));
+        for (const [key, records] of result?.componentPlans ?? [])
+            scope.components.set(key, records);
+    }
+    return result;
 }
 export function setWorldCommitCoordinator(coordinator) {
     if (coordinator !== null && typeof coordinator !== "function")
@@ -540,7 +636,7 @@ export function snapshotWorldForRollback() {
 /** Recover the latest durable checkpoint, including commits made during this request. */
 export function restoreCommittedWorldInMemory() {
     const committed = worldPersistenceAdapter
-        ? worldPersistenceAdapter.loadLegacyWorld()
+        ? worldPersistenceAdapter.loadLegacyWorld({ checkIntegrity: false })
         : JSON.parse(readFileSync(WORLD_FILE, "utf8"));
     restoreWorldSnapshotInMemory(committed);
 }
@@ -566,6 +662,7 @@ export function restoreWorldSnapshotInMemory(snapshot) {
  * copies; the live maps are not touched until the single rename succeeds.
  */
 export function replaceFarmsAtomic(replacements, ugcValues = dumpUgc()) {
+    return withFarmMutationScope(() => {
     if (!Array.isArray(replacements) || replacements.length === 0)
         throw new TypeError("farm replacements must be a non-empty array");
     const staged = new Map();
@@ -576,15 +673,21 @@ export function replaceFarmsAtomic(replacements, ugcValues = dumpUgc()) {
         const before = farms.get(id);
         if (!before)
             throw new Error(`farm not found: ${id}`);
-        const farm = structuredClone(entry.farm);
+        if (before === entry.farm && !currentFarmMutationScope().farms.has(id))
+            throw new Error(`farm_mutation_before_missing:${id}`);
+        captureFarmMutation(before);
+        const farm = cloneFarmForMutation(entry.farm);
         farm.id = id;
         staged.set(id, normalizeFarm(farm));
     }
     const nextUgc = structuredClone(ugcValues);
+    captureComponentMutation("ugc", dumpUgc());
     const nextFarms = [...farms.values()].map((farm) => staged.get(farm.id) ?? farm);
     commitWorld(worldSnapshot(nextFarms, nextUgc), {
         farmIds: [...staged.keys()],
         componentKeys: ["ugc"],
+        receiptKeysByFarm: Object.fromEntries(replacements.filter(entry => entry.receiptKeys !== undefined)
+            .map(entry => [String(entry.id ?? entry.farm.id), entry.receiptKeys])),
         allowCrossDomain: true,
     });
     // Map.set and loadUgc do not perform I/O; the world file is already
@@ -593,12 +696,14 @@ export function replaceFarmsAtomic(replacements, ugcValues = dumpUgc()) {
     for (const [id, farm] of staged)
         farms.set(id, farm);
     return [...staged.values()];
+    });
 }
 /**
  * Commit farm replacements, the shared UGC catalog, and nature authority in
  * the same world-file rename. Live state is published only after that rename.
  */
 export function replaceFarmsAndNatureAtomic({ replacements, nextNatureWorld, ugc = dumpUgc() }) {
+    return withFarmMutationScope(() => {
     if (!Array.isArray(replacements) || replacements.length === 0)
         throw new TypeError("farm replacements must be a non-empty array");
     if (nextNatureWorld == null)
@@ -612,16 +717,24 @@ export function replaceFarmsAndNatureAtomic({ replacements, nextNatureWorld, ugc
             throw new Error("farm replacements must contain each farm exactly once");
         if (!farms.has(id))
             throw new Error(`farm not found: ${id}`);
-        const farm = structuredClone(entry.farm);
+        const before = farms.get(id);
+        if (before === entry.farm && !currentFarmMutationScope().farms.has(id))
+            throw new Error(`farm_mutation_before_missing:${id}`);
+        captureFarmMutation(before);
+        const farm = cloneFarmForMutation(entry.farm);
         farm.id = id;
         staged.set(id, normalizeFarm(farm));
     }
     const nextUgc = structuredClone(ugc);
     const stagedNature = normalizeNatureWorld(nextNatureWorld);
+    captureComponentMutation("ugc", dumpUgc());
+    captureComponentMutation("nature", natureWorld);
     const nextFarms = [...farms.values()].map((farm) => staged.get(farm.id) ?? farm);
     commitWorld(worldSnapshot(nextFarms, nextUgc, stagedNature), {
         farmIds: [...staged.keys()],
         componentKeys: ["ugc", "nature"],
+        receiptKeysByFarm: Object.fromEntries(replacements.filter(entry => entry.receiptKeys !== undefined)
+            .map(entry => [String(entry.id ?? entry.farm.id), entry.receiptKeys])),
         allowCrossDomain: true,
     });
     loadUgc(nextUgc);
@@ -629,9 +742,11 @@ export function replaceFarmsAndNatureAtomic({ replacements, nextNatureWorld, ugc
         farms.set(id, farm);
     natureWorld = stagedNature;
     return { farms: [...staged.values()], nature: stagedNature };
+    });
 }
 /** Commit farm replacements and the shared merchant world in one world rename. */
 export function replaceFarmsAndMysteryMerchantAtomic({ replacements, nextMysteryMerchantWorld }) {
+    return withFarmMutationScope(() => {
     if (!Array.isArray(replacements) || replacements.length === 0)
         throw new TypeError("farm replacements must be a non-empty array");
     const staged = new Map();
@@ -641,21 +756,29 @@ export function replaceFarmsAndMysteryMerchantAtomic({ replacements, nextMystery
             throw new Error("farm replacements must contain each farm exactly once");
         if (!farms.has(id))
             throw new Error(`farm not found: ${id}`);
-        const farm = structuredClone(replacement.farm);
+        const before = farms.get(id);
+        if (before === replacement.farm && !currentFarmMutationScope().farms.has(id))
+            throw new Error(`farm_mutation_before_missing:${id}`);
+        captureFarmMutation(before);
+        const farm = cloneFarmForMutation(replacement.farm);
         farm.id = id;
         staged.set(id, normalizeFarm(farm));
     }
     const stagedMerchant = normalizeMysteryMerchantWorld(nextMysteryMerchantWorld);
+    captureComponentMutation("mysteryMerchant", mysteryMerchantWorld);
     const nextFarms = [...farms.values()].map((current) => staged.get(current.id) ?? current);
     commitWorld(worldSnapshot(nextFarms, dumpUgc(), natureWorld, stagedMerchant), {
         farmIds: [...staged.keys()],
         componentKeys: ["mysteryMerchant"],
+        receiptKeysByFarm: Object.fromEntries(replacements.filter(entry => entry.receiptKeys !== undefined)
+            .map(entry => [String(entry.id ?? entry.farm.id), entry.receiptKeys])),
         allowCrossDomain: true,
     });
     for (const [id, farm] of staged)
         farms.set(id, farm);
     mysteryMerchantWorld = stagedMerchant;
     return { farms: [...staged.values()], mysteryMerchant: mysteryMerchantWorld };
+    });
 }
 /** Commit one buyer farm and the shared merchant world in the same world rename. */
 export function replaceFarmAndMysteryMerchantAtomic({ replacement, nextMysteryMerchantWorld }) {
@@ -668,6 +791,7 @@ export function replaceFarmAndMysteryMerchantAtomic({ replacement, nextMysteryMe
 
 /** Publish inventory, rewards and the shared story only after one durable write. */
 export function replaceFarmsAndPublicExpeditionAtomic({ replacements = [], nextPublicExpeditionWorld, nextNatureWorld }) {
+    return withFarmMutationScope(() => {
     if (!Array.isArray(replacements) || !nextPublicExpeditionWorld)
         throw new TypeError("valid story replacements are required");
     const staged = new Map();
@@ -675,30 +799,40 @@ export function replaceFarmsAndPublicExpeditionAtomic({ replacements = [], nextP
         const id = String(replacement?.id ?? replacement?.farm?.id ?? "");
         if (!id || staged.has(id) || !farms.has(id))
             throw new Error("invalid story farm replacement");
-        const farm = structuredClone(replacement.farm);
+        const before = farms.get(id);
+        if (before === replacement.farm && !currentFarmMutationScope().farms.has(id))
+            throw new Error(`farm_mutation_before_missing:${id}`);
+        captureFarmMutation(before);
+        const farm = cloneFarmForMutation(replacement.farm);
         farm.id = id;
         staged.set(id, normalizeFarm(farm));
     }
     const story = normalizePublicExpeditionWorld(structuredClone(nextPublicExpeditionWorld));
     const nature = nextNatureWorld === undefined ? natureWorld : normalizeNatureWorld(nextNatureWorld);
+    captureComponentMutation("publicExpedition", publicExpeditionWorld);
+    if (nextNatureWorld !== undefined) captureComponentMutation("nature", natureWorld);
     const nextFarms = [...farms.values()].map(farm => staged.get(farm.id) ?? farm);
     const componentKeys = [];
-    if (JSON.stringify(story) !== JSON.stringify(publicExpeditionWorld)) componentKeys.push("publicExpedition");
-    if (nextNatureWorld !== undefined && JSON.stringify(nature) !== JSON.stringify(natureWorld)) componentKeys.push("nature");
+    if (stateRecordChanges(encodeStateRecords(publicExpeditionWorld), encodeStateRecords(story)).length) componentKeys.push("publicExpedition");
+    if (nextNatureWorld !== undefined && stateRecordChanges(encodeStateRecords(natureWorld), encodeStateRecords(nature)).length) componentKeys.push("nature");
     if (staged.size > 0 || componentKeys.length > 0) {
         commitWorld({...worldSnapshot(nextFarms), publicExpedition:story, nature}, {
             farmIds:[...staged.keys()],componentKeys,allowCrossDomain:true,
+            receiptKeysByFarm:Object.fromEntries(replacements.filter(entry => entry.receiptKeys !== undefined)
+                .map(entry => [String(entry.id ?? entry.farm.id), entry.receiptKeys])),
         });
     }
     for (const [id,farm] of staged) farms.set(id,farm);
     publicExpeditionWorld = story;
     natureWorld = nature;
     return {world:story,farms:[...staged.values()]};
+    });
 }
 /** 确保常驻 NPC 阿土在库里（首次启动 / 老存档没有时建一座）。返回是否新建。 */
 function ensureNpc() {
     if (farms.has(NPC_ID))
         return false;
+    currentFarmMutationScope()?.farms.set(NPC_ID, null);
     farms.set(NPC_ID, makeNpcFarm());
     return true;
 }
@@ -708,7 +842,7 @@ export function save(hints = null) {
     }
     catch (error) {
         if (worldPersistenceAdapter)
-            restoreWorldSnapshotInMemory(worldPersistenceAdapter.loadLegacyWorld());
+            restoreWorldSnapshotInMemory(worldPersistenceAdapter.loadLegacyWorld({ checkIntegrity: false }));
         throw error;
     }
 }
@@ -735,10 +869,19 @@ function publishLoadedWorld(world) {
         farms.set(farm.id, normalizeFarm(farm));
 }
 export function settleLoadedWorld(options = {}) {
+    return withFarmMutationScope(() => {
+    // Startup backfills can touch any player; their before-images are held
+    // only for this one reconciliation, never between requests.
+    if (startupBefore) {
+        for (const [id, before] of startupBefore.farms) currentFarmMutationScope().farms.set(id, before);
+        for (const [key, before] of startupBefore.components) currentFarmMutationScope().components.set(key, before);
+    }
+    for (const farm of farms.values()) captureFarmMutation(farm);
+    captureComponentMutation("maintenanceGrantIds", appliedMaintenanceGrantIds);
     const forceSave = options?.forceSave === true;
     if (!startupSettlementPending) {
         if (startupSettlementReconciliationPending && forceSave) {
-            save();
+            save({ farmIds: playerFarms().filter(farm => farm.doorbellMcpMigration?.migrationId).map(farm => farm.id), componentKeys: [], forceFarmCoordinator: true });
             startupSettlementReconciliationPending = false;
             return { applied: false, reconciled: true };
         }
@@ -758,11 +901,13 @@ export function settleLoadedWorld(options = {}) {
     if (achievementBackfill.applied)
         console.log(`[store] 流光原野成就奖励已补发 ${achievementBackfill.count} 个玩家农场、${achievementBackfill.achievements} 项，共 ${achievementBackfill.coins} 金、${achievementBackfill.silver} 银`);
     const changed = npcCreated || grant.applied || qixiRefund.applied || nazhiTitleGrant.applied || achievementBackfill.applied;
-    if (changed || forceSave)
-        save();
+    if (changed || forceSave || startupBefore)
+        save(forceSave ? { farmIds: playerFarms().filter(farm => farm.doorbellMcpMigration?.migrationId).map(farm => farm.id), componentKeys: [], forceFarmCoordinator: true } : null);
+    startupBefore = null;
     startupSettlementPending = false;
     startupSettlementReconciliationPending = changed && worldCommitCoordinator === null;
     return { applied: changed, reconciled: worldCommitCoordinator !== null && (changed || forceSave) };
+    });
 }
 function finishLoadedWorld(options = {}) {
     console.log(`[store] 已载入 ${farms.size} 个农场`);
@@ -773,7 +918,16 @@ function finishLoadedWorld(options = {}) {
 export function load(options = {}) {
     if (worldPersistenceAdapter) {
         try {
-            publishLoadedWorld(worldPersistenceAdapter.loadLegacyWorld());
+            const world = worldPersistenceAdapter.loadLegacyWorld();
+            // Normalizers below operate in place. Retain the already-loaded
+            // values only until startup reconciliation commits their changes.
+            startupBefore = {
+                farms: new Map(world.farms.map(farm => [farm.id, snapshotFarmMutation(farm)])),
+                components: new Map(["maintenanceGrantIds", "doorbellWelcomeRewardGrants", "doorbellFarmCreations",
+                    "ugc", "glimmer", "publicExpedition", "qixiLantern2026", "nature", "mysteryMerchant"]
+                    .map(key => [key, Object.hasOwn(world, key) ? encodeStateRecords(world[key]) : null])),
+            };
+            publishLoadedWorld(world);
             finishLoadedWorld(options);
             return;
         }

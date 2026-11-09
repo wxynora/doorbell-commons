@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { NPC_ID } from "../config.js";
 import { fishing, fishingBaits, glimmer } from "../content.js";
 import { advance, canStealNow, isUgcCrop, stealShieldRemain } from "../engine.js";
@@ -23,7 +24,7 @@ function wateredToday(visitor, target, now) {
 }
 
 function projectStealTargets(thief, now) {
-  const projectedThief = structuredClone(thief);
+  const projectedThief = cloneFarmForMutation(thief);
   if (
     !reachable(projectedThief) ||
     !allowsSocial(projectedThief, "steal") ||
@@ -37,7 +38,7 @@ function projectStealTargets(thief, now) {
     ...numberedPlayerFarms(),
   ];
   return candidates.flatMap(({ number, farm: sourceFarm }) => {
-    const farm = structuredClone(sourceFarm);
+    const farm = cloneFarmForMutation(sourceFarm);
     if (
       farm.id === thief.id ||
       !reachable(farm) ||
@@ -78,7 +79,7 @@ function projectWater(visitor, now) {
       continue;
     }
     if (!canWater || !reachable(sourceFarm) || !allowsSocial(sourceFarm, "water")) continue;
-    const farm = structuredClone(sourceFarm);
+    const farm = cloneFarmForMutation(sourceFarm);
     advance(farm, now);
     if (farm.plots.some((plot) => plot.crop && !plot.crop.ripe)) targets.push(entry);
   }
@@ -90,7 +91,7 @@ function projectWater(visitor, now) {
 }
 
 function projectFishing(farm, now) {
-  const state = ensureFishing(structuredClone(farm));
+  const state = ensureFishing(cloneFarmForMutation(farm));
   const usedToday =
     state.dailyCasts?.day === currentDayIndex(now) ? cleanCount(state.dailyCasts.count) : 0;
   const freeBait = cleanCount(state.freeBait);
@@ -110,7 +111,7 @@ function projectFishing(farm, now) {
 
 function projectActivities(farm, now) {
   const day = currentDayIndex(now);
-  const glimmerState = normalizeGlimmerFarm(structuredClone(farm));
+  const glimmerState = normalizeGlimmerFarm(cloneFarmForMutation(farm));
   const glimmerWorld = structuredClone(getGlimmerWorld());
   const glimmerDaily = glimmerState.daily?.day === day ? glimmerState.daily : null;
   const joinedGlimmer =

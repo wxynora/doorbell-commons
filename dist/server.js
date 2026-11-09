@@ -1,4 +1,6 @@
 import { ownFarmPersistenceScope } from "./server/farm-persistence-scope.js";
+import { withFarmMutationScope, currentFarmMutationScope, captureComponentMutation, cloneFarmForMutation, snapshotFarmMutation, planFarmMutation } from "./farm-mutation-scope.js";
+import { encodeStateRecords, stateRecordChanges } from "./farm-state-records.js";
 import {configureGuestbookJudgments} from './server/doorbell/guestbook-judgments.mjs';
 import { createTogetherDecorationRewards } from "./server/doorbell/together-decoration.js";
 import { handleFarmDecorationAction } from './server/farm-decoration-agent-action.js';
@@ -17,7 +19,7 @@ import { existsSync } from "node:fs";
 import { advance, steal, visitorWater, tryWaterReward, buyPotionSet, ensureHumanKey, pushSocialInbox, pushLog, craft, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog } from "./engine.js";
 import { dispatch, farmView, viewShop, viewEncyclopedia, shopBrief, viewMarket, buyFromMarket, visitView, tendNpc, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText } from "./flavor.js";
-import { createFarm, getFarm, allFarms, playerFarms, replaceFarm, replaceFarmAndMysteryMerchantAtomic, save, getGlimmerWorld, getMysteryMerchantWorld, getPublicExpeditionWorld, getQixiLantern2026World, restoreCommittedWorldInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, withWorldCommitContext, advanceStoredMysteryMerchantWorld } from "./store.js";
+import { createFarm, getFarm, allFarms, playerFarms, captureLiveFarmMutation, replaceFarm, replaceFarmAndMysteryMerchantAtomic, save, getGlimmerWorld, getNatureWorld, getMysteryMerchantWorld, getPublicExpeditionWorld, getQixiLantern2026World, restoreCommittedWorldInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, withWorldCommitContext, advanceStoredMysteryMerchantWorld } from "./store.js";
 import { MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, NPC_ID, GROW_TICKS, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { sweepNonces, htmlReadme, htmlGuide } from "./agent.js";
@@ -54,6 +56,7 @@ import { MCP_HELP, SHARED_HELP, SOCIAL_HELP } from "./server/farm/help.js";
 import { allowsSocial, farmByNumber, farmLabel, reachable, resolveNumberedTarget, ripeBroadcastText, stolenTodayText, visitListResult, wanderResult } from "./server/farm/social.js";
 import { createLegacyAgentHandler } from "./server/legacy-agent/runtime.js";
 import { createLingyeFarmBalanceCoordinator, createLingyeWorldBackend, openLingyeWorldDatabase, runLingyeWorldTransaction } from "./lingye-world-database.js";
+import { synchronizeFarmBalanceProjections } from "./farm-balance-projection.js";
 import { createLingyeActionExecutor } from "./server/doorbell/lingye.js";
 import { resolveChefOriginalCookingReceipt } from "./domain/kitchen/original.js";
 import { farmCareerBenefits, farmDoorbellKitchenCareerBenefits, farmResidentId } from "./career/farm-benefits.js";
@@ -149,6 +152,7 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     return result;
 }
 function executeDoorbellFarmAction(farm, action, params, detail, now, sourceOp) {
+    captureLiveFarmMutation(farm);
     const halloweenCandyEat = action === "together" && isHalloweenCandyEatOption(params.option);
     const execute = () => {
         try {
@@ -324,11 +328,14 @@ function agentReadyText(f, humanUrl, agentUrl, isNew) {
 （🏠 门牌号 ${f.id}，别人串门/偷菜认它、可公开。两条链接都不含主 token，AI 拿不到农场私钥。）`;
 }
 function saveKnownFarmChanges(farmIds, now, componentKeys = []) {
+    if (componentKeys.includes("ugc")) captureComponentMutation("ugc", allUgc());
     save(isTogetherSeason3(getPublicExpeditionWorld()) && !isQixiLantern2026Active(now)
         ? { farmIds: [...new Set(farmIds)], componentKeys, allowCrossDomain: false }
         : null);
 }
 function runFarmCore(farmId, action, b, encArg, now, options = {}) {
+    if (action === "design") captureComponentMutation("ugc", allUgc());
+    if (action === "harvest" || action === "run") getNatureWorld();
     let currentFarm = getFarm(farmId);
     if (!currentFarm)
         return { status: 400, json: { ok: false, text: `找不到农场 ${farmId || "(没给 farm)"}` } };
@@ -336,15 +343,17 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         action === "help" || action === "shop" || action === "market" || action === "encyclopedia" ||
         (action === "kitchen" && (!b.op || b.op === "view")) ||
         (action === "guestbook" && b.on === undefined);
-    let f = projectedRead && action !== "market" ? structuredClone(currentFarm) : currentFarm;
+    let f = projectedRead && action !== "market" ? cloneFarmForMutation(currentFarm) : currentFarm;
     if (projectedRead && action !== "market") {
         advance(f, now);
         if (f.id === NPC_ID)
             tendNpc(f, now);
     }
     const persistProjectedRead = () => {
-        if (projectedRead && JSON.stringify(f) !== JSON.stringify(currentFarm))
-            replaceFarm(currentFarm.id, f);
+        if (projectedRead) {
+            const plan = planFarmMutation(f, snapshotFarmMutation(currentFarm));
+            if (plan.recordChanges.length || plan.receiptKeys.length) replaceFarm(currentFarm.id, f);
+        }
     };
     const careerBenefits = options.careerBenefits ?? farmCareerBenefits(activeLingyeWorldDatabase, f);
     const detail = options.detail === true || b?.detail === true || b?.detail === "1" || b?.detail === "true"
@@ -591,7 +600,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
                 backend: activeLingyeWorldBackend,
             }).execute({ farmId: f.id, side: "ai", op: "view" }, now), now)
             : "";
-        const text = [midAutumnGiftStatus, dispatch(f, { action: "status" }, now).text, aiRanchHarvestStatus(f, now), cookingStatus, ripeBroadcastText(now, changedFarmIds), stolenTodayText(f, now)].filter(Boolean).join("\n\n"); // 内部会 roll 季节事件（可能已改农场）
+        const text = [midAutumnGiftStatus, dispatch(f, { action: "status" }, now).text, aiRanchHarvestStatus(f, now), cookingStatus, ripeBroadcastText(now, changedFarmIds, f.id), stolenTodayText(f, now)].filter(Boolean).join("\n\n"); // 内部会 roll 季节事件（可能已改农场）
         bumpDaily(f, now, "logins"); // 网瘾榜（今日开自己农场主页次数）
         save(isTogetherSeason3(publicWorld)
             ? { farmIds: [...changedFarmIds], componentKeys: [], allowCrossDomain: false }
@@ -605,7 +614,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     }
     if (action === "market") {
         currentFarm = discoverAndBroadcastMysteryMerchant(currentFarm, now).farm;
-        f = structuredClone(currentFarm);
+        f = cloneFarmForMutation(currentFarm);
         advance(f, now);
         if (f.id === NPC_ID) tendNpc(f, now);
         const mysteryMerchantWorld = getMysteryMerchantWorld();
@@ -643,7 +652,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         if (b.source === "mystery-merchant") {
             if (!activeMysteryMerchantRuntime || typeof activeMysteryMerchantRuntime.renderPurchaseResult !== "function")
                 throw new Error("Mystery merchant purchase copy is not configured");
-            const working = structuredClone(buyer);
+            const working = cloneFarmForMutation(buyer);
             const r = buyMysteryMerchantOffers({
                 world: getMysteryMerchantWorld(),
                 buyer: working,
@@ -906,7 +915,7 @@ function authenticatedResultFarm(farmId, body) {
 }
 function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
     const initialPublicWorld = getPublicExpeditionWorld();
-    const publicWorldBefore = isTogetherSeason3(initialPublicWorld) ? null : JSON.stringify(initialPublicWorld);
+    const publicWorldBefore = isTogetherSeason3(initialPublicWorld) ? null : currentFarmMutationScope()?.components.get("publicExpedition");
     const out = runFarmCore(farmId, action, body, encArg, now, options);
     if (action === "together" && isTogetherSeason3(getPublicExpeditionWorld())) return out;
     const viewer = authenticatedResultFarm(farmId, body);
@@ -915,7 +924,7 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
     const world = getPublicExpeditionWorld();
     const season3 = isTogetherSeason3(world);
     const publicFarms = season3 ? null : playerFarms();
-    const publicFarmBefore = season3 ? null : new Map(publicFarms.map((farm) => [farm.id, JSON.stringify(farm)]));
+    const rewardBefore = season3 ? new Map() : new Map([[viewer.id, { farm: viewer, before: snapshotFarmMutation(viewer) }]]);
     const extras = [];
     if (season3) {
         if (!options.suppressTogetherNotices) {
@@ -923,7 +932,9 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
             if (notices) extras.push(notices);
         }
     } else {
-        advancePublicExpedition(world, publicFarms, now);
+        advancePublicExpedition(world, publicFarms, now, farm => {
+            if (!rewardBefore.has(farm.id)) rewardBefore.set(farm.id, { farm, before: snapshotFarmMutation(farm) });
+        });
         if (!options.suppressTogetherNotices) {
             const notices = takePublicAiNotices(world, viewer, now);
             if (notices.length) extras.push(notices.join("\n\n"));
@@ -940,8 +951,8 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
     }
     if (extras.length)
         out.json.text = `${String(out.json.text ?? "")}\n\n${extras.join("\n\n")}`;
-    const publicStateChanged = !season3 && (publicWorldBefore !== JSON.stringify(world) ||
-        publicFarms.some((farm) => publicFarmBefore.get(farm.id) !== JSON.stringify(farm)));
+    const publicStateChanged = !season3 && ((publicWorldBefore && stateRecordChanges(publicWorldBefore, encodeStateRecords(world)).length > 0) ||
+        [...rewardBefore.values()].some(({ farm, before }) => planFarmMutation(farm, before).recordChanges.length > 0));
     if (publicStateChanged)
         save();
     return out;
@@ -962,13 +973,13 @@ function runFarmWithRollback(farmId, action, body = {}, encArg, now, options = {
     }, execute);
 }
 // ——————————— Agent 控制页（HTML，给只能点链接的 AI）———————————
-function resolveAgent(playKey) {
+function resolveAgent(playKey, { advance: advanceFarm = true } = {}) {
     if (!playKey)
         return undefined;
     const f = allFarms().find((x) => !legacyAgentAccessRevoked(x) && x.agentKey === playKey);
-    return f ? (fresh(f.id) ?? undefined) : undefined;
+    return f ? (advanceFarm ? (fresh(f.id) ?? undefined) : f) : undefined;
 }
-const handleLegacyMcp = createLegacyMcpHandler({ resolveAgent, executeAction: executeLegacyMcpAction });
+const handleLegacyMcp = createLegacyMcpHandler({ resolveAgent, executeAction: executeLegacyMcpAction, checkpoint: save });
     const legacyAgent = createLegacyAgentHandler({ runFarm: runFarmWithRollback, resolveAgent });
 const tryServeAsset = createAssetHandler(new URL("../assets/", import.meta.url));
 const MAINTENANCE_FILE = `${process.env.AIFARM_DATA_DIR || "./data"}/maintenance`;
@@ -1082,18 +1093,9 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         ranchRaidScheduler?.reschedule(world.farms);
         return result;
     });
-    const syncLedgerProjection = () => {
-        const needsProjection = playerFarms().some((farm) => {
-            const residentId = farm.doorbellMcpMigration?.residentId;
-            if (!residentId)
-                return false;
-            const account = lingyeWorldBackend.trustedQueries.getAccount(residentId);
-            return farm.coins !== account.availableGold || farm.silver !== account.availableSilver;
-        });
-        if (needsProjection)
-            save();
-    };
+    const syncLedgerProjection = () => synchronizeFarmBalanceProjections(lingyeWorldDatabase, playerFarms, save);
     try {
+        withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, syncLedgerProjection);
         withWorldCommitContext({ balanceAuthority: "farm", actor: "system" }, () => {
             // Startup-only grants and backfills must reach the farm snapshot and
             // migrated economy ledger in the same durable transaction.
@@ -1107,9 +1109,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             }
         });
         withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => {
-            // Register/import every migrated ledger before any recovery reads
-            // it, then recover Chef farm checkpoints under ledger authority.
-            save();
+            // Startup settlement registered existing migrations before Chef recovery.
             lingyeWorldBackend.trustedSystemCommands.recoverChefStoreFarmState();
             syncLedgerProjection();
         });
@@ -1302,7 +1302,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
     const stopNatureScheduler = startNatureRuntimeScheduler();
     const stopConstableInterviewScheduler = startConstableInterviewScheduler(lingyeWorldDatabase, lingyeWorldBackend);
     ranchRaidScheduler = startRanchRaidScheduler();
-    const server = createServer(async (req, res) => {
+    const server = createServer((req, res) => withFarmMutationScope(async () => {
         const url = new URL(req.url ?? "/", `http://localhost:${port}`);
         const parts = url.pathname.split("/").filter(Boolean);
         const sp = smartParams(url.search); // 同 url.searchParams，但纠正 GBK 等非 UTF-8 客户端的中文参数
@@ -1311,13 +1311,14 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             return maintenanceOut(req, res, parts, method);
         if (tryServeAsset(method, parts, res))
             return;
-        if (await handleDoorbellInternal(req, res, parts, method))
-            return;
-        const now = Date.now();
-        const ip = clientIp(req);
-        if (!allowRequest(ip, now))
-            return jsonOut(res, 429, { ok: false, text: "请求太频繁了，过几秒再来（限流）。" });
         try {
+            withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, syncLedgerProjection);
+            if (await handleDoorbellInternal(req, res, parts, method))
+                return;
+            const now = Date.now();
+            const ip = clientIp(req);
+            if (!allowRequest(ip, now))
+                return jsonOut(res, 429, { ok: false, text: "请求太频繁了，过几秒再来（限流）。" });
             // —— 本地优先同步：公共联机服只接收副本，不读取任何私有实例数据目录。——
             if (parts[0] === "sync")
                 return await handleSyncRoute({ req, res, parts, method, ip, now });
@@ -1530,9 +1531,11 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             if (err instanceof PublicSyncError)
                 return jsonOut(res, err.status, { ok: false, error: err.message });
             console.error(err);
+            if (parts[0] === "internal" && parts[1] === "doorbell")
+                return internalServiceError(res, 503, "farm_unavailable", "The farm action could not be completed");
             reply(res, false, "农场后台出了点岔子，稍后再试。");
         }
-    });
+    }));
     setInterval(() => { const t = Date.now(); sweepGuard(t); sweepNonces(t); legacyAgent.sweepFlashes(t); }, 60_000).unref(); // 周期清理限流表 + 过期 nonce/flash
     server.once("close", () => {
         if (activeHalloweenFarmRuntime === halloweenRuntime) activeHalloweenFarmRuntime = null;

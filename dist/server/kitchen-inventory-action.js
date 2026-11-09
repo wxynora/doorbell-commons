@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import {
   kitchenSellMany,
@@ -316,7 +317,7 @@ export function handleHumanKitchenInventoryAction(farm, body, now = Date.now(), 
 
   let working;
   try {
-    working = structuredClone(farm);
+    working = cloneFarmForMutation(farm);
   } catch {
     return unavailable("The kitchen inventory action could not be prepared");
   }
@@ -343,7 +344,7 @@ export function handleHumanKitchenInventoryAction(farm, body, now = Date.now(), 
     [key]: createMinimalHumanActionReceipt(requestFingerprint, response),
   };
   try {
-    replaceFarm(farm.id, working);
+    replaceFarm(farm.id, working, { receiptKeys: [{ scope: "/doorbellHumanKitchenInventoryActionReceipts", receiptKey: key }] });
   } catch {
     return unavailable("The kitchen inventory action could not be saved");
   }

@@ -1,4 +1,6 @@
+import {acceptCommittedFarmRecords} from "../../farm-mutation-scope.js";
 import { getFarm } from "../../store.js";
+import { writeFarmStatePaths } from "../../farm-state-records.js";
 import { titles } from "../../content.js";
 import { EconomyService } from "../../economy/economy-service.js";
 import { runLingyeWorldTransaction } from "../../lingye-world-database.js";
@@ -46,7 +48,7 @@ export function createMomentsProgressionService({database,economyRules,farms=get
         if(!farm||farm.doorbellMcpMigration?.residentId!==input.residentId)fail("farm_binding_mismatch");
         let publish;
         const result=runLingyeWorldTransaction(database,()=>{
-            const persisted=database.prepare("SELECT json_extract(state_json,'$.doorbellMcpMigration.residentId') AS resident_id FROM farm_states WHERE farm_id=?")
+            const persisted=database.prepare("SELECT resident_id FROM farm_states WHERE farm_id=?")
                 .get(farm.id);
             if(persisted?.resident_id!==input.residentId)fail("farm_binding_mismatch");
             let state=readContext(farm.id);
@@ -131,11 +133,11 @@ export function createMomentsProgressionService({database,economyRules,farms=get
                     if(goldReward>0)values.seeds=staged.seeds;
                 }
                 const entries=Object.entries(values);
-                database.prepare(`UPDATE farm_states SET state_json=json_set(state_json,${entries.map(()=>"?,json(?)").join(",")}) WHERE farm_id=?`)
-                    .run(...entries.flatMap(([key,value])=>[`$.${key}`,JSON.stringify(value)]),farm.id);
+                const committed=writeFarmStatePaths(database,farm.id,entries.map(([key,value])=>({path:key.split("."),value})));
                 publish=()=>{
                     for(const [key,value] of entries)if(!key.includes("."))farm[key]=value;
                     farm.doorbellMcpMigration.balanceProjection=staged.doorbellMcpMigration.balanceProjection;
+                    acceptCommittedFarmRecords(farm,committed.recordChanges);
                 };
             }
             const sequences=new Set(input.events.map(event=>event.sequence));

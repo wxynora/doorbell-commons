@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../../farm-mutation-scope.js";
 import { decorationState } from "./state.js";
 
 function decorationReference(input) {
@@ -27,7 +28,7 @@ export function stageTogetherDecoration(farm, input) {
     }
     return null;
   }
-  const working = structuredClone(farm), state = decorationState(working);
+  const working = cloneFarmForMutation(farm), state = decorationState(working);
   const count = (state.owned[input.decoration.item_id] ?? 0) + 1;
   if (!Number.isSafeInteger(count)) throw new Error("together_decoration_quantity_invalid");
   state.owned[input.decoration.item_id] = count;

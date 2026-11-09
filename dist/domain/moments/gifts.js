@@ -1,3 +1,4 @@
+import { cloneFarmForMutation } from "../../farm-mutation-scope.js";
 import { allFarms, replaceFarmsAtomic } from "../../store.js";
 import { ensureKitchen } from "../ranch/state.js";
 import { ensureFishing, buyBait } from "../../fishing.js";
@@ -38,7 +39,7 @@ export function createMomentsFarmGiftService({farms=allFarms,commit=replaceFarms
     return {
         inventory(input) {
             if (!exact(input,["sender_resident_id","sender_farm_doorplate"])) fail("invalid_request");
-            const identity=binding(input),farm=structuredClone(boundFarm(identity.sender_resident_id,identity.sender_farm_doorplate));
+            const identity=binding(input),farm=cloneFarmForMutation(boundFarm(identity.sender_resident_id,identity.sender_farm_doorplate));
             const items=ensureKitchen(farm).dishes.map(dish => ({kind:"dish",id:dish.id,name:dish.name,quantity:1}));
             for (const [id,quantity] of Object.entries(ensureFishing(farm).baitInventory)) {
                 const bait=fishingBaitById.get(id);
@@ -57,7 +58,7 @@ export function createMomentsFarmGiftService({farms=allFarms,commit=replaceFarms
                 if (JSON.stringify(existing.request)!==JSON.stringify(request)) fail("request_conflict");
                 return structuredClone(existing.result);
             }
-            const from=structuredClone(sender),to=structuredClone(recipient),item=request.item;
+            const from=cloneFarmForMutation(sender),to=cloneFarmForMutation(recipient),item=request.item;
             let name,purchase;
             if (item.kind === "dish") {
                 const source=ensureKitchen(from),destination=ensureKitchen(to);
@@ -92,7 +93,8 @@ export function createMomentsFarmGiftService({farms=allFarms,commit=replaceFarms
             from[RECEIPTS]={...(from[RECEIPTS]??{}),[request.gift_id]:{request,result}};
             // Existing authority commits both inventories and the immutable receipt together.
             // No live farm is changed until this durable commit has succeeded.
-            commit([{id:from.id,farm:from},{id:to.id,farm:to}]);
+            commit([{id:from.id,farm:from,receiptKeys:[{scope:"/doorbellMomentsGiftReceipts",receiptKey:request.gift_id}]},
+                {id:to.id,farm:to,receiptKeys:[]}]);
             return structuredClone(result);
         },
     };

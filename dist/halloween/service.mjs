@@ -25,7 +25,6 @@ export class HalloweenService {
   view(farmId, now, side = 'ai') {
     if (!text(farmId) || !['ai', 'human'].includes(side) || !Number.isSafeInteger(now))
       fail('invalid_request', 400);
-    const state = this.store.load(farmId);
     return {
       candies: this.store.availableCandies(farmId).map(candy => ({
         id: candy.id,
@@ -34,8 +33,7 @@ export class HalloweenService {
         appearance: { name: candy.appearance.name },
         rarity: candy.rarity,
       })),
-      effects: structuredClone(state.eatenEffects.filter(entry =>
-        entry.actorSide === side && entry.expiresAt > now).map(entry => ({
+      effects: structuredClone(this.store.activeEatenEffects(farmId, side, now).map(entry => ({
         candyId: entry.candyId,
         effect: entry.effect,
         expiresAt: entry.expiresAt,
@@ -67,7 +65,6 @@ export class HalloweenService {
       }
       if (receipt) return receipt;
 
-      const state = this.store.load(farmId);
       const candy = this.store.ownedCandy(farmId, args.candyId);
       if (!candy) fail('candy_unavailable');
       const target = args.target ?? 'self';
@@ -85,9 +82,9 @@ export class HalloweenService {
       const effect = resolved.effect;
       this.db.prepare("UPDATE halloween_candies SET status='eaten',eaten_at=? WHERE candy_id=?")
         .run(now, candy.candy_id);
-      state.eatenEffects = queueEatenEffect(state.eatenEffects, {
+      const entry = queueEatenEffect([], {
         candyId: candy.candy_id, effect, side: eaterSide, eatenAt: now,
-      });
+      })[0];
       const result = {
         candyId: candy.candy_id,
         target,
@@ -95,7 +92,7 @@ export class HalloweenService {
         effect,
         expiresAt: now + effectDurationMs(effect, eaterSide),
       };
-      this.store.save(farmId, state);
+      this.store.addEatenEffect(farmId, entry);
       this.store.saveReceipt(farmId, requestId, command, result);
       return result;
     });

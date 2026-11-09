@@ -1,4 +1,5 @@
 import { stageAnnualCounters } from "../../annual-statistics/world-buffer.js";
+import { cloneFarmForMutation } from "../../farm-mutation-scope.js";
 import { randomUUID } from "node:crypto";
 import { cooking, cookingRecipeById, cookingRecipes } from "../../content.js";
 import { removeFishingCatchIds } from "../../fishing.js";
@@ -67,7 +68,7 @@ function originalReceiptReplay(farm, options) {
 
 function originalReceiptCanBePersisted(farm, recipe, options, now) {
     try {
-        const preview = structuredClone(farm);
+        const preview = cloneFarmForMutation(farm);
         const previewDish = { id: "chef-receipt-preview" };
         return persistChefOriginalCookingReceipt(preview, recipe, previewDish, options, now) !== null;
     }
@@ -87,7 +88,7 @@ export function kitchenCook(farm, refs, now, options = {}) {
     // first durable cooking mutation.
     let selectionFarm;
     try {
-        selectionFarm = structuredClone(farm);
+        selectionFarm = cloneFarmForMutation(farm);
     }
     catch {
         return { ok: false, code: "cook_unavailable" };

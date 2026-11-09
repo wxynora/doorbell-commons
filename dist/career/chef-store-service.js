@@ -536,8 +536,10 @@ export class ChefStoreService {
         if (stagedOrder)
             callbackReceipt(inventoryResult, "order");
         let completedReceipt = null;
+        let publishCompletion;
+        let result;
         try {
-            return runInTransaction(this.database, () => {
+            result = runInTransaction(this.database, () => {
                 const replay = ensureActionReplay(this.database, idempotencyKey, "order", buyerResidentId, payloadHash);
                 if (replay)
                     return replay;
@@ -559,6 +561,7 @@ export class ChefStoreService {
                         "chef_store_order_authority_unavailable")
                     : assertNoPromise(this.executeOrder(orderInput),
                         "chef_store_order_authority_unavailable");
+                if (typeof callbackResult?.publish === "function") publishCompletion = callbackResult.publish;
                 completedReceipt = callbackReceipt(callbackResult, "order");
                 if (existingOrder !== undefined) {
                     this.database.prepare(`
@@ -597,13 +600,13 @@ export class ChefStoreService {
         }
         catch (error) {
             if (completedReceipt !== null && stagedOrder) {
-                assertNoPromise(this.completeOrder({
-                    ...orderInput,
-                    paymentReceiptId: completedReceipt.paymentReceiptId,
-                }), "chef_store_order_authority_unavailable");
+                // The failed outer transaction also rolled back its payment.
+                assertNoPromise(this.completeOrder(orderInput), "chef_store_order_authority_unavailable");
             }
             throw error;
         }
+        publishCompletion?.();
+        return result;
     }
 
     getLease(leaseId) {
