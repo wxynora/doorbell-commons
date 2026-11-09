@@ -306,7 +306,8 @@ export function PublicLoungePage({
         !data ||
         typeof data !== "object" ||
         Array.isArray(data) ||
-        (data.type !== "lounge-ready" && data.type !== "lounge-chat-focus" && data.type !== "lounge-daily-open" && data.type !== "lounge-gacha-open")
+        (data.type !== "lounge-ready" && data.type !== "lounge-chat-focus" && data.type !== "lounge-daily-open" &&
+          data.type !== "lounge-gacha-open" && data.type !== "lounge-scratchcard-open")
       ) {
         return;
       }
@@ -317,6 +318,13 @@ export function PublicLoungePage({
         return;
       }
       if (data.type === "lounge-daily-open") { setDailyOpen(true); return; }
+      if (data.type === "lounge-scratchcard-open") {
+        const moduleUrl = "/lounge/scratchcard-dialog.js";
+        const sceneFrame = sceneFrameRef.current;
+        void import(/* @vite-ignore */ moduleUrl).then(module => module.openScratchcardDialog({ sceneFrame }))
+          .catch(() => setGameError("刮刮乐机暂时没打开，请再试一次。"));
+        return;
+      }
       if (data.type === "lounge-chat-focus") {
         setChatOpen(open => !open);
         return;

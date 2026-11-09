@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif">
+  <defs>
+    <linearGradient id="ink" x2=".75" y2="1">
+      <stop stop-color="#731631"/><stop offset=".55" stop-color="#ac2638"/><stop offset="1" stop-color="#cb4c3e"/>
+    </linearGradient>
+    <linearGradient id="bell" x1=".1" y1=".1" x2=".85" y2=".95">
+      <stop stop-color="#fff0ab"/><stop offset=".38" stop-color="#f9ce59"/><stop offset=".73" stop-color="#d99a32"/><stop offset="1" stop-color="#ac5d26"/>
+    </linearGradient>
+    <pattern id="lines" width="17" height="17" patternUnits="userSpaceOnUse">
+      <path d="M-3 6 6-3m-3 20L17 3m-6 17 9-9" fill="none" stroke="#f9d68b" stroke-opacity=".15" stroke-width=".8"/>
+    </pattern>
+    <pattern id="paper" width="26" height="14" patternUnits="userSpaceOnUse">
+      <path d="M0 7q6-7 13 0t13 0M0 11q6-7 13 0t13 0" fill="none" stroke="#a45e31" stroke-opacity=".09" stroke-width=".7"/>
+    </pattern>
+  </defs>
+  <path fill="#f5dfac" d="M0 0h400v600H0z"/>
+  <path fill="#fff0c9" d="M8 8h384v584H8z"/>
+  <path fill="url(#paper)" d="M8 8h384v584H8z"/>
+  <path fill="url(#ink)" d="M9 9h382v371H9z"/>
+  <path fill="url(#lines)" d="M9 9h382v371H9z"/>
+  <path d="M17 17h366v355H17z" fill="none" stroke="#f1c37b" stroke-width="1.3"/>
+  <path d="M26 26h348v337H26z" fill="none" stroke="#f1c37b" stroke-opacity=".32" stroke-width="1"/>
+
+  <text x="37" y="57" fill="#f8d890" font-size="18" font-weight="700" letter-spacing="2">铃野 · 即开票</text>
+  <path fill="#f8d88d" d="M284 32h80l6 6v34h-86z"/>
+  <text x="327" y="50" text-anchor="middle" fill="#72202d" font-size="18" font-weight="850">5,000</text>
+  <text x="327" y="65" text-anchor="middle" fill="#72202d" font-size="11" font-weight="700" letter-spacing="2">金币</text>
+  <text x="200" y="137" text-anchor="middle" fill="#632036" font-size="72" font-weight="900" letter-spacing="6">刮刮乐</text>
+  <text x="200" y="132" text-anchor="middle" fill="#ffe5a0" font-size="72" font-weight="900" letter-spacing="6">刮刮乐</text>
+
+  <g transform="translate(199 233)">
+    <g fill="none" stroke="#f8cc7e" stroke-opacity=".42">
+      <ellipse rx="112" ry="70" transform="rotate(18)"/><ellipse rx="112" ry="70" transform="rotate(54)"/>
+      <ellipse rx="112" ry="70" transform="rotate(90)"/><ellipse rx="112" ry="70" transform="rotate(126)"/>
+      <ellipse rx="112" ry="70" transform="rotate(162)"/><circle r="92" stroke-dasharray="1 4"/>
+    </g>
+    <g fill="#ffdc83">
+      <path d="M-124-17l4 10 10 4-10 4-4 10-4-10-10-4 10-4z"/>
+      <path d="M111-43l5 13 13 5-13 5-5 13-5-13-13-5 13-5z"/>
+      <path d="M131 33l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/>
+      <circle cx="-111" cy="40" r="3"/><circle cx="82" cy="68" r="2.5"/><circle cx="-95" cy="-63" r="2.5"/>
+    </g>
+    <g transform="rotate(-14)" stroke-linejoin="round">
+      <circle cy="-65" r="12" fill="none" stroke="#f7c85c" stroke-width="7"/>
+      <path d="M-62 29c17-12 17-23 19-48 2-27 20-43 43-43s41 16 43 43c2 25 2 36 19 48l-8 12H-54z" fill="url(#bell)" stroke="#f5c265" stroke-width="2.5"/>
+      <path d="M-30 2c4-31 12-44 32-47" fill="none" stroke="#fff0b0" stroke-width="7" stroke-linecap="round"/>
+      <path d="M-49 27Q0 42 49 27" fill="none" stroke="#ffd87f" stroke-width="4"/>
+      <ellipse cy="39" rx="59" ry="13" fill="#794123" stroke="#edb655" stroke-width="4"/>
+      <circle cy="48" r="12" fill="url(#bell)" stroke="#f1c666" stroke-width="2"/>
+    </g>
+  </g>
+
+  <path d="M29 321h342v44H29z" fill="#6f1d2f" stroke="#f1bb6b" stroke-width="1"/>
+  <text x="43" y="349" fill="#fadd9d" font-size="16" font-weight="700">最高奖金</text>
+  <text x="210" y="353" text-anchor="middle" fill="#ffe3a3" font-family="Georgia, serif" font-size="36" font-weight="700">1,000,000</text>
+  <text x="332" y="349" text-anchor="middle" fill="#fadd9d" font-size="15" font-weight="700">金币</text>
+
+  <text x="24" y="410" fill="#803145" font-size="17" font-weight="800" letter-spacing="3">刮奖区</text>
+  <text x="376" y="409" text-anchor="end" fill="#803145" font-size="13" letter-spacing="1">刮开银层见奖金</text>
+  <path d="M20 416h360v114H20z" fill="#e5c794" stroke="#9e6345" stroke-width="1.2"/>
+  <path d="M16 548h368" fill="none" stroke="#ab7958" stroke-dasharray="3 5"/>
+  <text x="376" y="575" text-anchor="end" fill="#803145" font-size="12" font-weight="700" letter-spacing="2">铃野休息室</text>
+</svg>

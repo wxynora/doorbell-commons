@@ -2,6 +2,7 @@ import * as T from 'three';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
 import {createTabletopGames} from './tabletop-games.js';
 import {createWindowView} from './window-view.js';
+import {buildScratchcardMachine} from './scratchcard-machine.js';
 const mats=new Map();function mat(c){if(!mats.has(c))mats.set(c,new T.MeshStandardMaterial({color:c,roughness:.82}));return mats.get(c);}
 const geometries=new Map();
 function geometry(Type,args){const key=Type.name+JSON.stringify(args);if(!geometries.has(key))geometries.set(key,new Type(...args));return geometries.get(key);}
@@ -316,5 +317,6 @@ export function buildRoom(){geometries.clear();const root=new T.Group();let room
  const dog=group(room,-4.05,0,3.3);ball(dog,0,.25,0,.23,.2,.34,'#d3a777');ball(dog,0,.43,.23,.22,.22,.2,'#e5c295');for(const x of[-.19,.19])ball(dog,x,.41,.24,.09,.16,.1,'#b8895b');ball(dog,0,.37,.42,.12,.07,.08,cream);ball(dog,0,.4,.49,.035,.026,.02,'#645044');for(const x of[-.085,.085])ball(dog,x,.48,.401,.018,.025,.014,'#645044');
  for(let i=0;i<2;i++){cyl(room,-4.97+i*.49,.12,2.48,.21,.12,['#a6c3bb','#d8c69b'][i]);cyl(room,-4.97+i*.49,.184,2.48,.16,.006,i?'#8b7052':'#b0c9ce');}
  moneyTree(root,-7.0,-5.45);gachaMachine(root);
+ buildScratchcardMachine(root,{group,box,mesh});
  plant(root,7.1,0,5.6,1.25);plant(root,-7.0,0,.22,1.0,true);geometries.clear();return root;
 }

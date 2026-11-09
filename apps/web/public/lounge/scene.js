@@ -1,6 +1,7 @@
 import * as T from 'three';
 import {createRoomOutline} from './outlines.js';
 import {buildRoom} from './models.js';
+import {dispenseScratchcard} from './scratchcard-machine.js';
 import {optimizeStaticRoom} from './scene-static.js';
 import {festivalForDate,nextFestivalChange} from './festival-calendar.js';
 import {createFestivalFireworks} from './festival-fireworks.js';
@@ -90,10 +91,19 @@ export {renderer,scene,draw};
 
 document.querySelector('#chat').addEventListener('click',()=>{if(parent!==window)parent.postMessage({type:'lounge-chat-focus'},location.origin);else document.querySelector('#chat-notice').togglePopover();});
 
+addEventListener('message',event=>{
+ if(event.source!==parent||event.origin!==location.origin||event.data?.type!=='lounge-scratchcard-dispense'||event.ports.length!==1)return;
+ const [port]=event.ports;
+ const finish=()=>{port.postMessage('done');port.close();};
+ const outlet=room.getObjectByName('lounge-scratchcard-outlet');
+ if(!outlet){finish();return;}
+ void dispenseScratchcard(outlet,requestDraw,()=>port.postMessage('printing')).then(finish,finish);
+});
+
 // Interactive objects share the scene camera and one selection state.
 let clickStart,clickCancelled=false;
 const selections=new Map();
-for(const name of ['newspaper-rack','square-game-table','round-game-table','lounge-gacha-machine']){
+for(const name of ['newspaper-rack','square-game-table','round-game-table','lounge-gacha-machine','lounge-scratchcard-machine']){
  const object=room.getObjectByName(name),selected=createRoomOutline(object,WIDTH,HEIGHT);
  selected.material.uniforms.ink.value.set('#d6a34d');selected.material.uniforms.thickness.value=3.2;
  selected.name=name+'-selection';selected.visible=false;selected.renderOrder=2;
@@ -144,6 +154,11 @@ renderer.domElement.addEventListener('pointerup',e=>{
  if(object.userData.gachaMachine){
   if(parent!==window)parent.postMessage({type:'lounge-gacha-open'},location.origin);
   else import('./gacha-dialog.js').then(module=>module.openGachaDialog({preview:true}));
+  return;
+ }
+ if(object.userData.scratchcardMachine){
+  if(parent!==window)parent.postMessage({type:'lounge-scratchcard-open'},location.origin);
+  else import('./scratchcard-dialog.js').then(module=>module.openScratchcardDialog({preview:true}));
   return;
  }
  if(object.userData.gameTable){chosenTable=object.userData.gameTable;renderGameChoices();

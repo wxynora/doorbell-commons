@@ -28,6 +28,8 @@ import { renderPatrolNotice } from "./security-patrol/copy.js";
 import { registerGlimmerEditorRoutes } from "./glimmer-editor/routes.js";
 import { LoungeGachaClient } from "./lounge-gacha/gacha-client.js";
 import { registerLoungeGachaRoutes } from "./lounge-gacha/gacha-routes.js";
+import { LoungeScratchcardClient } from "./lounge-scratchcard/client.js";
+import { registerLoungeScratchcardRoutes } from "./lounge-scratchcard/routes.js";
 import { launchLounge } from "./lounge-launch.js";
 import { registerLoungeGameRoutes } from "./games/lounge-game-routes.js";
 import { createFaultReports } from "./fault-reports/collector.js";
@@ -734,6 +736,15 @@ registerGlimmerEditorRoutes(app, { auth: registrationAuth, ownerAccountId: proce
 registerLoungeGachaRoutes(app, {
   registrationAuth,
   gacha: new LoungeGachaClient({
+    apiBaseUrl: serverConfig.farmApiBaseUrl,
+    serviceToken: serverConfig.farmServiceToken,
+    requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  }),
+  secureCookies: process.env.NODE_ENV === "production",
+});
+registerLoungeScratchcardRoutes(app, {
+  registrationAuth,
+  scratchcards: new LoungeScratchcardClient({
     apiBaseUrl: serverConfig.farmApiBaseUrl,
     serviceToken: serverConfig.farmServiceToken,
     requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,

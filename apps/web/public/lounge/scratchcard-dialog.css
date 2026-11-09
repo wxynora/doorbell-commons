@@ -1,0 +1,133 @@
+.lounge-scratchcard {
+  --scratch-paper: #fff7e4;
+  --scratch-ink: #334b41;
+  --scratch-muted: #605c4c;
+  --scratch-brass: #c89e57;
+  --scratch-green: #416753;
+  box-sizing: border-box;
+  width: min(416px, calc(100% - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid #d4b47b;
+  border-radius: 20px;
+  background: var(--scratch-paper);
+  color: var(--scratch-ink);
+  box-shadow: 0 18px 56px #31282145;
+  font-family: "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+}
+.lounge-scratchcard::backdrop { background: #2d302b65; }
+.lounge-scratchcard [hidden] { display: none !important; }
+.lounge-scratchcard button { font: inherit; cursor: pointer; }
+.lounge-scratchcard button:disabled { cursor: default; opacity: .58; }
+.lounge-scratchcard :focus-visible { outline: 2px solid var(--scratch-green); outline-offset: 3px; }
+.lounge-scratchcard .scratchcard-close {
+  position: absolute; top: 13px; right: 14px;
+  width: 34px; height: 34px;
+  border: 0; border-radius: 50%; background: #eee2ca; color: var(--scratch-ink);
+  font-size: 22px; line-height: 1;
+}
+.lounge-scratchcard .scratchcard-kicker {
+  margin: 0 0 3px; color: var(--scratch-muted); font-size: 12px; letter-spacing: .15em;
+}
+.lounge-scratchcard h2 { margin: 0 0 17px; font-size: 28px; line-height: 1.25; }
+.scratchcard-offer {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 7px 12px;
+  padding: 10px 0 15px;
+  border-bottom: 1px solid #dcc7a0;
+  color: var(--scratch-muted); font-size: 13px;
+}
+.scratchcard-offer p { margin: 0; }
+.scratchcard-price { color: var(--scratch-ink); font: 700 40px/1 Georgia, serif; font-variant-numeric: tabular-nums; }
+.scratchcard-top-gold { color: #803145; }
+.lounge-scratchcard[data-view="ticket"] {
+  width: min(292px, calc(100% - 24px));
+  padding: 38px 12px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff7e4;
+  box-shadow: none;
+}
+.lounge-scratchcard[data-view="ticket"]::backdrop { background: #29251ea8; }
+.lounge-scratchcard[data-view="dispensing"] { opacity: 0; }
+.lounge-scratchcard[data-view="dispensing"]::backdrop { background: transparent; }
+.lounge-scratchcard[data-view="ticket"] .scratchcard-close {
+  top: 0; right: 0;
+  background: #383b35; color: #fff7e4;
+}
+.lounge-scratchcard[data-view="ticket"] :focus-visible { outline-color: #ffebc5; }
+.scratchcard-paper {
+  position: relative;
+  width: min(100%, 242px);
+  aspect-ratio: 2 / 3;
+  margin-inline: auto;
+  container-type: inline-size;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #f5dfac;
+  box-shadow: 1px 3px 0 #c9a36b, 0 5px 12px #5635232b;
+}
+.scratchcard-paper > img {
+  position: absolute; inset: 0; display: block; width: 100%; height: 100%;
+}
+/* Matches the printed opening at x=24, y=420, 352×106 on the 400×600 art. */
+.scratchcard-zone {
+  position: absolute; inset: 70% 6% auto;
+  height: 17.6667%;
+  overflow: hidden;
+}
+.scratchcard-face {
+  position: absolute; inset: 0;
+  display: grid; align-content: center; justify-items: center;
+  background: repeating-linear-gradient(135deg, #ac695b12 0 1px, transparent 1px 5px), #fff2cc;
+  color: #74213b;
+}
+.scratchcard-face p { margin: 0; font-size: 3.8cqi; letter-spacing: .16em; }
+.scratchcard-face strong { font: 700 11cqi/1.05 Georgia, "PingFang SC", serif; font-variant-numeric: tabular-nums; }
+.scratchcard-face span { font-size: 3.7cqi; }
+.scratchcard-zone canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  touch-action: none; cursor: crosshair;
+}
+.scratchcard-zone canvas[data-scratchable="false"] { pointer-events: none; }
+.scratchcard-serial {
+  position: absolute; left: 6%; top: 94%;
+  color: #803145; font: 600 3.1cqi/1 "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .08em;
+}
+.scratchcard-purchase-notice, .scratchcard-ticket-notice, .scratchcard-error {
+  margin: 12px 0 9px; font-size: 14px; line-height: 1.55;
+}
+.scratchcard-purchase-notice:empty { display: none; }
+.scratchcard-ticket-notice { text-align: center; }
+.scratchcard-error { color: #9e3f31; }
+.scratchcard-account {
+  display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  margin: 9px 0 13px; color: var(--scratch-muted); font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.lounge-scratchcard :is(.scratchcard-buy, .scratchcard-refresh) {
+  width: 100%; min-height: 44px; padding: 9px 12px;
+  border: 1px solid var(--scratch-green); border-radius: 9px;
+  background: var(--scratch-green); color: #fffbed; font-weight: 650;
+}
+.scratchcard-ticket-view :is(.scratchcard-reveal, .scratchcard-return) {
+  display: block;
+  margin-inline: auto;
+  min-height: 38px;
+  padding: 6px 16px;
+  border: 1px solid #fff7e481;
+  border-radius: 18px;
+  background: #383b35;
+  color: #fff7e4;
+}
+.lounge-scratchcard .scratchcard-refresh { background: transparent; color: var(--scratch-green); }
+.lounge-scratchcard details { margin-top: 15px; border-top: 1px dashed #d1b98f; padding-top: 11px; }
+.lounge-scratchcard summary { cursor: pointer; color: var(--scratch-green); font-size: 14px; }
+.scratchcard-odds-note { margin: 9px 0; color: var(--scratch-muted); font-size: 13px; line-height: 1.6; }
+.lounge-scratchcard dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; font-size: 13px; }
+.lounge-scratchcard dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 370px) {
+  .lounge-scratchcard { padding: 18px; }
+}
