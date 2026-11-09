@@ -179,7 +179,7 @@ export function CookingPrepOverlay({
           result={COOKING_RESULT_STYLE_PREVIEW}
         />
       ) : null}
-      {!preview && cookAction.stage === "success" && cookAction.batch ? <CookingBatchResult outcomes={cookAction.batch.outcomes} onClose={onCloseCookResult} /> : null}
+      {!preview && cookAction.stage === "success" && cookAction.batch ? <CookingBatchResult outcomes={cookAction.batch.outcomes} onClose={onCloseCookResult} kitchen={kitchen} onKitchenInventoryAction={onKitchenInventoryAction} /> : null}
       {!preview && cookAction.stage === "success" && !cookAction.batch ? (
         <CookingResultReceipt
           key={cookAction.outcome.dish_instance_id}
@@ -298,17 +298,7 @@ function CookingIngredientPicker({
   );
 }
 
-function CookingResultReceipt({
-  kitchen,
-  onClose,
-  onKitchenInventoryAction,
-  outcome,
-}: {
-  kitchen: BoundKitchenRead | null;
-  onClose: () => void;
-  onKitchenInventoryAction?: KitchenInventoryActionExecutor | undefined;
-  outcome: KitchenCookOutcome;
-}) {
+function useCookingResultSale(kitchen: BoundKitchenRead | null, onKitchenInventoryAction: KitchenInventoryActionExecutor | undefined, onClose: () => void, itemInstanceIds: string[]) {
   const submitting = useRef(false);
   const retryInput = useRef<KitchenInventoryActionInput | null>(null);
   const [busy, setBusy] = useState(false);
@@ -319,8 +309,8 @@ function CookingResultReceipt({
     const input: KitchenInventoryActionInput = retryInput.current ?? {
       action: "recycle",
       itemKind: "dish",
-      itemInstanceIds: [outcome.dish_instance_id],
-      quantity: 1,
+      itemInstanceIds,
+      quantity: itemInstanceIds.length,
       expectedFarmDoorplate: kitchen.data.farm.farm_doorplate,
       expectedInventoryRevision: kitchen.kitchen_inventory_revision,
       idempotencyKey: crypto.randomUUID(),
@@ -347,6 +337,22 @@ function CookingResultReceipt({
       setBusy(false);
     }
   };
+
+  return { busy, error, sell };
+}
+
+function CookingResultReceipt({
+  kitchen,
+  onClose,
+  onKitchenInventoryAction,
+  outcome,
+}: {
+  kitchen: BoundKitchenRead | null;
+  onClose: () => void;
+  onKitchenInventoryAction?: KitchenInventoryActionExecutor | undefined;
+  outcome: KitchenCookOutcome;
+}) {
+  const { busy, error, sell } = useCookingResultSale(kitchen, onKitchenInventoryAction, onClose, [outcome.dish_instance_id]);
 
   return (
     <section
@@ -528,7 +534,8 @@ function CookingCatalogSprite({
   );
 }
 
-function CookingBatchResult({ outcomes, onClose }: { outcomes: readonly KitchenCookOutcome[]; onClose: () => void }) {
+function CookingBatchResult({ outcomes, onClose, kitchen, onKitchenInventoryAction }: { outcomes: readonly KitchenCookOutcome[]; onClose: () => void; kitchen: BoundKitchenRead | null; onKitchenInventoryAction?: KitchenInventoryActionExecutor | undefined }) {
+  const { busy, error, sell } = useCookingResultSale(kitchen, onKitchenInventoryAction, onClose, outcomes.map(outcome => outcome.dish_instance_id));
   const groups = new Map<string, { outcome: KitchenCookOutcome; quantity: number }>();
   for (const outcome of outcomes) {
     const previous = groups.get(outcome.recipe_id);
@@ -536,12 +543,16 @@ function CookingBatchResult({ outcomes, onClose }: { outcomes: readonly KitchenC
   }
   return <section className="farm-cooking-result-preview" role="dialog" aria-modal="true" aria-label="批量料理结果">
     <div className="farm-cooking-result-preview__paper">
-      <button className="farm-cooking-result-preview__close" type="button" aria-label="关闭料理结果" onClick={onClose}>×</button>
+      <button className="farm-cooking-result-preview__close" type="button" aria-label="关闭料理结果" disabled={busy} onClick={onClose}>×</button>
       <div className="farm-production-results">{[...groups].map(([id, { outcome, quantity }]) => <div className="farm-cooking-result-preview__main" key={id}>
         <span className="farm-cooking-result-preview__visual"><CookingCatalogSprite entityId={outcome.recipe_id} kind="recipe" name={outcome.name} /></span>
         <span className="farm-cooking-result-preview__copy"><small data-rarity={outcome.rarity}>{outcome.rarity}</small><strong>{outcome.name} ×{quantity}</strong></span>
       </div>)}</div>
-      <div className="farm-cooking-result-preview__actions"><button type="button" className="farm-cooking-result-preview__collect" onClick={onClose}>收进料理柜</button></div>
+      <div className="farm-cooking-result-preview__actions">
+        <button type="button" className="farm-cooking-result-preview__collect" disabled={busy || !kitchen || !onKitchenInventoryAction} onClick={() => void sell()}>{busy ? "正在卖出…" : "全部卖掉"}</button>
+        <button type="button" className="farm-cooking-result-preview__collect" disabled={busy} onClick={onClose}>收进料理柜</button>
+      </div>
+      {error ? <p className="farm-cooking-result-preview__feedback" role="alert">{error}</p> : null}
     </div>
   </section>;
 }
