@@ -10,16 +10,23 @@ export class DailyFarmStore {
   result(date: string): DailyGeneratedFarm | undefined {
     const state = this.status(date);
     if (state?.status !== "ready") return;
+    const question=this.database.prepare("SELECT text FROM lingye_daily_farm_questions WHERE issue_date=?")
+      .get(date) as {text:string|null}|undefined;
     return {model:state.model!, articles:this.database.prepare(
       "SELECT title,body FROM lingye_daily_farm_articles WHERE issue_date=? ORDER BY ordinal"
-    ).all(date) as DailyGeneratedFarm["articles"]};
+    ).all(date) as DailyGeneratedFarm["articles"],
+      ...(question ? {tomorrow_question:question.text===null ? null : {text:question.text,
+        source_ids:(this.database.prepare("SELECT source_id FROM lingye_daily_farm_question_citations WHERE issue_date=? ORDER BY ordinal")
+          .all(date) as {source_id:string}[]).map(row=>row.source_id)}} : {})};
   }
   save(date: string, update: {status:"pending"|"failed"; error_type?:string|undefined} |
-    {status:"ready";model:string;articles:DailyGeneratedFarm["articles"]}, now:number) {
+    ({status:"ready"} & DailyGeneratedFarm), now:number) {
     this.database.transaction(() => {
       const previous = this.result(date);
       if (previous) {
-        if (update.status === "ready" && JSON.stringify(previous) !== JSON.stringify({model:update.model,articles:update.articles}))
+        const incoming=update.status==="ready" ? {model:update.model,articles:update.articles,
+          ...(update.tomorrow_question!==undefined ? {tomorrow_question:update.tomorrow_question} : {})} : undefined;
+        if (incoming && JSON.stringify(previous) !== JSON.stringify(incoming))
           throw new Error("farm_manuscript_conflict");
         return;
       }
@@ -31,6 +38,12 @@ export class DailyFarmStore {
         this.database.prepare("DELETE FROM lingye_daily_farm_articles WHERE issue_date=?").run(date);
         const insert=this.database.prepare("INSERT INTO lingye_daily_farm_articles(issue_date,ordinal,title,body) VALUES (?,?,?,?)");
         update.articles.forEach((article,index)=>insert.run(date,index,article.title,article.body));
+        if(update.tomorrow_question!==undefined) {
+          this.database.prepare("INSERT INTO lingye_daily_farm_questions(issue_date,text) VALUES (?,?)")
+            .run(date,update.tomorrow_question?.text ?? null);
+          const insertCitation=this.database.prepare("INSERT INTO lingye_daily_farm_question_citations(issue_date,ordinal,source_id) VALUES (?,?,?)");
+          update.tomorrow_question?.source_ids.forEach((source,index)=>insertCitation.run(date,index,source));
+        }
       }
     }).immediate();
   }

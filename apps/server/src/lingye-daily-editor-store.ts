@@ -88,8 +88,10 @@ export class LingyeDailyEditorStore {
         if(this.database.prepare("SELECT 1 FROM lingye_daily_pending_group WHERE issue_date=?").get(input.issue_date)
           && this.row(input.issue_date).published_version===null) {
           const {front_page,group_chat,behavior_slices,quotes,tomorrow_question,images}=input;
-          this.merge(input.issue_date,{front_page,group_chat,behavior_slices,quotes,tomorrow_question,images},
-            ["front","group","slices","quotes","tomorrow"],now);
+          const farmOwnsQuestion=JSON.parse(this.row(input.issue_date).edition_json).farm_generated?.tomorrow_question!==undefined;
+          this.merge(input.issue_date,{front_page,group_chat,behavior_slices,quotes,images,
+            ...(!farmOwnsQuestion ? {tomorrow_question} : {})},
+            farmOwnsQuestion ? ["front","group","slices","quotes"] : ["front","group","slices","quotes","tomorrow"],now);
           this.database.prepare("UPDATE lingye_daily_editor_drafts SET input_json=? WHERE issue_date=?").run(source,input.issue_date);
           this.database.prepare("DELETE FROM lingye_daily_pending_group WHERE issue_date=?").run(input.issue_date);
         }
@@ -134,6 +136,13 @@ export class LingyeDailyEditorStore {
       const document=dailyDocumentSchema.parse(JSON.parse(row.document_json));
       const fresh=dailyDocumentFromEdition(edition,date);
       const sections=[...document.sections];
+      if(patch.farm_generated?.tomorrow_question!==undefined && previousEdition.farm_generated?.tomorrow_question===undefined) {
+        const previousQuestion=dailyDocumentFromEdition(previousEdition,date).sections.find(section=>section.key==="tomorrow");
+        const currentQuestion=sections.findIndex(section=>section.key==="tomorrow");
+        // Transfer only untouched group-generated copy; a saved human edit stays authoritative.
+        if(previousQuestion && currentQuestion>=0 && JSON.stringify(sections[currentQuestion])===JSON.stringify(previousQuestion))
+          sections.splice(currentQuestion,1);
+      }
       const existingFarm=sections.find(section=>section.key==="farm");
       if(existingFarm && keys.includes("farm")) {
         const knownArticles=new Set(previousEdition.reporter_articles.map(article=>article.publication_id));

@@ -40,7 +40,10 @@ export class DailyFarmService {
     if (!result || !this.options.database.prepare("SELECT 1 FROM lingye_daily_editor_drafts WHERE issue_date=?").get(date)) return;
     const current=JSON.parse(this.editor.row(date).edition_json).farm_generated;
     if (JSON.stringify(current)===JSON.stringify(result)) return;
-    this.editor.merge(date,{farm_generated:result},["farm"],(this.options.now??Date.now)());
+    const question=result.tomorrow_question;
+    this.editor.merge(date,{farm_generated:result,
+      ...(question!==undefined ? {tomorrow_question:question===null ? null : {text:question.text,source_event_ids:question.source_ids}} : {})},
+      question===undefined ? ["farm"] : ["farm","tomorrow"],(this.options.now??Date.now)());
   }
   progress(date:string) {
     const status=this.store.status(date)?.status;

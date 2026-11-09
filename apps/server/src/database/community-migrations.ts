@@ -20,7 +20,7 @@ import { tournamentEngine } from "../together/tournament/engine-adapter.js";
 import { validateSnowMatchRuntime } from "../together/tournament/match-host.js";
 import { readRoundRecovery } from "../together/tournament/relational-match-view.js";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 61;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 62;
 export const SNOW_LIVE_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS snow_spectator_messages (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3219,6 +3219,20 @@ UPDATE lingye_daily_column_images SET attempt_count=1, attempted_at=generated_at
       database.exec(`INSERT INTO "${next}" (${columns}) SELECT ${columns} FROM "${table_name}"; DROP TABLE "${table_name}";`);
     }
     database.pragma('user_version = 61');
+  })();
+
+  if (databaseSchemaVersion < 62) database.transaction(() => {
+    database.exec(`
+CREATE TABLE lingye_daily_farm_questions (
+  issue_date TEXT PRIMARY KEY REFERENCES lingye_daily_farm_generation(issue_date) ON DELETE CASCADE,
+  text TEXT
+);
+CREATE TABLE lingye_daily_farm_question_citations (
+  issue_date TEXT NOT NULL REFERENCES lingye_daily_farm_questions(issue_date) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,source_id TEXT NOT NULL,PRIMARY KEY(issue_date,ordinal)
+);
+    `);
+    database.pragma('user_version = 62');
   })();
 
 }
