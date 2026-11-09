@@ -361,24 +361,11 @@ unchanged. These request／store fail-closed changes were published to the 8091 
 farm commit `35a95d17944b4796175e0b88a11494ec41de4fe1`; deployment did not inspect or manually modify
 player saves, and the restarted service loaded the existing 11 farms normally.
 
-Farm production now uses the existing `lingye-world.sqlite` connection as its only runtime storage
-authority. `farm_states(farm_id, position, state_json)` stores one row per farm,
-`farm_action_receipts(farm_id, scope, receipt_key, payload_hash, result_json)` stores one minimal row
-per action, and `world_components(component_key, state_json)` stores independently changing global
-state. There are no receipt secondary indexes or unused timestamp／operation columns. Human and
-Bulletin receipt rows retain only the request fingerprint and stable action result; current catalog,
-field, kitchen, ranch, neighborhood and bulletin resources are projected again on replay and are not
-restored as historical page snapshots. Single-farm, multi-farm, UGC, Chef and P3 writes reuse the one
-rollback-journal connection and publish in-memory state only after the applicable transaction or saga
-checkpoint commits.
+Farm production uses one existing `lingye-world.sqlite` connection. `farm_states` stores farm identity, position, resident binding and revision; `farm_domain_records` stores individual entities and collections. `world_components` identifies domains and `world_domain_records` stores their entity records. Whole-farm and whole-component `state_json` columns are removed by the transactional version-4 startup migration. `farm_action_receipts` remains the separate authority for minimal, immutable action results and the existing Chef checkpoint transitions.
 
-The 2026-08-31 cutover first took read-only backups, then proved the import against disposable copies
-before applying the same migration to the stopped production database. The migrated authority contains
-16 farm rows, 857 receipt rows and 8 world-component rows; verification found zero Human page snapshots
-and zero receipt secondary indexes. The service entry installs the SQLite adapter before `load()` and
-fails closed for an unmigrated or partial database; it never falls back to `world.json`. The old JSON
-and pre-migration SQLite remain read-only rollback evidence under the recorded release backup. Farm
-commit `1e88cf29cd4dacea54a10e25b1c84a094eb4682c` is the deployed runtime.
+Gameplay reads continue from the current in-memory state. An operation keeps only its own before-entity records, writes changed entities and selected receipt keys immediately, then releases the operation records. Cross-farm and UGC changes share the existing rollback-journal connection. In-memory publication follows the owning durable transaction; Chef pending and inventory-applied checkpoints remain separately recoverable. Account-change markers identify balance projections that need updating; they do not hold another gameplay snapshot. Candy effects use individual target-indexed rows and replace the retired household snapshot. Startup and explicit recovery/export may load the world; ordinary actions do not compare the whole database.
+
+The deployment backup is the pre-migration recovery point. A code-only downgrade cannot read version 4; after opening the new version to players, preserve subsequent writes before planning any downgrade. The exact release and local focused verification receipt is `output/farm-persistence-io-20261109/README.md`.
 
 `apps/server` will eventually host the logical community modules, but those modules must remain
 visibly separated:

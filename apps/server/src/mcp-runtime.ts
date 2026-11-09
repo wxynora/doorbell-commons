@@ -1038,7 +1038,6 @@ export class DoorbellMcpRuntime {
         sourceOp: op,
         params: plan.params,
         detail,
-        ...(shouldAppendStatus && op !== "farm.status" ? { includeStatus: true } : {}),
       });
       recordResidentFarmAction(this.#database.residentSocialStore, context.residentId, op, result.ok, this.#now());
       let text =

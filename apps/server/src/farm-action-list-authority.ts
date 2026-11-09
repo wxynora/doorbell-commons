@@ -36,6 +36,22 @@ export class FarmActionListAuthority implements FarmActionListAuthorityReader {
     this.#actionListStateReader = options.actionListStateReader;
   }
 
+  forPreflight(): FarmActionListAuthorityReader {
+    // One preflight uses one profile. Keep its in-flight reads local to this
+    // invocation so a later check always consults the current Farm state.
+    let field: ReturnType<FarmHumanFieldReader["readField"]> | undefined;
+    let catalog: ReturnType<FarmHumanCatalogReader["readCatalog"]> | undefined;
+    let kitchen: ReturnType<FarmHumanKitchenReader["readKitchen"]> | undefined;
+    let state: ReturnType<FarmActionListAuthorityStateReader["readActionListAuthority"]> | undefined;
+    return new FarmActionListAuthority({
+      fieldReader: { readField: (input) => field ??= this.#fieldReader.readField(input) },
+      catalogReader: { readCatalog: (input) => catalog ??= this.#catalogReader.readCatalog(input) },
+      kitchenReader: { readKitchen: (input) => kitchen ??= this.#kitchenReader.readKitchen(input) },
+      actionListStateReader: { readActionListAuthority: (input) =>
+        state ??= this.#actionListStateReader.readActionListAuthority(input) },
+    });
+  }
+
   async readField(profile: FarmActionListProfile) {
     const [field, catalog] = await Promise.all([
       this.#fieldReader.readField(identity(profile)),

@@ -53,6 +53,7 @@ export interface FarmActionListActivitySnapshot {
 }
 
 export interface FarmActionListAuthorityReader {
+  forPreflight?(): FarmActionListAuthorityReader;
   readField(profile: FarmActionListProfile): Promise<FarmActionListFieldSnapshot>;
   readSteal(profile: FarmActionListProfile): Promise<FarmActionListStealSnapshot>;
   readWater(profile: FarmActionListProfile): Promise<FarmActionListWaterSnapshot>;
@@ -151,29 +152,30 @@ export async function preflightFarmActionList(
   items: readonly FarmActionListItem[],
   authority: FarmActionListAuthorityReader,
 ): Promise<FarmActionListCheckedItem[]> {
+  const currentAuthority = authority.forPreflight?.() ?? authority;
   let field: Promise<FarmActionListFieldSnapshot> | undefined;
   let steal: Promise<FarmActionListStealSnapshot> | undefined;
   let water: Promise<FarmActionListWaterSnapshot> | undefined;
   let fish: Promise<FarmActionListFishSnapshot> | undefined;
   let explore: Promise<FarmActionListExploreSnapshot> | undefined;
   const readField = () => {
-    if (!field) field = authority.readField(profile);
+    if (!field) field = currentAuthority.readField(profile);
     return field;
   };
   const readSteal = () => {
-    if (!steal) steal = authority.readSteal(profile);
+    if (!steal) steal = currentAuthority.readSteal(profile);
     return steal;
   };
   const readWater = () => {
-    if (!water) water = authority.readWater(profile);
+    if (!water) water = currentAuthority.readWater(profile);
     return water;
   };
   const readFish = () => {
-    if (!fish) fish = authority.readFish(profile);
+    if (!fish) fish = currentAuthority.readFish(profile);
     return fish;
   };
   const readExplore = () => {
-    if (!explore) explore = authority.readExplore(profile);
+    if (!explore) explore = currentAuthority.readExplore(profile);
     return explore;
   };
   return Promise.all(
@@ -240,7 +242,7 @@ export async function preflightFarmActionList(
             : checked(item, "active", null, "探险", [exploreCall()]);
         }
         if (item.kind === "cook") {
-          const resolved = await authority.resolveCook(profile, item);
+          const resolved = await currentAuthority.resolveCook(profile, item);
           return resolved.actionable
             ? checked(
                 item,
@@ -251,7 +253,7 @@ export async function preflightFarmActionList(
               )
             : checked(item, "crossed", resolved.reason ?? "当前无法制作", resolved.displayText, []);
         }
-        const resolved = await authority.resolveActivity(profile, item);
+        const resolved = await currentAuthority.resolveActivity(profile, item);
         return resolved.actionable
           ? checked(
               item,
