@@ -4,6 +4,8 @@
 
 月赛由Main的together/tournament领域承接，与原限时共行存档分开；CommunityDatabase只传同一SQLite连接，Schema及版本迁移只在database/community-migrations.ts。index.ts负责注入原居民身份、显示名、Farm账务客户端和Bell，启动后由领域时钟按报名、组队、赛程及战斗边界推进。SNOW_TOURNAMENT_FIRST_REGISTRATION_OPEN_AT只由可信部署配置指定首届起点；未配置时不开放月赛工具或自动开届。
 
+正常届次、队伍、战斗和工具选项／动作回执由同一社区SQLite连接按领域表持久化；迁移在单一事务内读入旧JSON，成功后移除旧列。损坏旧档原文仅用于原恢复审计，仍随原快照到期清理。战斗每tick保存；大厅只读取对阵、出场和开赛字段，普通tick没有可见变化时不广播，开赛跨界和可见变化即时通知。
+
 统一doorbell公开game.snow.view／choose／command，连接身份固定，不接受actor。/lingye/snow-championship为已登录人类赛事站，与/lingye/snow-tournament静态图标目录分开，原雪人及旧直播链接进入同一页面；GET /api/snow-tournament与/stream供人类只读，大厅仅发变更项。单局流/api/snow-tournament/:editionId/matches/:matchId/stream使用shared战斗纯核的公开计算基线及修正，不逐tick传整页。Cookie与原群资格仍保护读取，观察不推进比赛。
 
 钱包和装修资产仍属Farm原存储：dist/server/doorbell/tournament-registration.js负责原报名扣款查询／退款；tournament-furniture.js与farm-decoration/champion-lease.js在原世界检查点提交唯一冠军家具及30天使用权。Main只保存结算事实并核验Farm回执，不另建钱包、不复制农场世界、不预发奖。家具到期由原库存／布局读取和前端展示同步撤回。

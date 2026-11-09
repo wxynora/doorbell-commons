@@ -4,6 +4,7 @@ import { snowRoundRecoveryKey, type SnowTournamentStore } from "./store.js";
 import { SnowTournamentRecovery } from "./recovery.js";
 import type { SnowSignalSink, SignalChanges } from "./player-signals.js";
 import type { SnowTeamMember } from "./roster.js";
+import { publicRuntimeFromState, type PublicRuntime } from "./relational-runtime.js";
 
 type Role = "attack" | "defend";
 type HostInput = Parameters<SnowTournamentScheduleHost["reconcileMatch"]>[0];
@@ -84,6 +85,20 @@ function readyNpcSeats(teams:Team[],members:Record<Role,string>) {
   return {ready:[...npc],npc};
 }
 
+/** Existing host validity rules, shared with migration so damaged saves keep their original bytes. */
+export function validateSnowMatchRuntime(state:unknown,gameIndex:number,engine:SnowMatchEngine,entry?:{battleId:string}):void {
+  const runtime=state as Runtime;
+  if(!runtime || !Array.isArray(runtime.rounds) || !Array.isArray(runtime.teamIds)) throw new Error("snow_runtime_invalid");
+  if(runtime.active && runtime.active.index===gameIndex) {
+    const battle=engine.restore(runtime.active.battle);
+    if (!Number.isSafeInteger(battle.tick) || battle.tick<0 || battle.tick>600 ||
+        !Number.isFinite(battle.coreHp) || battle.coreHp<0 || battle.coreHp>20 ||
+        !["running","attack_win","defend_win"].includes(battle.status) ||
+        battle.rulesVersion!==engine.rulesVersion || (entry && battle.battleId!==entry.battleId))
+      throw new Error("snow_runtime_invalid");
+  }
+}
+
 /** Per-match state, bound to this edition and match, never to the old activity. */
 export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
   private readonly owner = randomUUID();
@@ -102,8 +117,8 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
   private read(ref: MatchRef) {
     return this.store.readMatchRuntime(ref.editionId, ref.matchId) as Runtime | null;
   }
-  private match(ref: MatchRef) {
-    const edition = this.store.read(ref.editionId) as Edition | null;
+  private match(ref: MatchRef,full=false) {
+    const edition = (full ? this.store.read(ref.editionId) : this.store.readMatchEdition(ref.editionId,ref.matchId)) as Edition | null;
     const match = edition?.matches.find(m => m.id === ref.matchId);
     const teams = [match?.teamAId, match?.teamBId].map(id => edition?.teams.find(t => t.id === id));
     if (!edition || !match || !teams[0] || !teams[1]) throw new Error("snow_match_not_available");
@@ -139,7 +154,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
 
   private recoveryKey(ref:MatchRef,index:number) {return snowRoundRecoveryKey(ref.matchId,index);}
   private retryCorrupt(input:HostInput):Runtime|null {
-    const {edition,teams}=this.match(input),entry=edition.roundRecovery?.[this.recoveryKey(input,input.gameIndex)];
+    const {edition,teams}=this.match(input,true),entry=edition.roundRecovery?.[this.recoveryKey(input,input.gameIndex)];
     if (!entry) throw new Error("snow_round_recovery_setup_missing");
     entry.voided.push({battleId:entry.battleId,at:input.now,runtime:this.store.readMatchRuntimeText(input.editionId,input.matchId)});
     if (entry.attempt===1) {
@@ -153,7 +168,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
     }
     const pending=this.recovery.pending(input);
     if(pending!==undefined) this.recovery.resume(input,pending,input.now);
-    const latest=this.match(input).edition;
+    const latest=this.match(input,true).edition;
     if(latest.phase==="cancelled") return null;
     entry.attempt=1;
     const voidedBattleId=entry.battleId;
@@ -180,19 +195,10 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       if(!(error instanceof SyntaxError)) throw error;
       return this.retryCorrupt(input);
     }
-    const entry=this.match(input).edition.roundRecovery?.[this.recoveryKey(input,input.gameIndex)];
+    const entry=this.store.readRoundRecovery(input.editionId,input.matchId,input.gameIndex) as RoundRecovery|undefined;
     if(!state) return entry?this.retryCorrupt(input):null;
     try {
-      if(!Array.isArray(state.rounds) || !Array.isArray(state.teamIds)) throw new Error("snow_runtime_invalid");
-      if(state.active && state.active.index===input.gameIndex) {
-        const battle=this.engine.restore(state.active.battle);
-        if (!Number.isSafeInteger(battle.tick) || battle.tick<0 || battle.tick>600 ||
-            !Number.isFinite(battle.coreHp) || battle.coreHp<0 || battle.coreHp>20 ||
-            !["running","attack_win","defend_win"].includes(battle.status) ||
-            battle.rulesVersion!==this.engine.rulesVersion ||
-            (entry && state.active.index===input.gameIndex && battle.battleId!==entry.battleId))
-          throw new Error("snow_runtime_invalid");
-      }
+      validateSnowMatchRuntime(state,input.gameIndex,this.engine,entry);
       return state;
     } catch { return this.retryCorrupt(input); }
   }
@@ -203,6 +209,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       state.active.battle.battleId,state.active.battle.tick,state.active.battle.status,state.active.battle.runtime?.started,
     ]):"none";
     let before="none";
+    let savedAfter:Runtime|null|undefined;
     let signalChanges:SignalChanges|undefined;
     const next = this.store.transaction(() => {
       const advance=()=>{
@@ -211,11 +218,15 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       if (edition.rulesVersion !== this.engine.rulesVersion) throw new Error("snow_engine_rules_mismatch");
       if (!["scheduled", "in_progress"].includes(match.status)) return null;
       let state = this.restoreRuntime(input);
-      if(this.match(input).edition.phase==="cancelled") return null;
+      if(this.store.readEditionPhase(input.editionId)==="cancelled") return null;
       before=frame(state);
       if (state?.suspendedUntil!==undefined && input.now<state.suspendedUntil) return state.suspendedUntil;
       const paused=this.recovery.pending(input);
       const restarted=state && state.owner!==this.owner;
+      const previousTick=state && !restarted && paused===undefined && state.suspendedUntil===undefined &&
+        !!state.attackers && !state.rounds[input.gameIndex] && state.active?.index===input.gameIndex &&
+        state.active.nextTickAt!==null && state.active.battle.runtime?.started===true && state.active.battle.status==="running"
+        ? publicRuntimeFromState(state) : undefined;
       if (paused!==undefined || restarted) {
         // A terminal is already authoritative. Downtime must not delay its settlement.
         if (!(state?.active && state.active.battle.status!=="running")) {
@@ -254,9 +265,11 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       }
       delete state.suspendedUntil;
       const saved = state;
-      const finish = (at: number | null) => {
+      const finish = (at: number | null,ordinaryTick=false) => {
         saved.lastSeenAt = Math.max(saved.lastSeenAt,input.now);
-        this.store.saveMatchRuntime(input.editionId, input.matchId, saved);
+        if(ordinaryTick && previousTick)this.store.saveBattleTick(input.editionId,input.matchId,saved,previousTick);
+        else this.store.saveMatchRuntime(input.editionId, input.matchId, saved);
+        savedAfter=saved;
         return at;
       };
       if (!saved.attackers && input.now >= saved.matchAt - 10 * minute) {
@@ -304,7 +317,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
         round.nextTickAt+=second;
       }
       if (battle.status === "running") {
-        return finish(round.nextTickAt);
+        return finish(round.nextTickAt,true);
       }
       if (battle.endReason !== "core_broken" && battle.endReason !== "time_limit") throw new Error("snow_engine_terminal_invalid");
       saved.rounds[round.index] = {
@@ -319,7 +332,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       return result;
     });
     if (signalChanges) this.signals?.publish(signalChanges);
-    if (before!==frame(this.read(input))) changed.add(input.matchId);
+    if (before!==frame(savedAfter===undefined?this.read(input):savedAfter)) changed.add(input.matchId);
     for (const matchId of changed) this.notify({editionId:input.editionId,matchId});
     return next;
   }
@@ -423,7 +436,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
     };
     const battle = this.engine.create(createInput);
     battle.runtime = { started: false };
-    const edition=this.match(input).edition;
+    const edition=this.match(input,true).edition;
     (edition.roundRecovery??={})[this.recoveryKey(input,input.gameIndex)]={attempt:0,input:createInput,battleId,
       context:structuredClone({teamIds:state.teamIds,matchAt:state.matchAt,choiceTeamId:state.choiceTeamId,
         attackers:state.attackers,lineups:state.lineups,rounds:state.rounds}),voided:[]};
@@ -636,11 +649,10 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
     }
     return result;
   }
-  publicMatchProgress(ref: MatchRef) {
-    const state = this.read(ref);
+  publicMatchProgress(ref: MatchRef,context?:{runtime:PublicRuntime|null;scheduledAt:string|null}) {
+    const state = context===undefined ? this.store.readPublicMatchRuntimes(ref.editionId,ref.matchId).get(ref.matchId)??null : context.runtime;
     if (!state) return null;
-    const match=this.match(ref).match;
-    return { scheduledAt:match.scheduledAt??new Date(state.matchAt).toISOString(),
-      started:state.active?.battle.runtime?.started===true };
+    const scheduledAt=context===undefined ? this.match(ref).match.scheduledAt : context.scheduledAt;
+    return { scheduledAt:scheduledAt??new Date(state.matchAt).toISOString(),started:state.active?.started===true };
   }
 }

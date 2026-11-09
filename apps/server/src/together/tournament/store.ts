@@ -1,9 +1,20 @@
 import type Database from "better-sqlite3";
+import { isDeepStrictEqual } from "node:util";
+import { readEditionRows, saveEditionRows } from "./relational-edition.js";
+import { deleteRuntimeRows, publicRuntimeFromState, readPublicRuntimes, readRuntimeRows, saveRuntimeRows, type PublicRuntime } from "./relational-runtime.js";
+import { saveBattleRows } from "./relational-battle.js";
+import { readMatchEditionView, readRoundRecovery, readTechnicalView } from "./relational-match-view.js";
 
 const SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
 const terminalStatus = (status: string) => ["completed", "forfeit", "cancelled"].includes(status);
 export const snowRoundRecoveryKey = (matchId:string,index:number) => JSON.stringify([matchId,index]);
 const recoveryKeys = (matchId:string) => [0,1,2].map(index=>snowRoundRecoveryKey(matchId,index));
+function publicRuntimeChanged(previous:PublicRuntime|undefined,current:PublicRuntime):boolean {
+  if(!previous)return true;
+  const {lastSeenAt:before,...beforePublic}=previous;
+  const {lastSeenAt:after,...afterPublic}=current;
+  return !isDeepStrictEqual(beforePublic,afterPublic) || before<current.matchAt && after>=current.matchAt;
+}
 type SnapshotEdition = {
   id:string; registrationOpenAt:string; matches:{id:string;status:string}[];
   roundRecovery?:Record<string,unknown>;
@@ -25,44 +36,82 @@ export class SnowTournamentStore {
   }
 
   read(id: string): unknown | null {
-    const row = this.db.prepare("SELECT state_json FROM snow_tournament_editions WHERE edition_id = ?").get(id) as { state_json: string } | undefined;
-    return row ? JSON.parse(row.state_json) : null;
+    return readEditionRows(this.db,id);
   }
 
+  readMatchEdition(editionId:string,matchId:string) {return readMatchEditionView(this.db,editionId,matchId);}
+  readEditionPhase(editionId:string) {
+    return (this.db.prepare("SELECT phase FROM snow_tournament_edition_details WHERE edition_id=?").get(editionId) as {phase:string}|undefined)?.phase;
+  }
+  readTechnical(editionId:string) {return readTechnicalView(this.db,editionId);}
+  readRoundRecovery(editionId:string,matchId:string,index:number) {return readRoundRecovery(this.db,editionId,matchId,index);}
+
   latest(): unknown | null {
-    const row = this.db.prepare("SELECT state_json FROM snow_tournament_editions ORDER BY registration_open_at DESC, edition_id DESC LIMIT 1").get() as { state_json: string } | undefined;
-    return row ? JSON.parse(row.state_json) : null;
+    const row = this.db.prepare("SELECT edition_id FROM snow_tournament_editions ORDER BY registration_open_at DESC, edition_id DESC LIMIT 1").get() as { edition_id: string } | undefined;
+    return row ? this.read(row.edition_id) : null;
   }
 
   unfinished(): unknown[] {
-    const rows = this.db.prepare(`SELECT state_json FROM snow_tournament_editions
-      WHERE json_extract(state_json, '$.phase') IN ('registration','team_formation','round_robin','knockout')
-      ORDER BY registration_open_at, edition_id`).all() as { state_json: string }[];
-    return rows.map(row => JSON.parse(row.state_json));
+    const rows = this.db.prepare(`SELECT e.edition_id FROM snow_tournament_editions e
+      JOIN snow_tournament_edition_details d ON d.edition_id=e.edition_id
+      WHERE d.phase IN ('registration','team_formation','round_robin','knockout')
+      ORDER BY e.registration_open_at,e.edition_id`).all() as { edition_id: string }[];
+    return rows.map(row => this.read(row.edition_id));
   }
 
   /** Finished editions may still owe a verified refund or reward after a restart. */
   all():unknown[] {
-    const rows=this.db.prepare("SELECT state_json FROM snow_tournament_editions ORDER BY registration_open_at,edition_id").all() as {state_json:string}[];
-    return rows.map(row=>JSON.parse(row.state_json));
+    const rows=this.db.prepare("SELECT edition_id FROM snow_tournament_editions ORDER BY registration_open_at,edition_id").all() as {edition_id:string}[];
+    return rows.map(row=>this.read(row.edition_id));
   }
 
   readMatchRuntime(editionId: string, matchId: string): unknown | null {
-    const text=this.readMatchRuntimeText(editionId,matchId);
-    return text===null?null:JSON.parse(text);
+    const invalid=this.db.prepare("SELECT raw_text FROM snow_tournament_invalid_runtime WHERE edition_id=? AND match_id=?")
+      .get(editionId,matchId) as {raw_text:string}|undefined;
+    if(invalid)return JSON.parse(invalid.raw_text);
+    return readRuntimeRows(this.db,editionId,matchId);
+  }
+
+  readPublicMatchRuntimes(editionId:string,matchId?:string) {
+    return readPublicRuntimes(this.db,editionId,matchId);
   }
 
   readMatchRuntimeText(editionId:string,matchId:string):string|null {
-    const row = this.db.prepare("SELECT state_json FROM snow_tournament_match_runtime WHERE edition_id=? AND match_id=?")
-      .get(editionId, matchId) as { state_json: string } | undefined;
-    return row?.state_json??null;
+    const invalid=this.db.prepare("SELECT raw_text FROM snow_tournament_invalid_runtime WHERE edition_id=? AND match_id=?")
+      .get(editionId,matchId) as {raw_text:string}|undefined;
+    if(invalid)return invalid.raw_text;
+    const state=this.readMatchRuntime(editionId,matchId);
+    return state===null?null:JSON.stringify(state);
   }
 
   saveMatchRuntime(editionId: string, matchId: string, state: unknown): void {
-    this.db.prepare(`INSERT INTO snow_tournament_match_runtime (edition_id,match_id,state_json) VALUES (?,?,?)
-      ON CONFLICT(edition_id,match_id) DO UPDATE SET state_json=excluded.state_json`)
-      .run(editionId, matchId, JSON.stringify(state));
-    this.changed();
+    let publicChanged=false;
+    this.db.transaction(()=>{
+      const invalid=this.db.prepare("SELECT 1 FROM snow_tournament_invalid_runtime WHERE edition_id=? AND match_id=?").get(editionId,matchId);
+      const previous=invalid?undefined:readPublicRuntimes(this.db,editionId,matchId).get(matchId);
+      saveRuntimeRows(this.db,editionId,matchId,state as Record<string,unknown>);
+      if(invalid)this.db.prepare("DELETE FROM snow_tournament_invalid_runtime WHERE edition_id=? AND match_id=?").run(editionId,matchId);
+      const current=publicRuntimeFromState(state as Record<string,unknown>);
+      publicChanged=publicRuntimeChanged(previous,current);
+    })();
+    if(publicChanged)this.changed();
+  }
+
+  /** Normal running ticks change only the clock, automated seats and battle entities. */
+  saveBattleTick(editionId:string,matchId:string,state:Record<string,any>,previous:PublicRuntime):void {
+    this.db.transaction(()=>{
+      this.db.prepare("UPDATE snow_tournament_runtime_details SET last_seen_at=? WHERE edition_id=? AND match_id=?")
+        .run(state.lastSeenAt,editionId,matchId);
+      this.db.prepare("UPDATE snow_tournament_active_rounds SET next_tick_at=? WHERE edition_id=? AND match_id=?")
+        .run(state.active.nextTickAt,editionId,matchId);
+      if(!isDeepStrictEqual(previous.active?.npc,state.active.npc)) {
+        this.db.prepare("DELETE FROM snow_tournament_active_participants WHERE edition_id=? AND match_id=? AND kind='npc'").run(editionId,matchId);
+        const insert=this.db.prepare("INSERT INTO snow_tournament_active_participants(edition_id,match_id,kind,position,resident_id) VALUES(?,?,'npc',?,?)");
+        state.active.npc.forEach((id:string,position:number)=>insert.run(editionId,matchId,position,id));
+      }
+      saveBattleRows(this.db,editionId,matchId,state.active.battle);
+    })();
+    if(publicRuntimeChanged(previous,publicRuntimeFromState(state)))this.changed();
   }
 
   /** Queued in the same transaction as the authoritative terminal match status. */
@@ -101,7 +150,6 @@ export class SnowTournamentStore {
     return this.transaction(()=>{
       const due=this.db.prepare(`SELECT edition_id AS editionId,match_id AS matchId
         FROM snow_tournament_snapshot_expiries WHERE expires_at<=?`).all(now) as SnapshotRef[];
-      const deleteRuntime=this.db.prepare("DELETE FROM snow_tournament_match_runtime WHERE edition_id=? AND match_id=?");
       const deleteDeadline=this.db.prepare("DELETE FROM snow_tournament_snapshot_expiries WHERE edition_id=? AND match_id=?");
       const removed:SnapshotRef[]=[];
       for (const ref of due) {
@@ -113,7 +161,7 @@ export class SnowTournamentStore {
             delete edition.roundRecovery[key]; changed=true;
           }
           if (changed) this.save(edition.id,edition.registrationOpenAt,edition);
-          if (deleteRuntime.run(editionId,matchId).changes) this.changed();
+          if (deleteRuntimeRows(this.db,editionId,matchId)) this.changed();
           removed.push({editionId,matchId});
         }
         deleteDeadline.run(editionId,matchId);
@@ -131,10 +179,7 @@ export class SnowTournamentStore {
   }
 
   save(id: string, registrationOpenAt: string, state: unknown): void {
-    this.db.prepare(`INSERT INTO snow_tournament_editions (edition_id, registration_open_at, state_json)
-      VALUES (?, ?, ?) ON CONFLICT(edition_id) DO UPDATE SET
-      registration_open_at = excluded.registration_open_at, state_json = excluded.state_json`)
-      .run(id, registrationOpenAt, JSON.stringify(state));
+    this.db.transaction(()=>saveEditionRows(this.db,id,registrationOpenAt,state as Record<string,unknown>))();
     this.changed();
   }
 }

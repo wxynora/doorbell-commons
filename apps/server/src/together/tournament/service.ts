@@ -2,23 +2,28 @@ import type { SnowTournamentResponse } from "@doorbell/protocol";
 import type { SnowTournamentStore } from "./store.js";
 import { snowTeamLimit } from "./roster.js";
 import type { SnowTournamentSpectators } from "./spectators.js";
+import type { PublicRuntime } from "./relational-runtime.js";
+
+type LiveContext={runtime:PublicRuntime|null;scheduledAt:string|null};
 
 export class SnowTournamentService {
   constructor(private readonly store: SnowTournamentStore, private readonly project: (value: unknown) => SnowTournamentResponse,
     private readonly displayName: (name: string) => string,
-    private readonly live?: (ref:{editionId:string;matchId:string})=>{scheduledAt:string;started:boolean}|null,
+    private readonly live?: (ref:{editionId:string;matchId:string},context?:LiveContext)=>{scheduledAt:string;started:boolean}|null,
     readonly spectators?: SnowTournamentSpectators, private readonly now = Date.now) {}
   subscribe(listener:()=>void) {return this.store.subscribe(listener);}
   /** Parse into the explicit public schema: unknown fields, including drafts, are discarded. */
   readPublic(editionId?: string): SnowTournamentResponse {
     const edition = editionId ? this.store.read(editionId) : this.store.latest();
     if (edition === null) return this.project({ edition:null });
-    const raw = edition as { id:string; enrollments?:unknown[]; teams: { members: { name:string }[] }[]; matches:{id:string; status:string;
+    const raw = edition as { id:string; enrollments?:unknown[]; teams: { members: { name:string }[] }[]; matches:{id:string; status:string;scheduledAt:string|null;
       games?:{attackerTeamId:string; defenderTeamId:string; winnerTeamId:string; coreDamage:number; breakTimeRemaining:number; endTick?:number; endReason?:string}[]}[] };
+    const runtimes=this.store.readPublicMatchRuntimes(raw.id);
     // Do not publish per-person economic state or even an inferred team settlement status.
     return this.project({ edition:{...raw,enrolledCount:raw.enrollments?.length??0,teamLimit:snowTeamLimit(raw.enrollments?.length??0), matches:raw.matches.map(match => {
-      const progress = this.live?.({editionId:raw.id,matchId:match.id});
-      return {...match, ...this.publicPairings(raw,match.id), ...(progress ? {scheduledAt:progress.scheduledAt,
+      const state=runtimes.get(match.id)??null;
+      const progress = this.live?.({editionId:raw.id,matchId:match.id},{runtime:state,scheduledAt:match.scheduledAt});
+      return {...match, ...this.publicPairings(raw,match.id,state), ...(progress ? {scheduledAt:progress.scheduledAt,
         status:match.status==="scheduled" && progress.started ? "in_progress" : match.status} : {}),roundResults:(match.games??[]).map((game,index)=>({
       index:index+1,attackerTeamId:game.attackerTeamId,defenderTeamId:game.defenderTeamId,winnerTeamId:game.winnerTeamId,
       coreHp:20-game.coreDamage,endTick:game.endTick??600-game.breakTimeRemaining,
@@ -31,17 +36,12 @@ export class SnowTournamentService {
     })})), rewards:[]} });
   }
 
-  private publicPairings(raw: unknown, matchId: string) {
+  private publicPairings(raw: unknown, matchId: string, state:PublicRuntime|null) {
     type Person = { id: string; name: string; npc?: boolean };
     type Participant = { residentId: string; human: boolean };
     const edition = raw as { id:string; teams: { id: string; members: Person[] }[];
       matches: { id: string; teamAId: string; teamBId: string; games?: { participants?: Record<"attack" | "defend", Participant> }[] }[] };
     const match = edition.matches.find(entry => entry.id === matchId)!;
-    const state = this.store.readMatchRuntime(edition.id,matchId) as {
-      matchAt: number; teamIds: string[]; attackers: string[] | null;
-      lineups: Record<string, { entries: { member: string }[] } | undefined>;
-      active: { index: number; members: Record<"attack" | "defend",string>; npc: string[] } | null;
-    } | null;
     const currentGameIndex = state?.active ? state.active.index + 1 : null;
     const pairings: NonNullable<NonNullable<SnowTournamentResponse["edition"]>["matches"][number]["pairings"]> = [];
     const person = (id: string, automated: boolean) => {

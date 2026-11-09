@@ -8,8 +8,19 @@ import {
   weatherSeasonPhaseValues,
 } from "@doorbell/protocol";
 import type Database from "better-sqlite3";
+import { SNOW_TOURNAMENT_RELATIONAL_SCHEMA } from "../together/tournament/relational-schema.js";
+import { SNOW_EDITION_MAP_SCHEMA } from "../together/tournament/relational-edition-map-schema.js";
+import { saveEditionRows } from "../together/tournament/relational-edition.js";
+import { SNOW_RECEIPT_VALUE_SCHEMA } from "../together/tournament/relational-values.js";
+import { SNOW_BATTLE_EXTRA_SCHEMA } from "../together/tournament/relational-battle-extra-schema.js";
+import { SNOW_RUNTIME_BATCH_SCHEMA } from "../together/tournament/relational-runtime-batch-schema.js";
+import { saveRuntimeRows } from "../together/tournament/relational-runtime.js";
+import { SNOW_OPTION_SCHEMA, saveOptionBinding, writeOptionInput, writeOptionResult } from "../together/tournament/relational-options.js";
+import { tournamentEngine } from "../together/tournament/engine-adapter.js";
+import { validateSnowMatchRuntime } from "../together/tournament/match-host.js";
+import { readRoundRecovery } from "../together/tournament/relational-match-view.js";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 59;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 60;
 export const SNOW_LIVE_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS snow_spectator_messages (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3148,6 +3159,54 @@ UPDATE lingye_daily_column_images SET attempt_count=1, attempted_at=generated_at
   if (databaseSchemaVersion < 59) database.transaction(() => {
     database.exec(MOMENTS_SCHEMA_SQL);
     database.pragma('user_version = 59');
+  })();
+
+  if (databaseSchemaVersion < 60) database.transaction(() => {
+    database.exec(SNOW_TOURNAMENT_RELATIONAL_SCHEMA);
+    database.exec(SNOW_RECEIPT_VALUE_SCHEMA);
+    database.exec(SNOW_EDITION_MAP_SCHEMA);
+    database.exec(SNOW_BATTLE_EXTRA_SCHEMA);
+    database.exec(SNOW_RUNTIME_BATCH_SCHEMA);
+    database.exec(SNOW_OPTION_SCHEMA);
+    const editions=database.prepare("SELECT edition_id,registration_open_at FROM snow_tournament_editions").all() as {edition_id:string;registration_open_at:string}[];
+    const editionDocument=database.prepare("SELECT state_json FROM snow_tournament_editions WHERE edition_id=?");
+    for(const row of editions) {
+      const old=editionDocument.get(row.edition_id) as {state_json:string};
+      saveEditionRows(database,row.edition_id,row.registration_open_at,JSON.parse(old.state_json),true);
+    }
+    const matches=database.prepare("SELECT edition_id,match_id FROM snow_tournament_match_runtime").all() as {edition_id:string;match_id:string}[];
+    const matchDocument=database.prepare("SELECT state_json FROM snow_tournament_match_runtime WHERE edition_id=? AND match_id=?");
+    const keepDamaged=database.prepare("INSERT INTO snow_tournament_invalid_runtime(edition_id,match_id,raw_text) VALUES(?,?,?)");
+    for(const row of matches) {
+      const old=matchDocument.get(row.edition_id,row.match_id) as {state_json:string};
+      let state:unknown;
+      try {state=JSON.parse(old.state_json);}
+      catch(error) {
+        if(!(error instanceof SyntaxError))throw error;
+        keepDamaged.run(row.edition_id,row.match_id,old.state_json);
+        continue;
+      }
+      const index=(state as {active?:{index?:number}}|null)?.active?.index;
+      const gameIndex=index===0||index===1||index===2?index:0;
+      const entry=readRoundRecovery(database,row.edition_id,row.match_id,gameIndex) as {battleId:string}|undefined;
+      try {validateSnowMatchRuntime(state,gameIndex,tournamentEngine,entry);}
+      catch {keepDamaged.run(row.edition_id,row.match_id,old.state_json);continue;}
+      saveRuntimeRows(database,row.edition_id,row.match_id,state as Record<string,unknown>,true);
+    }
+    const options=database.prepare("SELECT option_id,edition_id FROM snow_tournament_options").all() as {option_id:string;edition_id:string}[];
+    const optionDocument=database.prepare("SELECT binding_json,input_json,result_json FROM snow_tournament_options WHERE option_id=?");
+    for(const row of options) {
+      const old=optionDocument.get(row.option_id) as {binding_json:string;input_json:string|null;result_json:string|null};
+      saveOptionBinding(database,row.option_id,row.edition_id,JSON.parse(old.binding_json));
+      if(old.input_json!==null)writeOptionInput(database,row.option_id,JSON.parse(old.input_json));
+      if(old.result_json!==null)writeOptionResult(database,row.option_id,JSON.parse(old.result_json));
+    }
+    database.exec(`ALTER TABLE snow_tournament_editions DROP COLUMN state_json;
+      ALTER TABLE snow_tournament_match_runtime DROP COLUMN state_json;
+      ALTER TABLE snow_tournament_options DROP COLUMN binding_json;
+      ALTER TABLE snow_tournament_options DROP COLUMN input_json;
+      ALTER TABLE snow_tournament_options DROP COLUMN result_json;`);
+    database.pragma('user_version = 60');
   })();
 
 }

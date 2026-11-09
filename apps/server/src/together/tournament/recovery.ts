@@ -104,9 +104,10 @@ export class SnowTournamentRecovery {
   /** Also called with no runnable host, so a corrupt record cannot wait forever. */
   expire(editionId:string,now:number):boolean {
     return this.store.transaction(()=>{
-      const edition=this.read(editionId);
-      if (!edition || !["round_robin","knockout"].includes(edition.phase) ||
-          !edition.technical || now<edition.technical.expiresAt) return false;
+      const status=this.store.readTechnical(editionId);
+      if (!status || !["round_robin","knockout"].includes(status.phase) ||
+          !status.technical || now<status.technical.expiresAt) return false;
+      const edition=this.read(editionId)!;
       this.cancel(edition,"technical_makeup_expired",now);this.save(edition);return true;
     });
   }
@@ -124,7 +125,7 @@ export class SnowTournamentRecovery {
     return future.length?Math.min(...future):null;
   }
   pending(ref:MatchRef) {
-    const value=this.read(ref.editionId)?.technical?.pending;
+    const value=this.store.readTechnical(ref.editionId)?.technical?.pending;
     return value && Object.hasOwn(value,ref.matchId)?value[ref.matchId]:undefined;
   }
   failed(ref:MatchRef,now:number) {

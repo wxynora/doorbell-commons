@@ -13,6 +13,7 @@ import {renderSnowReply} from './reply.js';
 import {snowCommandExample,snowCommandExamples} from './battle-text.js';
 import {hasSnowPersonalResults,snowPersonalResults} from './personal-results.js';
 import { SNOW_TEAM_SIZE, snowTeamHasOpenSeat, snowTeamLimit } from "./roster.js";
+import { clearOptionInput, issueOption, readOption, writeOptionInput, writeOptionResult } from "./relational-options.js";
 
 type Ref={editionId:string;matchId:string};
 type TeamCommand=Parameters<SnowTournamentTeamService["execute"]>[0];
@@ -25,7 +26,6 @@ type State={id:string;title:string;phase:string;revision:number;registrationOpen
   registrationRounds?:{teamId:string;status:string;confirmed:string[]}[];
   matches:{id:string;teamAId:string|null;teamBId:string|null;status:string;scheduledAt:string|null}[];
   receipts:Record<string,{actorId:string;result:{kind?:string;team?:{id:string};resident?:{id:string}}}>};
-type OptionRow={option_id:string;resident_id:string;binding_json:string;input_json:string|null;result_json:string|null};
 const stable=(value:unknown):string=>JSON.stringify(value,(_key,item)=>
   item && typeof item==="object" && !Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a<b?-1:a>b?1:0)):item);
 const key=(...parts:unknown[])=>"st:"+createHash("sha256").update(stable(parts)).digest("hex").slice(0,24);
@@ -146,10 +146,9 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
   }
   private issue(actor:string,binding:Binding) {
     const id=key(actor,binding),encoded=stable(binding);
-    this.db.prepare(`INSERT INTO snow_tournament_options (option_id,edition_id,resident_id,binding_json)
-      VALUES (?,?,?,?) ON CONFLICT(option_id) DO NOTHING`).run(id,binding.editionId,actor,encoded);
-    const row=this.db.prepare("SELECT * FROM snow_tournament_options WHERE option_id=?").get(id) as OptionRow;
-    if (row.resident_id!==actor || row.binding_json!==encoded) throw new Error("snow_option_conflict");
+    issueOption(this.db,id,binding.editionId,actor,binding);
+    const row=readOption(this.db,id)!;
+    if (row.resident_id!==actor || stable(row.binding)!==encoded) throw new Error("snow_option_conflict");
     const state=this.options.store.read(binding.editionId) as State;
     const name=(id:string)=>this.options.residents().find(member=>member.id===id)?.name??id;
     const op=binding.kind==="command"?"game.snow.command":"game.snow.choose";
@@ -206,10 +205,9 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
   async execute(actor:string,op:string,args:Record<string,unknown>):Promise<unknown> {
     const outcome=await this.run(actor,op,args);
     if (op!=="game.snow.choose" || (outcome as {ok?:boolean})?.ok===false) return outcome;
-    const row=this.db.prepare("SELECT binding_json FROM snow_tournament_options WHERE option_id=? AND resident_id=?")
-      .get(String(args.option),actor) as {binding_json:string}|undefined;
-    if (!row) return outcome;
-    const binding=JSON.parse(row.binding_json) as Binding;
+    const row=readOption(this.db,String(args.option));
+    if (!row || row.resident_id!==actor) return outcome;
+    const binding=row.binding as Binding;
     this.options.afterTeamMutation?.(binding.editionId);
     if (!this.options.afterMutation || !["confirm","cancel","leave","accept"].includes(binding.kind)) return outcome;
     let settlementPending=false;
@@ -234,18 +232,18 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
         formats:{twoTeams:"direct_final",threeTeams:"round_robin_top_two_final",fourOrMoreTeams:"round_robin_top_four_semifinal_final"},gamesPerMatch:3,eachMemberGamesPerMatch:1},
       combat:{lanes:3,cellsPerLane:12,tickSeconds:1,durationTicks:600,coreHp:20,attackerVictory:"coreHp <= 0",defenderVictory:"tick = 600 and coreHp > 0",thinkingPausesClock:false,
         batchedCommands:true,atomicBatch:true,minimumWaitTicks:30},catalog:this.options.catalog}:this.view(actor);
-    const id=String(input.option),row=this.db.prepare("SELECT * FROM snow_tournament_options WHERE option_id=? AND resident_id=?").get(id,actor) as OptionRow|undefined;
-    if (!row) return {ok:false,error:{code:"OPTION_NOT_AVAILABLE"}};
+    const id=String(input.option),row=readOption(this.db,id);
+    if (!row || row.resident_id!==actor) return {ok:false,error:{code:"OPTION_NOT_AVAILABLE"}};
     const encoded=stable([op,input]);
-    if (row.input_json!==null && row.input_json!==encoded) return {ok:false,error:{code:"REQUEST_CONFLICT"}};
-    if (row.result_json!==null) return {result:JSON.parse(row.result_json),replay:true};
-    const binding=JSON.parse(row.binding_json) as Binding;
+    if (row.hasInput && stable(row.input)!==encoded) return {ok:false,error:{code:"REQUEST_CONFLICT"}};
+    if (row.hasResult) return {result:row.result,replay:true};
+    const binding=row.binding as Binding;
     const state=this.options.store.read(binding.editionId) as State|null;
     if (!state) return {ok:false,error:{code:"OPTION_NOT_AVAILABLE"}};
-    if (state.receipts && Object.hasOwn(state.receipts,id) && state.receipts[id]!.actorId===actor && row.input_json===encoded) {
+    if (state.receipts && Object.hasOwn(state.receipts,id) && state.receipts[id]!.actorId===actor && row.hasInput && stable(row.input)===encoded) {
       return this.complete(id,encoded,snowTeamReceipt(state.receipts[id]!.result,this.options.publicService.readPublic(binding.editionId).edition!,this.options.residents()));
     }
-    if (!this.candidates(actor,state).some(candidate=>stable(candidate)===row.binding_json)) return {ok:false,error:{code:"OPTION_NOT_AVAILABLE"}};
+    if (!this.candidates(actor,state).some(candidate=>stable(candidate)===stable(row.binding))) return {ok:false,error:{code:"OPTION_NOT_AVAILABLE"}};
     if(binding.kind==='personal_results'){
       if(op!=='game.snow.choose'||Object.keys(input).some(field=>field!=='option'))return {ok:false,error:{code:'INVALID_ARGS'}};
       const names=new Map(this.options.residents().map(resident=>[resident.id,resident.name]));
@@ -260,7 +258,7 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
     const expected=binding.kind==="command"?["option","commands","waitTicks"]:["option",...(binding.requires??[])];
     if (Object.keys(input).some(field=>!expected.includes(field)) || expected.some(field=>input[field]===undefined) ||
         (binding.kind==="command")!==(op==="game.snow.command")) return {ok:false,error:{code:"INVALID_ARGS"}};
-    this.db.prepare("UPDATE snow_tournament_options SET input_json=? WHERE option_id=?").run(encoded,id);
+    writeOptionInput(this.db,id,JSON.parse(encoded));
     try {
     if (binding.revision!==undefined) {
       const command={editionId:binding.editionId,actorId:actor,commandId:id,now:new Date(this.now()).toISOString(),
@@ -301,7 +299,7 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
         default:throw new Error("snow_unknown_operation");
       }
       if ((result as {ok?:boolean})?.ok===false) {
-        this.db.prepare("UPDATE snow_tournament_options SET input_json=NULL WHERE option_id=?").run(id);
+        clearOptionInput(this.db,id);
         const view=host.playerState(ref,actor,this.now());
         return {...result as object,...(binding.kind==='command'&&view.canCommand?{retryExamples:snowCommandExamples(id,view.role!,view.battle)}:{})};
       }
@@ -310,7 +308,7 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
     } catch (error) {
       const latest=this.options.store.read(binding.editionId) as State|null;
       if (!latest?.receipts || !Object.hasOwn(latest.receipts,id)) {
-        this.db.prepare("UPDATE snow_tournament_options SET input_json=NULL WHERE option_id=? AND result_json IS NULL").run(id);
+        if(!readOption(this.db,id)?.hasResult)clearOptionInput(this.db,id);
       }
       if (error instanceof Error && /^[a-z][a-z0-9_]+$/.test(error.message)) return {ok:false,error:{code:error.message}};
       throw error;
@@ -318,7 +316,7 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
   }
   private complete(id:string,input:string,result:unknown) {
     const normalized=result??{ok:true};
-    this.db.prepare("UPDATE snow_tournament_options SET input_json=?,result_json=? WHERE option_id=?").run(input,JSON.stringify(normalized),id);
+    this.db.transaction(()=>{writeOptionInput(this.db,id,JSON.parse(input));writeOptionResult(this.db,id,normalized);})();
     return {result:normalized,replay:false};
   }
 }
