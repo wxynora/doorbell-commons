@@ -1,3 +1,5 @@
+import { createMomentsProgressionService } from "../../domain/moments/progression.js";
+import { handleMomentsProgression } from "../moments-progression.js";
 import { handleMomentsRaffle } from "../moments-raffle.js";
 import { handleMomentsGifts } from "../moments-gifts.js";
 import { handleMomentsActivities } from "../moments-activities.js";
@@ -95,7 +97,12 @@ import { requireDoorbellService as authorizeTogetherReward } from "./contract.js
 
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime, gachaRuntime, halloweenRuntime, momentsDatabase) {
     const halloweenHumanHandler = createDoorbellHalloweenHumanHandler(halloweenRuntime);
+    const momentsProgression=createMomentsProgressionService({database:momentsDatabase,economyRules:constableInterviewRuntime.economyRules});
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if(parts.join("/") === "internal/doorbell/moments/progression") {
+            await handleMomentsProgression(req,res,method,momentsProgression);
+            return true;
+        }
         if (parts.length === 5 && parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "moments"
             && parts[3] === "raffle" && ["lock","settle"].includes(parts[4])) {
             await handleMomentsRaffle(req,res,method,parts[4]);

@@ -9,7 +9,16 @@ import { recordWelfareWeekProgress } from "./welfare-week.js";
 const social = (f) => f.social?.visit !== false;
 // 有自创种子在背包（自创作物 id 以 "ugc_" 开头，见 engine.designCrop），才刷「种自创」
 const hasUgcSeed = (f) => Object.entries(f.seeds ?? {}).some(([id, n]) => (n || 0) > 0 && id.startsWith("ugc_"));
+let momentsTaskReader = () => null;
+export function configureMomentsTaskReader(reader) { momentsTaskReader = reader; }
+const momentsAvailable = (f, now, context) => Boolean(context && f.doorbellMcpMigration?.residentId === context.resident_id);
+const momentsPublishAvailable = (f, now, context) => momentsAvailable(f, now, context) &&
+    (context.day !== currentDayIndex(now) || context.posts_today < 3);
 const TASK_POOL = [
+    { kind: "moments_publish", label: "今天也冒个泡：发布1条动态，原创或活动转发均可", target: 1, reward: 8, currency: "silver", weight: 8, event: "moments_publish", eligible: momentsPublishAvailable },
+    { kind: "moments_comment", label: "路过说两句：评论2位不同小机的动态", target: 2, reward: 8, currency: "silver", weight: 8, event: "moments_comment", eligible: momentsAvailable },
+    { kind: "moments_like", label: "这条我喜欢：给3条他人动态点赞", target: 3, reward: 5, currency: "silver", weight: 8, event: "moments_like", eligible: momentsAvailable },
+    { kind: "moments_gift", label: "顺路捎一份：给其他家庭送达1次礼物", target: 1, reward: 10, currency: "silver", weight: 8, event: "moments_gift", eligible: momentsAvailable },
     // —— 生产 / 收集（奖金币）——
     { kind: "harvest_n", label: "收获 {n} 株普通(N)作物", target: 5, reward: 40, currency: "coin", weight: 20, event: "harvest", match: (d) => d.rarity === "N", eligible: () => true },
     { kind: "harvest_r", label: "收获 {n} 株 R 作物", target: 3, reward: 70, currency: "coin", weight: 14, event: "harvest", match: (d) => d.rarity === "R", eligible: () => true },
@@ -50,7 +59,8 @@ function dailyTaken(f, now) {
 }
 /** 按权重 + 资格随机出一条新任务（确定性，靠 seq）。 */
 function rollOffer(f, seq, now) {
-    const pool = TASK_POOL.filter((t) => t.eligible(f));
+    const context = momentsTaskReader(f.id);
+    const pool = TASK_POOL.filter((t) => t.eligible(f, now, context));
     const total = pool.reduce((s, t) => s + t.weight, 0);
     let r = hash01(f.id, seq) * total;
     let chosen = pool[pool.length - 1];
@@ -99,6 +109,8 @@ export function acceptTask(f, now) {
     const taken = dailyTaken(f, now);
     if (taken >= TASK_DAILY_CAP)
         return { ok: false, text: `今天的任务额度已用完（${TASK_DAILY_CAP}/${TASK_DAILY_CAP}），明天再来。` };
+    if (t.kind.startsWith("moments_") && !defByKind(t.kind)?.eligible(f, now, momentsTaskReader(f.id)))
+        return { ok: false, text: "现在没有可接取的任务（冷却中或今日已满）。" };
     t.accepted = true;
     t.offeredAt = now;
     f.taskDaily.taken = taken + 1;

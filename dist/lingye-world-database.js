@@ -230,6 +230,7 @@ export function installLingyeWorldSchema(database) {
     if (version?.schema_version !== LINGYE_WORLD_SCHEMA_VERSION)
         throw new Error(`Unsupported Lingye world schema version: ${version?.schema_version ?? "missing"}`);
     assertFarmWorldPersistenceSchema(database);
+    installMomentsProgressionSchema(database);
     installHalloweenSchema(database);
     database.exec(`
       CREATE TABLE IF NOT EXISTS lingye_school_action_receipts (
@@ -1608,4 +1609,34 @@ export function createLingyeWorldBackend(database, options) {
         });
     }
     return Object.freeze(backend);
+}
+
+/** Structured social progress; shares the existing world SQLite connection. */
+export function installMomentsProgressionSchema(database) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS moments_progression_states (
+        farm_id TEXT PRIMARY KEY REFERENCES farm_states(farm_id) ON DELETE RESTRICT,
+        resident_id TEXT NOT NULL UNIQUE REFERENCES residents(resident_id) ON DELETE RESTRICT,
+        sequence INTEGER NOT NULL DEFAULT 0, day INTEGER NOT NULL, posts_today INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS moments_progression_events (
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
+        sequence INTEGER NOT NULL, event TEXT NOT NULL, source TEXT NOT NULL, target TEXT NOT NULL,
+        occurred_at INTEGER NOT NULL, task_notice TEXT, posts INTEGER NOT NULL, comments INTEGER NOT NULL,
+        likes INTEGER NOT NULL, received_likes INTEGER NOT NULL, gifts INTEGER NOT NULL, received_gifts INTEGER NOT NULL,
+        PRIMARY KEY(resident_id,sequence)
+      );
+      CREATE TABLE IF NOT EXISTS moments_progression_rewards (
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
+        title_id TEXT NOT NULL, sequence INTEGER NOT NULL, silver INTEGER NOT NULL,
+        legacy INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(resident_id,title_id)
+      );
+      CREATE TABLE IF NOT EXISTS moments_progression_task_marks (
+        farm_id TEXT NOT NULL REFERENCES farm_states(farm_id) ON DELETE RESTRICT,
+        task_key TEXT NOT NULL, kind TEXT NOT NULL, source TEXT NOT NULL,
+        active INTEGER NOT NULL, credited INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY(farm_id,task_key,kind,source)
+      );
+      CREATE INDEX IF NOT EXISTS moments_progression_task_credits ON moments_progression_task_marks(farm_id,kind,source,credited);
+    `);
 }
