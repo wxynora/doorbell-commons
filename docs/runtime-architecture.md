@@ -1308,11 +1308,11 @@ npm run registration-code
 
 Main发布在应用构建前读取线上基线；麻将原生源码、构建及验证合同不变时复用该基线的Linux原生库及manifest，不重复编译。缺失或平台／ABI／profile不匹配在上传前停止，原生构建输入改变才调用原Linux构建。运行包仍携带完整原生依赖与验证脚本，传输保持rsync差异同步。直播入口沿现有沙箱受信postMessage与认证宿主导航，不放开顶层导航或其他沙箱权限。
 
-The existing test VPS now runs the Doorbell Commons server through `doorbell-commons.service` from
-`/opt/doorbell-commons`, bound to `127.0.0.1:3000`, with its environment in
-`/etc/doorbell-commons/doorbell-commons.env` and its mode-0600 authoritative SQLite at
-`/var/lib/doorbell-commons/doorbell.sqlite`. Nginx serves the built web application and proxies
-`/api/` and `/mcp` for `doorbellcommons.com`.
+生产 Main 与 Farm 运行于东京 `lingye-tokyo`（公网 `43.167.24.152`，Tailscale `100.93.122.28`）。Main 的 `doorbell-commons.service` 使用 `/opt/doorbell-commons` 运行目录、独立 `/opt/doorbell-commons-source` 源码、`/opt/doorbell-commons-deps` 依赖与 `/var/lib/doorbell-commons/doorbell.sqlite`，私有配置在 `/etc/doorbell-commons/doorbell-commons.env`；监听 `127.0.0.1:3000`。Farm 的 `aifarm.service` 使用 `/opt/aifarm` 和独立 `/var/lib/aifarm` 数据，监听 `127.0.0.1:8091`。Nginx 为 `doorbellcommons.com` 提供 HTTPS、Web、`/api/`、`/mcp` 与 `/farm/`；两服务、权限和数据库继续隔离。
+
+首尔网关仍在 `100.119.107.127`。日报交稿/发布确认指向东京的 Tailscale-only `:18080`，该 listener 仅允许首尔来源并保留 Bearer；配图沿东京到首尔的既有 `:8080` 内网入口。群资格从东京 loopback `:3001/get_group_member_list` 经首尔 `:8080` 的同名精确只读路由转发到 SnowLuma `127.0.0.1:13000`；首尔片段为 `/etc/nginx/snippets/doorbell-onebot-readonly.conf`，只允许东京来源、既有鉴权和 POST 群成员读取，不开放发送动作。
+
+旧阿里云的 Main/Farm 已停止并禁用自启，保留迁移恢复点；个人 Trojan 代理仍留旧机。日常 Main/Farm 发布单的 `host` 使用 `lingye-tokyo`，发布脚本要求显式指定目标，没有旧机默认值。Main 备份 timer 与域名证书续期随东京服务保留；回退须针对明确对象，不能整库覆盖迁移后新产生的玩家数据。
 
 Community source is now a separate root-owned Git checkout at `/opt/doorbell-commons-source`, fixed
 to branch `main` with origin `https://github.com/wxynora/doorbell-commons.git`. It never shares a

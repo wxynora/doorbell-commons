@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { isDeepStrictEqual } from "node:util";
 import { readEditionRows, saveEditionRows } from "./relational-edition.js";
-import { deleteRuntimeRows, publicRuntimeFromState, readPublicRuntimes, readRuntimeRows, saveRuntimeRows, type PublicRuntime } from "./relational-runtime.js";
+import { deleteRuntimeRows, publicRuntimeFromState, readPublicRuntimes, readRuntimeRows, readRuntimeRound, saveRuntimeRows, type PublicRuntime } from "./relational-runtime.js";
 import { saveBattleRows } from "./relational-battle.js";
 import { readMatchEditionView, readRoundRecovery, readTechnicalView } from "./relational-match-view.js";
 
@@ -70,6 +70,13 @@ export class SnowTournamentStore {
       .get(editionId,matchId) as {raw_text:string}|undefined;
     if(invalid)return JSON.parse(invalid.raw_text);
     return readRuntimeRows(this.db,editionId,matchId);
+  }
+
+  readMatchTerminal(editionId:string,matchId:string,index:number) {
+    const invalid=this.db.prepare("SELECT raw_text FROM snow_tournament_invalid_runtime WHERE edition_id=? AND match_id=?")
+      .get(editionId,matchId) as {raw_text:string}|undefined;
+    if(invalid)return JSON.parse(invalid.raw_text)?.rounds?.[index]??null;
+    return readRuntimeRound(this.db,editionId,matchId,index);
   }
 
   readPublicMatchRuntimes(editionId:string,matchId?:string) {

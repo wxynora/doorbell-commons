@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { isDeepStrictEqual } from "node:util";
 import { applyRowPlans, packRow, unpackRow, type DomainObject, type FieldMapping, type RowPlan } from "./relational-rows.js";
-import { readReceiptValues, writeReceiptValue } from "./relational-values.js";
+import { readReceiptValue, readReceiptValues, writeReceiptValue } from "./relational-values.js";
 import { readBattleRows, saveBattleRows, removeBattleRows } from "./relational-battle.js";
 
 const runtimeFields:FieldMapping=[["teamIds","_teams"],["owner","owner"],["lastSeenAt","last_seen_at"],["matchAt","match_at"],
@@ -150,6 +150,26 @@ export function deleteRuntimeRows(db:Database.Database,editionId:string,matchId:
   return db.prepare("DELETE FROM snow_tournament_match_runtime WHERE edition_id=? AND match_id=?").run(editionId,matchId).changes>0;
 }
 
+function decodeRuntimeRound(row:DomainObject,readExtra:(id:string)=>unknown):DomainObject|null {
+  if(row.is_null)return null;const [mask,participantsMask,attackMask,defendMask]=String(row.field_presence).split("|");
+  const round=unpackRow({...row,field_presence:mask},terminalFields);applyExtra(round,readExtra(key("round",String(row.position))));
+  if(round.participants && typeof round.participants==="object"){
+    const participants=unpackRow({...row,field_presence:participantsMask},participantFields);applyExtra(participants,readExtra(key("participants",String(row.position))));
+    if(participants.attack && typeof participants.attack==="object"){participants.attack=unpackRow({...row,field_presence:attackMask},attackFields);applyExtra(participants.attack,readExtra(key("participant",String(row.position),"attack")));}
+    if(participants.defend && typeof participants.defend==="object"){participants.defend=unpackRow({...row,field_presence:defendMask},defendFields);applyExtra(participants.defend,readExtra(key("participant",String(row.position),"defend")));}
+    round.participants=participants;
+  }return round;
+}
+
+/** A terminal check reads only this round, never its battle, chat or command history. */
+export function readRuntimeRound(db:Database.Database,editionId:string,matchId:string,index:number):DomainObject|null {
+  const row=db.prepare(`SELECT r.* FROM snow_tournament_runtime_rounds r
+    JOIN snow_tournament_runtime_details d ON d.edition_id=r.edition_id AND d.match_id=r.match_id
+    WHERE r.edition_id=? AND r.match_id=? AND r.position=? AND substr(d.field_presence,?,1)='a'`)
+    .get(editionId,matchId,index,runtimeFields.findIndex(([name])=>name==="rounds")+1) as DomainObject|undefined;
+  return row?decodeRuntimeRound(row,id=>readReceiptValue(db,editionId,extraKind(matchId),id)):null;
+}
+
 /** Restores the host state without storing any edition- or match-sized JSON document. */
 export function readRuntimeRows(db:Database.Database,editionId:string,matchId:string):DomainObject|null {
   const [root]=getRows(db,"snow_tournament_runtime_details",editionId,matchId,"edition_id");if(!root)return null;
@@ -181,16 +201,8 @@ export function readRuntimeRows(db:Database.Database,editionId:string,matchId:st
     for(const row of getRows(db,"snow_tournament_chat_read_positions",editionId,matchId,"team_slot,resident_id"))
       Object.defineProperty(value.chat[row.team_slot].readThrough,row.resident_id,{value:row.read_through,enumerable:true,writable:true,configurable:true});
   }
-  if(Array.isArray(value.rounds))value.rounds=getRows(db,"snow_tournament_runtime_rounds",editionId,matchId,"position").map(row=>{
-    if(row.is_null)return null;const [mask,participantsMask,attackMask,defendMask]=String(row.field_presence).split("|");
-    const round=unpackRow({...row,field_presence:mask},terminalFields);applyExtra(round,extras.get(key("round",String(row.position))));
-    if(round.participants && typeof round.participants==="object"){
-      const participants=unpackRow({...row,field_presence:participantsMask},participantFields);applyExtra(participants,extras.get(key("participants",String(row.position))));
-      if(participants.attack && typeof participants.attack==="object"){participants.attack=unpackRow({...row,field_presence:attackMask},attackFields);applyExtra(participants.attack,extras.get(key("participant",String(row.position),"attack")));}
-      if(participants.defend && typeof participants.defend==="object"){participants.defend=unpackRow({...row,field_presence:defendMask},defendFields);applyExtra(participants.defend,extras.get(key("participant",String(row.position),"defend")));}
-      round.participants=participants;
-    }return round;
-  });
+  if(Array.isArray(value.rounds))value.rounds=getRows(db,"snow_tournament_runtime_rounds",editionId,matchId,"position")
+    .map(row=>decodeRuntimeRound(row,id=>extras.get(id)));
   if(value.active && typeof value.active==="object") {
     const [row]=getRows(db,"snow_tournament_active_rounds",editionId,matchId,"edition_id");
     const [mask,membersMask]=String(row!.field_presence).split("|");const active=unpackRow({...row,field_presence:mask},activeFields);

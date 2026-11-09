@@ -25,6 +25,7 @@ export type HostBattle = {
   status: Status; endReason: string | null; tick: number; coreHp: number;
   runtime?: { started: boolean };
 };
+export type SnowBattleFrame = { battle:HostBattle; nextTickAt:number|null };
 export type SnowMatchEngine = {
   rulesVersion: string;
   commanderSkills: Record<Role, readonly string[]>;
@@ -102,7 +103,7 @@ export function validateSnowMatchRuntime(state:unknown,gameIndex:number,engine:S
 /** Per-match state, bound to this edition and match, never to the old activity. */
 export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
   private readonly owner = randomUUID();
-  private readonly watchers = new Map<string, Set<() => void>>();
+  private readonly watchers = new Map<string, Set<(frame?:SnowBattleFrame) => void>>();
   private wake:(()=>void)|undefined;
   private signals:SnowSignalSink|undefined;
   bindClock(wake:(()=>void)|undefined) { this.wake=wake; }
@@ -148,7 +149,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
   }
   readLockedAttackers(ref: MatchRef) { return this.read(ref)?.attackers ?? null; }
   readTerminal(ref: MatchRef & { gameIndex: 0 | 1 | 2 }) {
-    try { return this.read(ref)?.rounds?.[ref.gameIndex] ?? null; }
+    try { return this.store.readMatchTerminal(ref.editionId,ref.matchId,ref.gameIndex) as Terminal|null; }
     catch(error) { if(error instanceof SyntaxError) return null; throw error; }
   }
 
@@ -210,6 +211,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
     ]):"none";
     let before="none";
     let savedAfter:Runtime|null|undefined;
+    let committedFrame:SnowBattleFrame|undefined;
     let signalChanges:SignalChanges|undefined;
     const next = this.store.transaction(() => {
       const advance=()=>{
@@ -267,7 +269,10 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       const saved = state;
       const finish = (at: number | null,ordinaryTick=false) => {
         saved.lastSeenAt = Math.max(saved.lastSeenAt,input.now);
-        if(ordinaryTick && previousTick)this.store.saveBattleTick(input.editionId,input.matchId,saved,previousTick);
+        if(ordinaryTick && previousTick){
+          this.store.saveBattleTick(input.editionId,input.matchId,saved,previousTick);
+          committedFrame={battle:saved.active!.battle,nextTickAt:saved.active!.nextTickAt};
+        }
         else this.store.saveMatchRuntime(input.editionId, input.matchId, saved);
         savedAfter=saved;
         return at;
@@ -333,7 +338,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
     });
     if (signalChanges) this.signals?.publish(signalChanges);
     if (before!==frame(savedAfter===undefined?this.read(input):savedAfter)) changed.add(input.matchId);
-    for (const matchId of changed) this.notify({editionId:input.editionId,matchId});
+    for (const matchId of changed) this.notify({editionId:input.editionId,matchId},matchId===input.matchId?committedFrame:undefined);
     return next;
   }
 
@@ -551,11 +556,11 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
     return result;
   }
 
-  private notify(ref: MatchRef) {
-    for (const listener of this.watchers.get(JSON.stringify([ref.editionId,ref.matchId])) ?? []) listener();
+  private notify(ref: MatchRef,frame?:SnowBattleFrame) {
+    for (const listener of this.watchers.get(JSON.stringify([ref.editionId,ref.matchId])) ?? []) listener(frame);
   }
   invalidateMatch(ref:MatchRef) { this.notify(ref); }
-  subscribe(ref: MatchRef, listener: () => void) {
+  subscribe(ref: MatchRef, listener: (frame?:SnowBattleFrame) => void) {
     const key = JSON.stringify([ref.editionId,ref.matchId]);
     const listeners = this.watchers.get(key) ?? new Set<() => void>();
     this.watchers.set(key,listeners);

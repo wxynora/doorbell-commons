@@ -7,7 +7,7 @@ import { SnowTournamentTeamService, type SnowTournamentIdentityPort } from "./te
 import { SnowTournamentResults, type SnowTournamentEnginePort } from "./results.js";
 import { SnowTournamentScheduler, startSnowTournamentClock, type SnowTournamentScheduleHost } from "./scheduler.js";
 import { monthlyWindow, type MonthlySnowSeason } from "./calendar.js";
-import { SnowTournamentMatchHost, type HostBattle, type SnowMatchEngine } from "./match-host.js";
+import { SnowTournamentMatchHost, type HostBattle, type SnowMatchEngine, type SnowBattleFrame } from "./match-host.js";
 import { SnowTournamentRegistrationBell } from "./registration-bell.js";
 import { SnowTournamentSettlement, type SnowTournamentEconomy } from "./settlement.js";
 import { SnowTournamentPlayerSignals } from "./player-signals.js";
@@ -107,11 +107,11 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
   type ReadBattleFrame=()=>SnowReplicaBattle|null;
   // Each notification owns one lazy public projection. Pending connections keep
   // only the latest notification; there is no retained per-match snapshot.
-  const battleFrame=(ref:MatchRef):ReadBattleFrame=>{
+  const battleFrame=(ref:MatchRef,committedFrame?:SnowBattleFrame):ReadBattleFrame=>{
     let projected:SnowReplicaBattle|null|undefined,nextTickAt:number|null=null;
     return ()=>{
       if(projected===undefined){
-        const frame=matchHost?.frameForProjection(ref);
+        const frame=committedFrame??matchHost?.frameForProjection(ref);
         projected=frame&&runtime?runtime.projectBattle(frame.battle):null;
         nextTickAt=frame?.nextTickAt??null;
       }
@@ -126,8 +126,8 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
       let group=battleSubscribers.get(key);
       if(!group){
         const listeners=new Set<(read:ReadBattleFrame)=>void>();
-        const stop=matchHost.subscribe(ref,()=>{
-          const read=battleFrame(ref);
+        const stop=matchHost.subscribe(ref,frame=>{
+          const read=battleFrame(ref,frame);
           for(const notify of listeners)notify(read);
         });
         group={listeners,stop};battleSubscribers.set(key,group);
