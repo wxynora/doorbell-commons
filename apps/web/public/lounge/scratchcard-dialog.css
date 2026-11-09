@@ -23,7 +23,8 @@
 .lounge-scratchcard :focus-visible { outline: 2px solid var(--scratch-green); outline-offset: 3px; }
 .lounge-scratchcard .scratchcard-close {
   position: absolute; top: 13px; right: 14px;
-  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  width: 44px; height: 44px; padding: 0;
   border: 0; border-radius: 50%; background: #eee2ca; color: var(--scratch-ink);
   font-size: 22px; line-height: 1;
 }
@@ -42,7 +43,7 @@
 .scratchcard-top-gold { color: #803145; }
 .lounge-scratchcard[data-view="ticket"] {
   width: min(292px, calc(100% - 24px));
-  padding: 38px 12px 10px;
+  padding: 48px 12px 10px;
   border: 0;
   border-radius: 0;
   background: transparent;

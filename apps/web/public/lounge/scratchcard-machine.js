@@ -68,13 +68,12 @@ export async function dispenseScratchcard(outlet, requestDraw, onStart) {
   try {
     onStart();
     await new Promise(resolve => {
-      let previousFrame;
+      let startedAt;
       let progress = 0;
       let fullyOutAt;
       function frame(now) {
-        // A slow frame still advances the sheet visibly before the ticket view opens.
-        const next = Math.min(1, progress + Math.min(now - (previousFrame ?? now), 100) / 540);
-        previousFrame = now;
+        startedAt ??= now;
+        const next = Math.min(1, (now - startedAt) / 540);
         if (next !== progress) {
           progress = next;
           const halfLength = length * progress / 2;

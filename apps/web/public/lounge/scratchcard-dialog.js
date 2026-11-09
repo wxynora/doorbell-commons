@@ -85,7 +85,7 @@ function coat(canvas, label) {
 }
 
 function connectScratch(canvas, reveal) {
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   let pointer;
   let previous;
   function position(event) {

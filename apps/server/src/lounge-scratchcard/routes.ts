@@ -1,7 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { OneBotUnavailableError } from "../qq-group-membership.js";
-import { AuthenticationRequiredError, QqNotGroupMemberError, RegistrationProfileRequiredError,
+import { AuthenticationRequiredError, RegistrationProfileRequiredError,
   type RegistrationAuthService } from "../registration-auth.js";
 import { readHumanSessionToken, serializeClearedHumanSessionCookie } from "../session-cookie.js";
 import { ScratchcardClientError, type LoungeScratchcardClient } from "./client.js";
@@ -21,7 +20,7 @@ const errorDetails = {
 } as const;
 
 export function registerLoungeScratchcardRoutes(app: FastifyInstance, options: {
-  registrationAuth: Pick<RegistrationAuthService, "getCurrentSessionWithMembership">;
+  registrationAuth: Pick<RegistrationAuthService, "getCurrentSession">;
   scratchcards: Pick<LoungeScratchcardClient, "read" | "buy">;
   secureCookies: boolean;
 }): void {
@@ -33,8 +32,6 @@ export function registerLoungeScratchcardRoutes(app: FastifyInstance, options: {
       reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));
       return failure(reply, 401, "authentication_required", "请先登录。");
     }
-    if (error instanceof QqNotGroupMemberError) return failure(reply, 403, "qq_not_group_member", "当前账号没有社区资格。");
-    if (error instanceof OneBotUnavailableError) return failure(reply, 503, "onebot_unavailable", "暂时无法核验社区资格。");
     if (error instanceof RegistrationProfileRequiredError) return failure(reply, 409, "registration_profile_required", "请先完成农场绑定。");
     if (error instanceof ScratchcardClientError) {
       const [status, message] = errorDetails[error.code];
@@ -46,7 +43,7 @@ export function registerLoungeScratchcardRoutes(app: FastifyInstance, options: {
   async function currentFarm(request: FastifyRequest) {
     const token = readHumanSessionToken(request.headers.cookie);
     if (!token) throw new AuthenticationRequiredError();
-    const { farmBinding } = await options.registrationAuth.getCurrentSessionWithMembership(token);
+    const { farmBinding } = await options.registrationAuth.getCurrentSession(token);
     if (!farmBinding.farmHumanKey) throw new RegistrationProfileRequiredError();
     return { farmDoorplate: farmBinding.farmDoorplate, farmHumanKey: farmBinding.farmHumanKey };
   }
