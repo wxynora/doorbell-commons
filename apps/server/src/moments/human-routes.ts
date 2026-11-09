@@ -47,7 +47,11 @@ export function registerMomentsHumanRoutes(app: FastifyInstance, options: {
     async (request: FastifyRequest, reply: FastifyReply) => {
       reply.header("cache-control", "no-store");
       if (request.method !== "GET" && request.method !== "HEAD" && !sameOrigin(request)) return error(reply,403,"origin_not_allowed");
-      try { return await action(await authenticate(request),request); }
+      try {
+        const actor=await authenticate(request), result=await action(actor,request);
+        await options.store.syncProgression(actor.residentId);
+        return result;
+      }
       catch (cause) {
         if (cause instanceof MomentsError) {
           const status = cause.code === "moment_not_found" ? 404 : cause.code === "actor_unavailable" ? 401

@@ -367,6 +367,7 @@ function protocolVersionError(
 export interface DoorbellMcpRuntimeOptions {
   momentsTools?: MomentsToolPort;
   statusNotifications?: Pick<MomentsStatusNotifications, "report" | "dailySummary">;
+  momentsProgression?: {sync(residentId:string):Promise<void>;takeNotices(residentId:string):string[]};
   mainActivity?: Pick<MainActivitySource, "dailyRead">;
   snowTools?: SnowTournamentToolPort;
   loungeTools?: LoungeToolExecutor;
@@ -488,6 +489,7 @@ export class DoorbellMcpRuntime {
   readonly #faultReports: FaultReports | undefined;
   readonly #momentsTools: MomentsToolPort | undefined;
   readonly #statusNotifications: DoorbellMcpRuntimeOptions["statusNotifications"];
+  readonly #momentsProgression: DoorbellMcpRuntimeOptions["momentsProgression"];
   readonly #mainActivity: DoorbellMcpRuntimeOptions["mainActivity"];
   readonly #database: CommunityDatabase;
   readonly #registrationAuth: RegistrationAuthService;
@@ -521,6 +523,7 @@ export class DoorbellMcpRuntime {
   constructor(options: DoorbellMcpRuntimeOptions) {
     this.#momentsTools = options.momentsTools;
     this.#statusNotifications = options.statusNotifications;
+    this.#momentsProgression = options.momentsProgression;
     this.#mainActivity = options.mainActivity;
     this.#faultReports = options.faultReports;
     this.#database = options.database;
@@ -1014,6 +1017,7 @@ export class DoorbellMcpRuntime {
       }
       if (op === "farm.together.choose" && businessArgs.action === "chat")
         return doorbellToolError("INTERNAL_ERROR", { op });
+      await this.#momentsProgression?.sync(context.residentId);
       const result = await this.#farmActions.execute({
         farmDoorplate: context.farmDoorplate,
         farmHumanKey: context.farmHumanKey,
@@ -1043,6 +1047,7 @@ export class DoorbellMcpRuntime {
           console.error("[moments-farm-activity] projection unavailable");
         }
       }
+      if(result.ok)text=[text,...(this.#momentsProgression?.takeNotices(context.residentId)??[])].join("\n\n");
       return farmToolResult(text, result.ok, result.farm);
     } catch (error) {
       const unconfirmedMessage = op === "farm.decorate"
@@ -1144,13 +1149,14 @@ export class DoorbellMcpRuntime {
 
   async #appendStatusWhenAvailable(text: string, context: DoorbellFarmContext): Promise<string> {
     try {
+      await this.#momentsProgression?.sync(context.residentId);
       const status = await this.#farmActions.execute({
         farmDoorplate: context.farmDoorplate,
         farmHumanKey: context.farmHumanKey,
         action: "status",
         params: {},
       });
-      return status.ok ? `${text}\n\n【农场近况】\n${this.#decorateFarmStatus(status.text, context)}` : text;
+      return status.ok ? [`${text}\n\n【农场近况】\n${this.#decorateFarmStatus(status.text, context)}`,...(this.#momentsProgression?.takeNotices(context.residentId)??[])].join("\n\n") : text;
     } catch {
       return text;
     }

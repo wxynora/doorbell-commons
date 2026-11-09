@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 
-export type HomeRecordKind = "post" | "receipt" | "fact" | "audience" | "like" | "comment" | "gift" | "option" | "read_cursor" | "notification_read" | "notification_reported" | "activity_status" | "raffle" | "raffle_prize" | "raffle_audience" | "raffle_sticker" | "sticker_attachment";
+export type HomeRecordKind = "post" | "receipt" | "fact" | "audience" | "like" | "comment" | "gift" | "option" | "read_cursor" | "notification_read" | "notification_reported" | "activity_status" | "raffle" | "raffle_prize" | "raffle_audience" | "raffle_sticker" | "sticker_attachment" | "progression" | "progression_event" | "progression_notice";
 export type SqlValue = string | number | null;
 export type HomeRecord = { record_id: string; home_id: string };
 export type EnsureMomentsHomeTable = (homeId: string) => string;

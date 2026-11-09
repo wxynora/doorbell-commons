@@ -1,3 +1,4 @@
+import { MomentsProgressionStore } from "./progression-store.js";
 import { activityStatusKeys, canonicalStatusKeys, collectDailyActivityStatuses, receiptStatusKeys, saveActivityStatuses } from "./activity-status.js";
 import { randomInt, randomUUID } from "node:crypto";
 import { loungeDisplayName } from "../lounge-display-name.js";
@@ -89,10 +90,17 @@ export class MomentsStore {
   private raffleBarrier: {freezeDue(now:number,momentId?:string):string[];wake():void;snapshotForReadablePost(momentId:string):RaffleView|undefined} | undefined;
   setRaffleBarrier(barrier:{freezeDue(now:number,momentId?:string):string[];wake():void;snapshotForReadablePost(momentId:string):RaffleView|undefined}) { this.raffleBarrier=barrier; }
   private readonly records: HomeMomentRecords;
+  readonly progression: MomentsProgressionStore;
+  private progressionSync: ((residentId:string)=>Promise<void>) | undefined;
+  setProgressionSync(sync:(residentId:string)=>Promise<void>) { this.progressionSync=sync; }
+  async syncProgression(residentId:string) { await this.progressionSync?.(residentId); }
+  progressionHome(residentId:string):string { this.currentActor({kind:"resident",residentId}); return this.homeId(residentId); }
+  takeProgressionNotices(residentId:string,now:number):string[] { return this.progression.takeNotices(this.progressionHome(residentId),now); }
   private readonly stickerAttachments: MomentsStickerAttachments;
   constructor(private readonly database: Database.Database, private readonly ensureHomeTable: EnsureMomentsHomeTable,
     findSticker:(id:string)=>StickerAsset|undefined=findMomentSticker) {
     this.records=new HomeMomentRecords(database,ensureHomeTable);
+    this.progression=new MomentsProgressionStore(database,ensureHomeTable);
     this.stickerAttachments=new MomentsStickerAttachments(database,ensureHomeTable,this,findSticker);
   }
 
@@ -288,7 +296,12 @@ export class MomentsStore {
     return this.database.transaction(()=>{
       const row=this.records.all<GiftRow>("gift","gift_id=?",[expected.gift_id])[0];
       if(!row)throw new MomentsError("gift_unavailable");if(row.delivered_at!==null)return this.giftView(row);
+      const targetHome=this.homeId(row.recipient_resident_id);
+      this.progression.ensure(row.home_id,receipt.delivered_at);
+      this.progression.ensure(targetHome,receipt.delivered_at);
       this.records.update(row.home_id,row.record_id,{delivered_at:receipt.delivered_at,item_name:receipt.item.name});
+      this.progression.change(row.home_id,receipt.delivered_at,"gift",row.gift_id,row.recipient_resident_id,{gifts:1});
+      this.progression.change(targetHome,receipt.delivered_at,"receive_gift",row.gift_id,row.sender_resident_id,{received_gifts:1});
       return this.giftView({...row,delivered_at:receipt.delivered_at,item_name:receipt.item.name});
     }).immediate();
   }
@@ -350,12 +363,14 @@ export class MomentsStore {
       for(const subject of parsed.visibility.subjects){
         if(!this.database.prepare("SELECT 1 FROM residents WHERE resident_id=?").get(subject.id))throw new MomentsError("audience_not_found");
       }
+      this.progression.ensure(homeId,now);
       const current=this.saveActor(actor),id=randomUUID();
       this.records.insert(homeId,"post",{moment_id:id,author_id:actor.residentId,actor_key:current.actor_key,request_id:parsed.requestId,
         text:parsed.text,receipt_id:parsed.receiptId??null,location:parsed.location===undefined?(pubmeta.defaultLocation??null):parsed.location,location_supplied:parsed.location===undefined?0:1,
         visibility:parsed.visibility.mode,created_at:now},id);
       parsed.visibility.subjects.forEach(subject=>this.records.insert(homeId,"audience",{moment_id:id,subject_kind:subject.kind,subject_id:subject.id}));
       attach({momentId:id});
+      this.progression.change(homeId,now,"publish",id,"",{posts:1});
       return this.view(actor,this.accessible(actor,id));
     });
   }
@@ -401,8 +416,16 @@ export class MomentsStore {
       const row=this.accessible(actor,id),current=this.saveActor(actor);
       frozen=(this.raffleBarrier?.freezeDue(now,id).length??0)>0;
       const previous=this.records.all<LikeRow>("like","moment_id=? AND actor_key=?",[id,current.actor_key])[0];
-      if(liked&&!previous)this.records.insert(this.homeId(actor.residentId),"like",{moment_id:id,actor_key:current.actor_key,target_home_id:row.home_id,created_at:now});
+      const homeId=this.homeId(actor.residentId), external=homeId!==row.home_id;
+      const before=this.records.aggregate("like","moment_id=?",[id],homeId).count;
+      if(external) { this.progression.ensure(homeId,now); this.progression.ensure(row.home_id,now); }
+      if(liked&&!previous)this.records.insert(homeId,"like",{moment_id:id,actor_key:current.actor_key,target_home_id:row.home_id,created_at:now});
       else if(!liked&&previous)this.records.delete(previous.home_id,previous.record_id);
+      const delta=liked&&!previous&&before===0?1:!liked&&previous&&before===1?-1:0;
+      if(external&&delta){
+        this.progression.change(homeId,now,delta>0?"like":"unlike",id,row.author_id,{likes:delta});
+        this.progression.change(row.home_id,now,delta>0?"receive_like":"receive_unlike",id,actor.residentId,{received_likes:delta});
+      }
       return this.view(actor,row);
     }).immediate();
     if(frozen)this.raffleBarrier?.wake();
@@ -417,8 +440,14 @@ export class MomentsStore {
       const previous=this.records.all<CommentRow>("comment","actor_key=? AND request_id=?",[current.actor_key,comment.requestId])[0];
       if(previous&&(previous.moment_id!==id||previous.text!==comment.text))throw new MomentsError("request_conflict");
       const commentId=previous?.comment_id??randomUUID();
-      if(!previous)this.records.insert(this.homeId(actor.residentId),"comment",{
-        comment_id:commentId,moment_id:id,actor_key:current.actor_key,target_home_id:row.home_id,request_id:comment.requestId,text:comment.text,created_at:now},commentId);
+      if(!previous){
+        const homeId=this.homeId(actor.residentId), external=homeId!==row.home_id;
+        const first=!this.records.aggregate("comment","moment_id=?",[id],homeId).count;
+        if(external)this.progression.ensure(homeId,now);
+        this.records.insert(homeId,"comment",{
+          comment_id:commentId,moment_id:id,actor_key:current.actor_key,target_home_id:row.home_id,request_id:comment.requestId,text:comment.text,created_at:now},commentId);
+        if(external)this.progression.change(homeId,now,"comment",id,row.author_id,{comments:first?1:0});
+      }
       attach({momentId:id,commentId});
       return this.view(actor,row);
     });

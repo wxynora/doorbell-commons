@@ -63,6 +63,7 @@ export const momentsOperation = {
 export type MomentsToolReply = { ok: boolean; text: string };
 export interface MomentsToolPort { execute(context: MomentsAgentContext, args: unknown): Promise<MomentsToolReply> }
 export interface MomentsToolServices {
+  progression?: {sync(residentId:string):Promise<void>;takeNotices(residentId:string):string[]};
   recovery?: Pick<ActivityRecovery, "read" | "latest">;
   raffles?: Pick<MomentsRaffles, "publish" | "view">;
   raffleScheduler?: { wake(): void };
@@ -255,6 +256,15 @@ export class MomentsTool implements MomentsToolPort {
       requires: ["option", "requestId", "text", "visibility"], optional: ["location", "stickers"] };
   }
   async execute(context: MomentsAgentContext, args: unknown): Promise<MomentsToolReply> {
+    const reply=await this.executeAction(context,args);
+    if(reply.ok&&this.services.progression){
+      await this.services.progression.sync(context.residentId);
+      const notices=this.services.progression.takeNotices(context.residentId);
+      if(notices.length)return {...reply,text:[reply.text,...notices].join("\n\n")};
+    }
+    return reply;
+  }
+  private async executeAction(context: MomentsAgentContext, args: unknown): Promise<MomentsToolReply> {
     try {
       const parsed = momentsToolArgsSchema.safeParse(args);
       if (!parsed.success) throw new MomentsError("invalid_request");

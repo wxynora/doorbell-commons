@@ -20,7 +20,7 @@ import { tournamentEngine } from "../together/tournament/engine-adapter.js";
 import { validateSnowMatchRuntime } from "../together/tournament/match-host.js";
 import { readRoundRecovery } from "../together/tournament/relational-match-view.js";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 60;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 61;
 export const SNOW_LIVE_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS snow_spectator_messages (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3209,6 +3209,18 @@ UPDATE lingye_daily_column_images SET attempt_count=1, attempted_at=generated_at
     database.pragma('user_version = 60');
   })();
 
+  if (databaseSchemaVersion < 61) database.transaction(() => {
+    const homes = database.prepare("SELECT home_id,table_name FROM lingye_moments_homes").all() as {home_id:string;table_name:string}[];
+    for (const {home_id,table_name} of homes) {
+      if (!/^lingye_moments_home_[a-f0-9]{32}$/.test(table_name)) throw new Error("Invalid moments home table");
+      const columns = (database.prepare(`PRAGMA table_info("${table_name}")`).all() as {name:string}[]).map(row=>`"${row.name}"`).join(",");
+      database.prepare("DELETE FROM lingye_moments_homes WHERE home_id=?").run(home_id);
+      const next = ensureMomentsHomeTable(database,home_id);
+      database.exec(`INSERT INTO "${next}" (${columns}) SELECT ${columns} FROM "${table_name}"; DROP TABLE "${table_name}";`);
+    }
+    database.pragma('user_version = 61');
+  })();
+
 }
 
 /** Shared identity/catalogue only. Content lives in one SQL table per home. */
@@ -3239,7 +3251,7 @@ export function ensureMomentsHomeTable(database: Database.Database, homeId: stri
       CREATE TABLE "${table}" (
         record_id TEXT PRIMARY KEY,
         home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
-        record_type TEXT NOT NULL CHECK(record_type IN ('post','receipt','fact','audience','like','comment','gift','option','read_cursor','notification_read','notification_reported','activity_status','raffle','raffle_prize','raffle_audience','raffle_sticker','sticker_attachment')),
+        record_type TEXT NOT NULL CHECK(record_type IN ('post','receipt','fact','audience','like','comment','gift','option','read_cursor','notification_read','notification_reported','activity_status','raffle','raffle_prize','raffle_audience','raffle_sticker','sticker_attachment','progression','progression_event','progression_notice')),
         actor_key TEXT REFERENCES lingye_moments_actors(actor_key) ON DELETE CASCADE,
         target_home_id TEXT REFERENCES homes(home_id) ON DELETE CASCADE,
         moment_id TEXT, short_ref TEXT, author_id TEXT REFERENCES residents(resident_id) ON DELETE CASCADE,
@@ -3264,6 +3276,9 @@ export function ensureMomentsHomeTable(database: Database.Database, homeId: stri
         item_kind TEXT CHECK(item_kind IN ('dish','bait')), item_id TEXT,
         item_quantity INTEGER CHECK(item_quantity>0), item_name TEXT, delivered_at INTEGER,
         purchase_total INTEGER CHECK(purchase_total>=0),
+        progression_seq INTEGER, progression_ack INTEGER, progression_silver INTEGER,
+        progression_posts INTEGER, progression_comments INTEGER, progression_likes INTEGER,
+        progression_received_likes INTEGER, progression_gifts INTEGER, progression_received_gifts INTEGER,
         CHECK(record_type!='sticker_attachment' OR (moment_id IS NOT NULL AND item_id IS NOT NULL AND position IS NOT NULL AND position>=0)),
         CHECK(record_type!='raffle_sticker' OR (raffle_id IS NOT NULL AND item_id IS NOT NULL AND position IS NOT NULL AND position>=0)),
         CHECK(record_type NOT IN ('notification_read','notification_reported') OR (actor_key IS NOT NULL AND notification_source_id IS NOT NULL)),
@@ -3272,6 +3287,7 @@ export function ensureMomentsHomeTable(database: Database.Database, homeId: stri
         CHECK(record_type!='gift' OR (delivered_at IS NULL AND item_name IS NULL)
           OR (delivered_at IS NOT NULL AND item_name IS NOT NULL))
       );
+      CREATE INDEX "${table}_progression" ON "${table}"(record_type,progression_seq);
       CREATE INDEX "${table}_post" ON "${table}"(record_type,moment_id,created_at);
       CREATE UNIQUE INDEX "${table}_short_ref" ON "${table}"(short_ref) WHERE record_type='post' AND short_ref IS NOT NULL;
       CREATE INDEX "${table}_year" ON "${table}"(record_type,created_at,target_home_id);

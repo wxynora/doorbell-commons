@@ -1,3 +1,5 @@
+import { MomentsProgressionClient } from "./moments/progression-client.js";
+import { MomentsProgressionService } from "./moments/progression-service.js";
 import { GameActivitySource } from "./moments/game-activity-source.js";
 import { MainActivitySource } from "./moments/main-activity-source.js";
 import { FarmActivitySource } from "./moments/farm-activity-source.js";
@@ -109,6 +111,11 @@ const serverConfig = readDoorbellServerConfig();
 const faultReports = createFaultReports(serverConfig.databasePath);
 const database = new CommunityDatabase(serverConfig.databasePath);
 const momentsStore = database.createMomentsStore();
+const momentsProgression = new MomentsProgressionService(momentsStore,new MomentsProgressionClient({
+  apiBaseUrl:serverConfig.farmApiBaseUrl,serviceToken:serverConfig.farmServiceToken,
+  requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs,
+}),Date.now,()=>process.stderr.write("[moments-progression] settlement pending\n"));
+momentsStore.setProgressionSync(residentId=>momentsProgression.sync(residentId));
 const momentsGifts = new MomentsGiftService(momentsStore, new MomentsFarmGiftClient({
   apiBaseUrl: serverConfig.farmApiBaseUrl, serviceToken: serverConfig.farmServiceToken,
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
@@ -577,7 +584,7 @@ const activityRecovery = new ActivityRecovery(momentsStore, new FarmActivityReco
   requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
 }), farmMomentActivities);
 const momentsTools = new MomentsTool(momentsActions, momentsOptions, {
-  recovery: activityRecovery, raffles: momentsRaffles, raffleScheduler,
+  recovery: activityRecovery, raffles: momentsRaffles, raffleScheduler, progression: momentsProgression,
 });
 const mainActivity = new MainActivitySource(momentsStore, momentsTools, reportBellError);
 const dailyCommentsService = new LingyeDailyCommentsService({database,farm:reporterRelayFarm,mainActivity});
@@ -628,6 +635,7 @@ const refreshTogetherControl = () => { void togetherStartup.reconcile().catch(re
 process.on("SIGUSR2", refreshTogetherControl);
 const mcpRuntime = new DoorbellMcpRuntime({
   momentsTools,
+  momentsProgression,
   mainActivity,
   farmMomentActivities,
   statusNotifications: database.createMomentsStatusNotifications(momentsStore),
