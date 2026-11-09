@@ -50,7 +50,7 @@ export function CookingPrepOverlay({
   onCloseIngredientPicker: () => void;
   onCloseCookResult: () => void;
   onKitchenInventoryAction?: KitchenInventoryActionExecutor | undefined;
-  onCook: () => void;
+  onCook: (quantity?: number) => void;
   onOpenIngredientPicker: () => void;
   onRemoveIngredient: (slotIndex: number) => void;
   onRetryCook: () => void;
@@ -179,7 +179,8 @@ export function CookingPrepOverlay({
           result={COOKING_RESULT_STYLE_PREVIEW}
         />
       ) : null}
-      {!preview && cookAction.stage === "success" ? (
+      {!preview && cookAction.stage === "success" && cookAction.batch ? <CookingBatchResult outcomes={cookAction.batch.outcomes} onClose={onCloseCookResult} /> : null}
+      {!preview && cookAction.stage === "success" && !cookAction.batch ? (
         <CookingResultReceipt
           key={cookAction.outcome.dish_instance_id}
           kitchen={kitchen}
@@ -525,4 +526,22 @@ function CookingCatalogSprite({
   ) : (
     <span aria-hidden="true" className="cooking-catalog__sprite cooking-catalog__sprite--missing" />
   );
+}
+
+function CookingBatchResult({ outcomes, onClose }: { outcomes: readonly KitchenCookOutcome[]; onClose: () => void }) {
+  const groups = new Map<string, { outcome: KitchenCookOutcome; quantity: number }>();
+  for (const outcome of outcomes) {
+    const previous = groups.get(outcome.recipe_id);
+    groups.set(outcome.recipe_id, { outcome, quantity: (previous?.quantity ?? 0) + 1 });
+  }
+  return <section className="farm-cooking-result-preview" role="dialog" aria-modal="true" aria-label="批量料理结果">
+    <div className="farm-cooking-result-preview__paper">
+      <button className="farm-cooking-result-preview__close" type="button" aria-label="关闭料理结果" onClick={onClose}>×</button>
+      <div className="farm-production-results">{[...groups].map(([id, { outcome, quantity }]) => <div className="farm-cooking-result-preview__main" key={id}>
+        <span className="farm-cooking-result-preview__visual"><CookingCatalogSprite entityId={outcome.recipe_id} kind="recipe" name={outcome.name} /></span>
+        <span className="farm-cooking-result-preview__copy"><small data-rarity={outcome.rarity}>{outcome.rarity}</small><strong>{outcome.name} ×{quantity}</strong></span>
+      </div>)}</div>
+      <div className="farm-cooking-result-preview__actions"><button type="button" className="farm-cooking-result-preview__collect" onClick={onClose}>收进料理柜</button></div>
+    </div>
+  </section>;
 }

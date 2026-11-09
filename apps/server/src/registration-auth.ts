@@ -903,6 +903,7 @@ export class RegistrationAuthService {
     token: string,
     input: {
       materialIds: string[];
+      quantity?: number;
       expectedSmeltingRevision: string;
       idempotencyKey: string;
     },

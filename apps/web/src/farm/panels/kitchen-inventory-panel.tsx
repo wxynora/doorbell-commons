@@ -270,6 +270,9 @@ function KitchenDishSection({
   section: KitchenData["dish_instances"];
   stallPrices: Readonly<Record<string, string>>;
 }) {
+  const [category, setCategory] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [stallEditor, setStallEditor] = useState<string | null>(null);
   if (section.status === "unavailable") {
     return <InventoryUnavailable label="料理库存暂不可用" />;
   }
@@ -282,9 +285,23 @@ function KitchenDishSection({
     if (existing) existing.items.push(item);
     else dishGroups.push({ items: [item], recipeId: item.recipe_id });
   }
+  const categories = [...new Set(section.items.map(item => item.category ?? "其他"))];
+  const query = search.trim().toLocaleLowerCase();
+  const visibleGroups = dishGroups.filter(group => group.items.some(item =>
+    (category === null || (item.category ?? "其他") === category) &&
+    (item.name ?? "").toLocaleLowerCase().includes(query)));
   return (
+    <section className="kitchen-inventory-panel__dishes">
+      <div className="kitchen-inventory-panel__filters">
+        <label className="kitchen-inventory-panel__search"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><span className="farm-visually-hidden">搜索料理名称</span><input type="search" aria-label="搜索料理名称" placeholder="搜索料理名称" value={search} onChange={event => setSearch(event.currentTarget.value)} /></label>
+        <nav aria-label="料理分类" className="cooking-recipe-catalog__categories">
+          <button type="button" aria-pressed={category === null} onClick={() => setCategory(null)}>全部</button>
+          {categories.map(value => <button type="button" key={value} aria-pressed={category === value} onClick={() => setCategory(value)}>{value}</button>)}
+        </nav>
+      </div>
+      {visibleGroups.length === 0 ? <p role="status">没有找到符合条件的料理</p> : null}
     <ul aria-label="真实料理库存" className="kitchen-inventory-panel__list">
-      {dishGroups.map(({ items, recipeId }) => {
+      {visibleGroups.map(({ items, recipeId }) => {
         const item = items[0];
         if (!item) return null;
         const actionable = actionsEnabled && canOperate(item.status, item.dish_instance_id);
@@ -383,7 +400,7 @@ function KitchenDishSection({
                 </button>
                 {isOddDish ? null : (
                   <>
-                    <label className="kitchen-inventory-panel__price">
+                    {stallEditor === item.dish_instance_id ? <label className="kitchen-inventory-panel__price">
                       <span>摊位价</span>
                       <input
                         aria-label={`${name}摆摊价格`}
@@ -398,12 +415,12 @@ function KitchenDishSection({
                         type="number"
                         value={rawPrice}
                       />
-                    </label>
+                    </label> : null}
                     <button
                       className="farm-inventory-action"
-                      disabled={busy || !validPrice}
+                      disabled={busy || (stallEditor === item.dish_instance_id && !validPrice)}
                       onClick={() =>
-                        onSubmit(
+                        stallEditor !== item.dish_instance_id ? setStallEditor(item.dish_instance_id) : onSubmit(
                           {
                             action: "stall",
                             itemInstanceIds: [item.dish_instance_id],
@@ -415,8 +432,9 @@ function KitchenDishSection({
                       }
                       type="button"
                     >
-                      {busy ? "处理中" : "摆摊"}
+                      {busy ? "处理中" : stallEditor === item.dish_instance_id ? "确认摆摊" : "摆摊"}
                     </button>
+                    {stallEditor === item.dish_instance_id ? <button className="farm-inventory-action" type="button" disabled={busy} onClick={() => setStallEditor(null)}>取消</button> : null}
                   </>
                 )}
               </div>
@@ -425,6 +443,7 @@ function KitchenDishSection({
         );
       })}
     </ul>
+    </section>
   );
 }
 

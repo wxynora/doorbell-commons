@@ -246,7 +246,7 @@ export type KitchenCookActionState =
       attempt: KitchenCookInput | null;
       issue: KitchenCookIssue;
     }
-  | { stage: "success"; outcome: KitchenCookOutcome };
+  | { stage: "success"; outcome: KitchenCookOutcome; batch?: NonNullable<BoundKitchenCook["data"]["result"]["batch"]> };
 
 export interface FarmPageProps {
   active?: boolean;

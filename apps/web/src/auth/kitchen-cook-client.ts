@@ -21,6 +21,7 @@ export interface KitchenCookIssue {
 interface KitchenCookInputBase {
   expectedFarmDoorplate: string;
   idempotencyKey: string;
+  quantity?: number;
   expectedKitchenInventoryRevision: string;
 }
 
@@ -65,10 +66,13 @@ function itemRefsMatch(requestItems: string[], receiptItems: string[]): boolean 
 
 function resultMatchesInput(result: BoundKitchenCook, input: KitchenCookInput): boolean {
   const receipt = result.data.result;
+  if ((receipt.batch?.quantity ?? 1) !== (input.quantity ?? 1)) return false;
   return (
     result.data.resource.farm.farm_doorplate === input.expectedFarmDoorplate &&
     receipt.receipt_id === input.idempotencyKey &&
     receipt.outcome.kind === "cook" &&
+    (!receipt.batch || (receipt.batch.outcomes[0]?.dish_instance_id === receipt.outcome.dish_instance_id &&
+      (!("recipeId" in input) || receipt.batch.outcomes.every(outcome => outcome.recipe_id === input.recipeId)))) &&
     ("recipeId" in input
       ? receipt.outcome.recipe_id === input.recipeId
       : itemRefsMatch(input.items, receipt.outcome.item_refs)) &&
@@ -81,6 +85,7 @@ export async function executeBoundKitchenCook(
 ): Promise<ApiResult<BoundKitchenCook, KitchenCookIssue>> {
   const body = boundFarmKitchenCookRequestSchema.parse({
     expected_kitchen_inventory_revision: options.expectedKitchenInventoryRevision,
+      ...(options.quantity === undefined ? {} : { quantity: options.quantity }),
     ...("recipeId" in options ? { recipe_id: options.recipeId } : { items: options.items }),
   });
   const idempotencyKey = farmKitchenCookIdempotencyKeySchema.parse(options.idempotencyKey);

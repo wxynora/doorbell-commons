@@ -16,6 +16,7 @@ export const farmKitchenCookRevisionSchema = farmKitchenInventoryRevisionSchema;
 export const farmKitchenCookItemsSchema = z.array(farmKitchenCookRawItemRefSchema).min(2).max(5);
 
 const farmKitchenCookActionBaseFields = {
+  quantity: z.number().int().positive().safe().optional(),
   expected_kitchen_inventory_revision: farmKitchenCookRevisionSchema,
 };
 
@@ -92,6 +93,11 @@ export const farmKitchenCookResultSchema = z
   .object({
     receipt_id: farmKitchenCookIdempotencyKeySchema,
     outcome: farmKitchenCookOutcomeSchema,
+    batch: z.object({
+      quantity: z.number().int().positive().safe(),
+      outcomes: z.array(farmKitchenCookOutcomeSchema).min(1),
+    }).strict().refine(batch => batch.outcomes.length >= batch.quantity &&
+      new Set(batch.outcomes.map(outcome => outcome.dish_instance_id)).size === batch.outcomes.length).optional(),
   })
   .strict();
 

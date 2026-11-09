@@ -12,6 +12,7 @@ export interface FarmHumanSmeltingActionInput {
   materialIds: string[];
   expectedSmeltingRevision: string;
   idempotencyKey: string;
+  quantity?: number;
 }
 
 export interface FarmHumanSmeltingActioner {
@@ -84,6 +85,7 @@ function resultMatchesInput(
   input: FarmHumanSmeltingActionInput,
 ): boolean {
   const receipt = result.data.result;
+  if ((receipt.batch?.quantity ?? 1) !== (input.quantity ?? 1)) return false;
   return (
     receipt.receipt_id === input.idempotencyKey &&
     receipt.material_ids.length === input.materialIds.length &&
@@ -119,6 +121,7 @@ export class FarmHumanSmeltingActionClient implements FarmHumanSmeltingActioner 
       farm_human_key: input.farmHumanKey,
       expected_farm_doorplate: input.farmDoorplate,
       material_ids: input.materialIds,
+      ...(input.quantity === undefined ? {} : { quantity: input.quantity }),
       expected_smelting_revision: input.expectedSmeltingRevision,
       idempotency_key: input.idempotencyKey,
     });

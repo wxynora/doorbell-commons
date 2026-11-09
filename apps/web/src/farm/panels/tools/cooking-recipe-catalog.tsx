@@ -1,3 +1,5 @@
+import { ProductionQuantity, validProductionQuantity } from "../../production/quantity-control";
+import { maximumCookingRecipeQuantity } from "../../production/stock";
 import { type CSSProperties, useState } from "react";
 import type { BoundKitchenRead } from "../../../auth/kitchen-client";
 import { type FarmAssetManifestEntry, getCookingRecipeAsset } from "../../farm-asset-manifest";
@@ -134,13 +136,17 @@ function getLiveRecipeMissingItems(kitchen: BoundKitchenRead, recipe: LiveCookin
 
 function CookingRecipeRow({
   canQuickMake = false,
+  maximum = 1,
   onQuickMake,
   recipe,
 }: {
   canQuickMake?: boolean;
-  onQuickMake?: ((recipeId: string) => void) | undefined;
+  maximum?: number;
+  onQuickMake?: ((recipeId: string, quantity?: number) => void) | undefined;
   recipe: CookingRecipeDisplay;
 }) {
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [quantity, setQuantity] = useState("1");
   return (
     <li>
       <CookingCatalogSprite entityId={recipe.id} name={recipe.name} />
@@ -154,16 +160,15 @@ function CookingRecipeRow({
       {recipe.missingText ? (
         <span className="cooking-recipe-catalog__missing">缺少：{recipe.missingText}</span>
       ) : canQuickMake ? (
-        <span className="cooking-recipe-catalog__actions">
-          <button
-            aria-label={`${recipe.name}一键制作`}
-            className="cooking-recipe-catalog__quick-make"
-            disabled={!onQuickMake}
-            onClick={() => onQuickMake?.(recipe.id)}
-            type="button"
-          >
-            一键制作
-          </button>
+        <span className={`cooking-recipe-catalog__actions${batchOpen ? " cooking-recipe-catalog__actions--batch" : ""}`}>
+          {batchOpen ? <>
+            <ProductionQuantity value={quantity} onChange={setQuantity} maximum={maximum} unit="份" label={`${recipe.name}制作份数`} />
+            <button className="cooking-recipe-catalog__quick-make" type="button" disabled={!validProductionQuantity(quantity, maximum)} onClick={() => onQuickMake?.(recipe.id, Number(quantity))}>制作</button>
+            <button className="cooking-recipe-catalog__quick-make" type="button" aria-label={`取消${recipe.name}批量制作`} onClick={() => setBatchOpen(false)}>×</button>
+          </> : <>
+            <button aria-label={`${recipe.name}一键制作`} className="cooking-recipe-catalog__quick-make" disabled={!onQuickMake} onClick={() => onQuickMake?.(recipe.id)} type="button">一键制作</button>
+            {onQuickMake ? <button aria-label={`${recipe.name}批量制作`} className="cooking-recipe-catalog__quick-make" onClick={() => setBatchOpen(true)} type="button">批量</button> : null}
+          </>}
         </span>
       ) : null}
     </li>
@@ -177,7 +182,7 @@ export function CookingRecipeCatalog({
   selectedIngredientIds,
 }: {
   kitchen?: BoundKitchenRead | null;
-  onQuickMake?: ((recipeId: string) => void) | undefined;
+  onQuickMake?: ((recipeId: string, quantity?: number) => void) | undefined;
   preview: boolean;
   selectedIngredientIds: readonly string[];
 }) {
@@ -222,6 +227,7 @@ export function CookingRecipeCatalog({
               return (
                 <CookingRecipeRow
                   canQuickMake={recipe.status === "available" && missing.length === 0}
+                  maximum={kitchen ? maximumCookingRecipeQuantity(kitchen, recipe) : 0}
                   key={recipe.recipe_id}
                   onQuickMake={onQuickMake}
                   recipe={{

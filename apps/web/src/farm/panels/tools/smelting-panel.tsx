@@ -1,4 +1,5 @@
-import { type CSSProperties, useState } from "react";
+import { ProductionQuantity, validProductionQuantity } from "../../production/quantity-control";
+import { type CSSProperties, useRef, useState } from "react";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
 import {
   type SmeltingActionInput,
@@ -120,10 +121,13 @@ export function SmeltingPanelContent({
   preview: boolean;
 }) {
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [quantity, setQuantity] = useState("1");
+  const submitting = useRef(false);
   const [actionState, setActionState] = useState<
     | { stage: "idle" }
     | { stage: "submitting"; input: SmeltingActionInput }
-    | { stage: "success"; cropName: string; rarity: string; byRecipe: boolean }
+    | { stage: "success"; cropName: string; rarity: string; byRecipe: boolean; outcomes?: Array<{ crop_id: string; crop_name: string; rarity: string; by_recipe: boolean }> }
     | { stage: "error"; message: string; retryInput: SmeltingActionInput | null }
   >({ stage: "idle" });
   const liveSmelting = farmCatalog?.data.smelting;
@@ -149,12 +153,15 @@ export function SmeltingPanelContent({
         <div aria-live="polite" className="smelting-catalog__notice" role="status">
           <img alt="" aria-hidden="true" src={getFarmAssetUrl("panel.tool.smelting")} />
           <span>熔炼结果</span>
-          <strong>{actionState.cropName}</strong>
-          <small data-rarity={actionState.rarity}>{actionState.rarity}</small>
-          <p>{actionState.byRecipe ? "命中已知配方" : "熔炼完成"}</p>
+          {actionState.outcomes ? <ul className="farm-production-results">{[...new Set(actionState.outcomes.map(item => item.crop_id))].map(id => {
+            const matches = actionState.outcomes!.filter(item => item.crop_id === id);
+            return <li key={id}><strong>{matches[0]?.crop_name} ×{matches.length}</strong> <small data-rarity={matches[0]?.rarity}>{matches[0]?.rarity}</small></li>;
+          })}</ul> : <><strong>{actionState.cropName}</strong><small data-rarity={actionState.rarity}>{actionState.rarity}</small><p>{actionState.byRecipe ? "命中已知配方" : "熔炼完成"}</p></>}
           <button
             onClick={() => {
               setSelectedMaterialIds([]);
+              setQuantity("1");
+              setBatchOpen(false);
               setActionState({ stage: "idle" });
             }}
             type="button"
@@ -214,6 +221,9 @@ export function SmeltingPanelContent({
         )
       : [];
 
+  const needs = [...new Set(selectedMaterialIds)].map(id => ({ id, count: selectedMaterialIds.filter(value => value === id).length, material: materials.find(material => material.id === id) }));
+  const maximum = selectedMaterialIds.length === 3 ? Math.min(...needs.map(item => Math.floor((item.material?.quantity ?? 0) / item.count))) : 0;
+  const validQuantity = validProductionQuantity(quantity, maximum);
   const addMaterial = (materialId: string, availableQuantity: number | null) => {
     setSelectedMaterialIds((current) => {
       const selectedCount = current.filter((selectedId) => selectedId === materialId).length;
@@ -237,6 +247,7 @@ export function SmeltingPanelContent({
   };
 
   async function submit(retryInput?: SmeltingActionInput) {
+    if (submitting.current || (!retryInput && batchOpen && !validQuantity)) return;
     if (preview) {
       setActionState({
         stage: "success",
@@ -262,15 +273,18 @@ export function SmeltingPanelContent({
         expectedSmeltingRevision: liveSmelting.revision,
         idempotencyKey: globalThis.crypto.randomUUID(),
         materialIds: [...selectedMaterialIds],
+        ...(batchOpen && Number(quantity) > 1 ? { quantity: Number(quantity) } : {}),
       } satisfies SmeltingActionInput);
     setActionState({ stage: "submitting", input });
-    const result = await onSmeltingAction(input);
+    submitting.current = true;
+    const result = await onSmeltingAction(input).finally(() => { submitting.current = false; });
     if (result.ok) {
       setActionState({
         stage: "success",
         cropName: result.data.data.result.crop_name,
         rarity: result.data.data.result.rarity,
         byRecipe: result.data.data.result.by_recipe,
+        ...(result.data.data.result.batch ? { outcomes: result.data.data.result.batch.outcomes } : {}),
       });
       return;
     }
@@ -350,15 +364,18 @@ export function SmeltingPanelContent({
           );
         })}
       </ul>
-      <footer className="smelting-catalog__footer">
+      <footer className={`smelting-catalog__footer farm-production-footer${batchOpen ? " farm-production-footer--quantity" : ""}`}>
+        {batchOpen ? <ProductionQuantity value={quantity} onChange={setQuantity} maximum={maximum} unit="炉" label="熔炼炉数" disabled={actionState.stage === "submitting"} /> : null}
         <button
           aria-label="开始熔炼"
-          disabled={selectedMaterialIds.length !== 3 || actionState.stage === "submitting"}
+          disabled={selectedMaterialIds.length !== 3 || (batchOpen && !validQuantity) || actionState.stage === "submitting"}
           onClick={() => void submit()}
           type="button"
         >
-          {actionState.stage === "submitting" ? "熔炼中…" : "开始熔炼"}
+          {actionState.stage === "submitting" ? "熔炼中…" : batchOpen ? "熔炼" : "开始熔炼"}
         </button>
+        {!preview ? batchOpen ? <button className="farm-production-cancel" aria-label="取消批量熔炼" type="button" onClick={() => setBatchOpen(false)} disabled={actionState.stage === "submitting"}>×</button> : <button className="farm-production-entry" type="button" disabled={selectedMaterialIds.length !== 3 || actionState.stage === "submitting"} onClick={() => setBatchOpen(true)}>批量</button> : null}
+        {batchOpen ? <small aria-label="熔炼总耗材" className="farm-production-consumption">总耗材：{needs.map(item => `${item.material?.name ?? "素材"} ×${validQuantity ? item.count * Number(quantity) : "—"}`).join("、")}</small> : null}
       </footer>
     </section>
   );

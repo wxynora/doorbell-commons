@@ -24,6 +24,7 @@ export const farmSmeltingActionRevisionSchema = farmCatalogSmeltingRevisionSchem
 export const farmSmeltingMaterialIdsSchema = z.array(materialIdSchema).length(3);
 
 const smeltingActionFields = {
+  quantity: z.number().int().positive().safe().optional(),
   material_ids: farmSmeltingMaterialIdsSchema,
   expected_smelting_revision: farmSmeltingActionRevisionSchema,
 };
@@ -40,6 +41,13 @@ export const farmHumanSmeltingActionRequestSchema = z
 /** Browser body: Doorbell derives farm identity and owns the idempotency header. */
 export const boundFarmSmeltingActionRequestSchema = z.object(smeltingActionFields).strict();
 
+const smeltingBatchOutcomeSchema = z.object({
+  crop_id: z.string().min(1),
+  crop_name: z.string().min(1),
+  rarity: farmCatalogRaritySchema,
+  by_recipe: z.boolean(),
+}).strict();
+
 export const farmSmeltingActionReceiptSchema = z
   .object({
     receipt_id: farmSmeltingActionIdempotencyKeySchema,
@@ -48,6 +56,10 @@ export const farmSmeltingActionReceiptSchema = z
     crop_name: z.string().min(1),
     rarity: farmCatalogRaritySchema,
     by_recipe: z.boolean(),
+    batch: z.object({
+      quantity: z.number().int().positive().safe(),
+      outcomes: z.array(smeltingBatchOutcomeSchema).min(1),
+    }).strict().refine(batch => batch.outcomes.length === batch.quantity).optional(),
   })
   .strict();
 

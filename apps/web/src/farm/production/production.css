@@ -1,0 +1,31 @@
+.farm-production-quantity { display: inline-flex; align-items: center; gap: 1cqw; font: inherit; color: inherit; }
+.farm-production-consumption { grid-column: 1 / -1; flex: 1 0 100%; margin: 0; font-size: 2.5cqw; line-height: 1.4; text-align: center; color: #654a30; }
+.smelting-catalog__footer.farm-production-footer { gap: 1.5cqw; }
+.smelting-catalog__footer.farm-production-footer--quantity { display: flex; flex-wrap: wrap; align-content: end; }
+.smelting-catalog__footer.farm-production-footer--quantity button { min-width: 10cqw; min-height: 7cqw; padding: 0.8cqw 1.3cqw; font-size: 2.8cqw; }
+.smelting-catalog__footer .farm-production-entry { min-width: 16cqw; }
+.smelting-catalog__footer button.farm-production-cancel { min-width: 7cqw; }
+.cooking-recipe-catalog__actions .farm-production-quantity { font-size: inherit; }
+.farm-production-results { max-height: 70cqw; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
+
+.cooking-recipe-catalog__actions--batch { grid-column: 1 / -1; justify-content: flex-end; flex-wrap: wrap; font-size: 3.4cqw; }
+.cooking-recipe-catalog__actions--batch > button { font-size: inherit; }
+
+.cooking-recipe-catalog__list:has(.cooking-recipe-catalog__actions--batch) { grid-auto-rows: minmax(14cqw, max-content); }
+.farm-production-stepper { display: inline-flex; align-items: center; border-radius: 5cqw; background: #efe3bf; box-shadow: inset 0 .3cqw .6cqw #b9a16c55; }
+.farm-production-stepper output { display: inline-flex; align-items: baseline; justify-content: center; gap: .5cqw; min-width: 9cqw; font-size: 3.8cqw; font-weight: 800; }
+.farm-production-stepper output small { font-size: 2.8cqw; font-weight: 500; }
+.farm-production-quantity .farm-production-stepper button { min-width: 7cqw; width: 7cqw; min-height: 7cqw; padding: 0; border: 0; border-radius: 50%; background: none; box-shadow: none; color: #765a35; font-size: 4cqw; cursor: pointer; }
+.farm-production-quantity .farm-production-maximum { min-width: 0; padding: 1cqw; border: 0; background: none; box-shadow: none; color: #6d823c; font-size: 3.2cqw; font-weight: 800; cursor: pointer; }
+.farm-production-quantity button:disabled { opacity: .4; cursor: default; }
+.cooking-recipe-catalog__list:not(.cooking-recipe-catalog__list--shop) { grid-auto-rows: minmax(14cqw,max-content); }
+.cooking-recipe-catalog__actions { grid-column: 1 / -1; justify-content: flex-end; gap: 1.5cqw; }
+.cooking-recipe-catalog__actions > button { font-size: 3.2cqw; border-radius: 4cqw; }
+.cooking-recipe-catalog__list li:has(.cooking-recipe-catalog__actions) .cooking-recipe-catalog__copy { grid-column: 2 / -1; }
+.cooking-recipe-catalog__list .cooking-recipe-catalog__head strong { font-size: 3.6cqw; }
+.cooking-recipe-catalog__list .cooking-recipe-catalog__ingredients { font-size: 3cqw; }
+
+.cooking-recipe-catalog__actions--batch > button:last-child { min-width: 6cqw; width: 6cqw; padding-inline: 0; background: transparent; color: #88714a; box-shadow: none; border: 0; }
+
+.cooking-recipe-catalog__list li:has(.cooking-recipe-catalog__missing) .cooking-recipe-catalog__copy { grid-column: 2 / -1; }
+.cooking-recipe-catalog__list .cooking-recipe-catalog__missing { grid-column: 1 / -1; font-size: 2.8cqw; }

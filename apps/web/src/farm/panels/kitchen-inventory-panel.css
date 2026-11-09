@@ -244,3 +244,27 @@
     scroll-behavior: auto;
   }
 }
+
+.kitchen-inventory-panel__filters { display: grid; gap: 1.2cqw; padding: 0 0.8cqw 1.2cqw; }
+.kitchen-inventory-panel__filters label { display: block; min-width: 0; }
+.kitchen-inventory-panel__filters input { box-sizing: border-box; width: 100%; min-height: 6.8cqw; padding: 0.7cqw 1.2cqw; color: #63472a; font: inherit; border: 0.22cqw solid #b9a16c; border-radius: 0.7cqw; background: rgba(255,248,231,.88); }
+.kitchen-inventory-panel__filters nav { flex-wrap: wrap; }
+
+.kitchen-inventory-panel__filters input,
+.kitchen-inventory-panel__filters nav button { font-size: 3.4cqw; }
+.kitchen-inventory-panel__row--dish .kitchen-inventory-panel__name { font-size: 3.6cqw; }
+.kitchen-inventory-panel__row--dish .kitchen-inventory-panel__meta { font-size: 3cqw; }
+
+.kitchen-inventory-panel > .farm-feature__tabs button { font-size: 3.4cqw; }
+.kitchen-inventory-panel__row--dish .kitchen-inventory-panel__actions { font-size: 3cqw; }
+.kitchen-inventory-panel__row--dish .farm-inventory-action,
+.kitchen-inventory-panel__row--dish .kitchen-inventory-panel__price { font-size: inherit; }
+
+.kitchen-inventory-panel__filters .kitchen-inventory-panel__search { display: flex; align-items: center; gap: 1.6cqw; padding: 0 2.4cqw; border-radius: 5cqw; background: rgba(221,204,157,.28); box-shadow: inset 0 .3cqw .6cqw rgba(111,85,43,.12), 0 .3cqw rgba(255,255,255,.7); }
+.kitchen-inventory-panel__search svg { width: 3.8cqw; height: 3.8cqw; flex: none; color: #8c7953; }
+.kitchen-inventory-panel__search input { min-height: 8cqw; padding: 1cqw 0; border: 0; border-radius: 0; background: none; outline: none; font-size: 3.5cqw; }
+.kitchen-inventory-panel__search input::placeholder { color: #968361; opacity: 1; }
+.kitchen-inventory-panel__search:focus-within { box-shadow: inset 0 0 0 .35cqw #8c9c5c; }
+.kitchen-inventory-panel__filters nav { display: flex; gap: 1cqw; padding-top: 1cqw; }
+.kitchen-inventory-panel__filters nav button { min-width: 0; min-height: 7.5cqw; white-space: nowrap; flex: 0 0 auto; padding: 1cqw 2.5cqw; border: 0; border-radius: 4cqw; background: transparent; box-shadow: none; color: #806847; }
+.kitchen-inventory-panel__filters nav button[aria-pressed="true"] { color: #fff9e4; background: #82964b; box-shadow: inset 0 -.4cqw rgba(64,82,32,.16); }

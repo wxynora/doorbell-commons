@@ -11,6 +11,7 @@ interface FarmHumanKitchenCookInputBase {
   farmHumanKey: string;
   expectedKitchenInventoryRevision: string;
   idempotencyKey: string;
+  quantity?: number;
 }
 
 export type FarmHumanKitchenCookInput = FarmHumanKitchenCookInputBase &
@@ -91,10 +92,13 @@ function resultMatchesInput(
   input: FarmHumanKitchenCookInput,
 ): boolean {
   const receipt = result.data.result;
+  if ((receipt.batch?.quantity ?? 1) !== (input.quantity ?? 1)) return false;
   return (
     result.data.resource.farm.farm_doorplate === input.farmDoorplate &&
     receipt.receipt_id === input.idempotencyKey &&
     receipt.outcome.kind === "cook" &&
+    (!receipt.batch || (receipt.batch.outcomes[0]?.dish_instance_id === receipt.outcome.dish_instance_id &&
+      (!("recipeId" in input) || receipt.batch.outcomes.every(outcome => outcome.recipe_id === input.recipeId)))) &&
     ("recipeId" in input
       ? receipt.outcome.recipe_id === input.recipeId
       : itemRefsMatch(input.items, receipt.outcome.item_refs)) &&
@@ -128,6 +132,7 @@ export class FarmHumanKitchenCookClient implements FarmHumanKitchenCooker {
       expected_farm_doorplate: input.farmDoorplate,
       idempotency_key: input.idempotencyKey,
       expected_kitchen_inventory_revision: input.expectedKitchenInventoryRevision,
+      ...(input.quantity === undefined ? {} : { quantity: input.quantity }),
       ...("recipeId" in input ? { recipe_id: input.recipeId } : { items: input.items }),
     });
 

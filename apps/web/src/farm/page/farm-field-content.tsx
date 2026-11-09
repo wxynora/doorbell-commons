@@ -828,7 +828,7 @@ export function FarmFieldContent({
   );
 
   const submitKitchenCook = useCallback(
-    async (retryAttempt?: KitchenCookInput): Promise<void> => {
+    async (retryAttempt?: KitchenCookInput, quantity = 1): Promise<void> => {
       if (preview || !kitchen || !onKitchenCook) return;
       const attempt =
         retryAttempt ??
@@ -837,6 +837,7 @@ export function FarmFieldContent({
           expectedKitchenInventoryRevision: kitchen.kitchen_inventory_revision,
           idempotencyKey: crypto.randomUUID(),
           items: selectedCookingIngredientIds.map(toRawKitchenCookItemRef),
+          ...(quantity > 1 ? { quantity } : {}),
         } satisfies KitchenCookInput);
       if ("items" in attempt && (attempt.items.length < 2 || attempt.items.length > 5)) return;
 
@@ -861,6 +862,7 @@ export function FarmFieldContent({
         setKitchenCookAction({
           stage: "success",
           outcome: result.data.data.result.outcome,
+          ...(result.data.data.result.batch ? { batch: result.data.data.result.batch } : {}),
         });
         return;
       }
@@ -1224,7 +1226,7 @@ export function FarmFieldContent({
           kitchen={kitchen}
           onCloseIngredientPicker={() => setCookingIngredientPickerOpen(false)}
           onCloseCookResult={() => setKitchenCookAction({ stage: "idle" })}
-          onCook={() => void submitKitchenCook()}
+          onCook={(quantity = 1) => void submitKitchenCook(undefined, quantity)}
           onOpenIngredientPicker={() => setCookingIngredientPickerOpen(true)}
           onRemoveIngredient={(slotIndex) =>
             setSelectedCookingIngredientIds((current) =>
@@ -1342,7 +1344,7 @@ export function FarmFieldContent({
                   onKitchenInventoryAction={onKitchenInventoryAction}
                   onKitchenRecipeCook={
                     onKitchenCook
-                      ? (recipeId) => {
+                      ? (recipeId, quantity = 1) => {
                           updateSceneUiState("cooking", { selectedTool: null });
                           void submitKitchenCook({
                             expectedFarmDoorplate: field.farm.farm_doorplate,
@@ -1350,6 +1352,7 @@ export function FarmFieldContent({
                               kitchen?.kitchen_inventory_revision ?? "",
                             idempotencyKey: crypto.randomUUID(),
                             recipeId,
+                            ...(quantity > 1 ? { quantity } : {}),
                           });
                         }
                       : undefined

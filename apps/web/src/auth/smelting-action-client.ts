@@ -21,6 +21,7 @@ export interface SmeltingActionIssue {
 export interface SmeltingActionInput {
   expectedFarmDoorplate: string;
   idempotencyKey: string;
+  quantity?: number;
   materialIds: string[];
   expectedSmeltingRevision: string;
 }
@@ -55,6 +56,7 @@ function parseServerIssue(payload: unknown): SmeltingActionIssue {
 
 function resultMatchesInput(result: BoundSmeltingAction, options: SmeltingActionInput): boolean {
   const receipt = result.data.result;
+  if ((receipt.batch?.quantity ?? 1) !== (options.quantity ?? 1)) return false;
   return (
     result.data.resource.farm.farm_doorplate === options.expectedFarmDoorplate &&
     receipt.receipt_id === options.idempotencyKey &&
@@ -68,6 +70,7 @@ export async function executeBoundSmeltingAction(
 ): Promise<ApiResult<BoundSmeltingAction, SmeltingActionIssue>> {
   const body = boundFarmSmeltingActionRequestSchema.parse({
     material_ids: options.materialIds,
+      ...(options.quantity === undefined ? {} : { quantity: options.quantity }),
     expected_smelting_revision: options.expectedSmeltingRevision,
   });
   const idempotencyKey = farmSmeltingActionIdempotencyKeySchema.parse(options.idempotencyKey);
