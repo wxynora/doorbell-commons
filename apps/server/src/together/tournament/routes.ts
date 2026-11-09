@@ -12,7 +12,7 @@ import { z } from "zod";
 type MatchRef = { editionId: string; matchId: string };
 export type SnowTournamentBattleRead = {
   read(ref: MatchRef): SnowReplicaBattle | null;
-  subscribe(ref: MatchRef, listener: () => void): () => void;
+  subscribe(ref: MatchRef, listener: (read: () => SnowReplicaBattle | null) => void): () => void;
 };
 
 export function registerSnowTournamentRoutes(app: FastifyInstance, options: {
@@ -151,8 +151,9 @@ export function registerSnowTournamentRoutes(app: FastifyInstance, options: {
     if (reply.raw.destroyed) return reply;
     reply.hijack();
     const encoder=new BattleStreamEncoder();
-    stream(reply.raw,token,listener=>live.subscribe(request.params,listener),()=>{
-      const frame=encoder.read(live.read(request.params));
+    let readLatest=()=>live.read(request.params);
+    stream(reply.raw,token,listener=>live.subscribe(request.params,read=>{readLatest=read;listener();}),()=>{
+      const frame=encoder.read(readLatest());
       return frame?JSON.stringify(frame):null;
     });
     return reply;

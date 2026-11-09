@@ -144,7 +144,8 @@ export class SnowTournamentScheduler {
         for (const match of edition.matches) {
           if (!pending(match) || visited.has(match.id) || !match.teamAId || !match.teamBId) continue;
           if (match.stage === "final" && edition.matches.some(m => edition.bracket.semifinalMatchIds.includes(m.id) && pending(m))) continue;
-          const at = match.scheduledAt === null ? NaN : Date.parse(match.scheduledAt);
+          if (match.scheduledAt === null) continue;
+          const at = Date.parse(match.scheduledAt);
           if (!Number.isFinite(at)) { failures.push({ id: match.id, error: new Error("snow_match_time_missing") }); visited.add(match.id); continue; }
           const prepareAt = at - (match.stage === "round_robin" ? 8 : 10) * minutes;
           if (now < prepareAt) { watch(prepareAt); continue; }

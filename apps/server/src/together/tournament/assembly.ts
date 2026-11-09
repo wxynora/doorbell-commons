@@ -103,16 +103,42 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
     }}:{}),
     onResult:reconcileSettlement,
   } : dependencies.schedule ? { ...dependencies.schedule, onResult:reconcileSettlement } : undefined;
+  type MatchRef={editionId:string;matchId:string};
+  type ReadBattleFrame=()=>SnowReplicaBattle|null;
+  // Each notification owns one lazy public projection. Pending connections keep
+  // only the latest notification; there is no retained per-match snapshot.
+  const battleFrame=(ref:MatchRef):ReadBattleFrame=>{
+    let projected:SnowReplicaBattle|null|undefined,nextTickAt:number|null=null;
+    return ()=>{
+      if(projected===undefined){
+        const frame=matchHost?.frameForProjection(ref);
+        projected=frame&&runtime?runtime.projectBattle(frame.battle):null;
+        nextTickAt=frame?.nextTickAt??null;
+      }
+      return projected?{...projected,untilNextTick:projected.started&&nextTickAt!==null?Math.max(0,nextTickAt-now()):null}:null;
+    };
+  };
+  const battleSubscribers=new Map<string,{listeners:Set<(read:ReadBattleFrame)=>void>;stop:()=>void}>();
   const battleRead=matchHost && runtime ? {
-    read: (ref: {editionId:string;matchId:string}) => {
-      const battle=matchHost.battleForProjection(ref);
-      if(!battle)return null;
-      const projected=runtime.projectBattle(battle);
-      const state=store.readMatchRuntime(ref.editionId,ref.matchId) as {active?:{nextTickAt:number|null}}|null;
-      const next=state?.active?.nextTickAt;
-      return {...projected,untilNextTick:projected.started&&next!==null&&next!==undefined?Math.max(0,next-now()):null};
+    read: (ref:MatchRef) => battleFrame(ref)(),
+    subscribe: (ref:MatchRef,listener:(read:ReadBattleFrame)=>void) => {
+      const key=JSON.stringify([ref.editionId,ref.matchId]);
+      let group=battleSubscribers.get(key);
+      if(!group){
+        const listeners=new Set<(read:ReadBattleFrame)=>void>();
+        const stop=matchHost.subscribe(ref,()=>{
+          const read=battleFrame(ref);
+          for(const notify of listeners)notify(read);
+        });
+        group={listeners,stop};battleSubscribers.set(key,group);
+      }
+      const subscribed=group;
+      subscribed.listeners.add(listener);
+      return ()=>{
+        if(!subscribed.listeners.delete(listener))return;
+        if(!subscribed.listeners.size){subscribed.stop();battleSubscribers.delete(key);}
+      };
     },
-    subscribe: matchHost.subscribe.bind(matchHost),
   } : null;
   const scheduler=schedule && results ? new SnowTournamentScheduler(store,teams,results,schedule.host,schedule) : null;
   const publicService=new SnowTournamentService(store,dependencies.parsePublic,dependencies.displayName,matchHost?.publicMatchProgress.bind(matchHost),new SnowTournamentSpectators(db,store,now),now);

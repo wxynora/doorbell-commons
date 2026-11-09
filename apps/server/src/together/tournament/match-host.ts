@@ -565,18 +565,22 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       if (!listeners.size) this.watchers.delete(key);
     };
   }
-  /** Only a server projection should turn this state into a spectator response. */
-  battleForProjection(ref: MatchRef) {
-    const edition = this.store.read(ref.editionId) as Edition | null;
+  /** Read the battle and its deadline together; only the public projector may expose it. */
+  frameForProjection(ref: MatchRef) {
+    const edition = this.store.readMatchEdition(ref.editionId,ref.matchId) as Edition | null;
     const match = edition?.matches.find(m => m.id === ref.matchId);
     if (!match || !["scheduled", "in_progress", "completed"].includes(match.status)) return null;
     const state = this.read(ref);
-    if (state?.active && ((state.suspendedUntil??0)>this.now() || this.recovery.pending(ref)!==undefined)) {
-      const frozen=structuredClone(state.active.battle);
-      frozen.runtime={started:false};
-      return frozen;
+    if (!state?.active) return null;
+    let battle=state.active.battle;
+    if ((state.suspendedUntil??0)>this.now() || this.recovery.pending(ref)!==undefined) {
+      battle=structuredClone(battle);
+      battle.runtime={started:false};
     }
-    return state?.active?.battle ?? null;
+    return {battle,nextTickAt:state.active.nextTickAt};
+  }
+  battleForProjection(ref: MatchRef) {
+    return this.frameForProjection(ref)?.battle ?? null;
   }
   playerState(ref:MatchRef,actor:string,now=this.now()) {
     const {edition,match,teams}=this.match(ref);
