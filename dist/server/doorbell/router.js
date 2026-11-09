@@ -87,6 +87,7 @@ import {
     handleDoorbellHumanGachaReceiptRead,
     handleDoorbellHumanGachaTenAction,
 } from "./gacha.js";
+import { createDoorbellScratchcardRuntime, handleDoorbellScratchcard } from "./scratchcard.js";
 
 import { handleTogetherReward, handleTogetherRegistration } from "./together-reward.js";
 import { handleTournamentFurniture } from "./tournament-furniture.js";
@@ -98,7 +99,15 @@ import { requireDoorbellService as authorizeTogetherReward } from "./contract.js
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime, gachaRuntime, halloweenRuntime, momentsDatabase) {
     const halloweenHumanHandler = createDoorbellHalloweenHumanHandler(halloweenRuntime);
     const momentsProgression=createMomentsProgressionService({database:momentsDatabase,economyRules:constableInterviewRuntime.economyRules});
+    const scratchcards = constableInterviewRuntime.database
+        ? createDoorbellScratchcardRuntime(constableInterviewRuntime.database, constableInterviewRuntime.economyRules)
+        : undefined;
     return async function handleDoorbellInternal(req, res, parts, method) {
+        if (parts.length === 5 && parts[0] === "internal" && parts[1] === "doorbell" &&
+            parts[2] === "human" && parts[3] === "scratchcard" && (parts[4] === "read" || parts[4] === "buy")) {
+            await handleDoorbellScratchcard(req, res, method, scratchcards, parts[4]);
+            return true;
+        }
         if(parts.join("/") === "internal/doorbell/moments/progression") {
             await handleMomentsProgression(req,res,method,momentsProgression);
             return true;

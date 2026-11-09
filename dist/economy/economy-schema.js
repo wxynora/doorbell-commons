@@ -376,7 +376,29 @@ export const ECONOMY_SCHEMA_SQL = `
   CREATE TRIGGER economy_lock_events_no_delete
     BEFORE DELETE ON economy_silver_lock_events BEGIN SELECT RAISE(ABORT, 'immutable economy lock event'); END;
 `;
+const LOUNGE_SCRATCHCARD_SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS lounge_scratchcard_tickets (
+    resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE RESTRICT,
+    request_id TEXT NOT NULL,
+    purchase_day TEXT NOT NULL,
+    purchase_number INTEGER NOT NULL CHECK (purchase_number > 0),
+    cost_gold INTEGER NOT NULL CHECK (cost_gold > 0),
+    prize_gold INTEGER NOT NULL CHECK (prize_gold >= 0),
+    prize_item_id TEXT CHECK (prize_item_id IS NULL OR (prize_gold = 0 AND length(prize_item_id) > 0)),
+    prize_title_id TEXT CHECK (prize_title_id IS NULL OR (prize_gold > 0 AND length(prize_title_id) > 0)),
+    PRIMARY KEY (resident_id, request_id),
+    UNIQUE (resident_id, purchase_day, purchase_number)
+  ) WITHOUT ROWID;
+`;
+
 export function installEconomySchema(database) {
+    runImmediate(database, () => {
+        installVersionedEconomySchema(database);
+        database.exec(LOUNGE_SCRATCHCARD_SCHEMA_SQL);
+    });
+}
+
+function installVersionedEconomySchema(database) {
     const hasMetaTable = database
         .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'economy_schema_meta'")
         .get();

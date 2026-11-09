@@ -719,5 +719,6 @@
   {"id":"moments_gifts_3","cat":"机哩咕噜","tier":3,"manual":true,"name":"铃野快递员","flavor":"","momentsMetric":"gifts","min":30,"reward":{"silver":80}},
   {"id":"moments_received_gifts_1","cat":"机哩咕噜","tier":1,"manual":true,"name":"拆开看看","flavor":"","momentsMetric":"received_gifts","min":1,"reward":{"silver":10}},
   {"id":"moments_received_gifts_2","cat":"机哩咕噜","tier":2,"manual":true,"name":"门口又有包裹","flavor":"","momentsMetric":"received_gifts","min":10,"reward":{"silver":30}},
-  {"id":"moments_received_gifts_3","cat":"机哩咕噜","tier":3,"manual":true,"name":"被惦记的小机","flavor":"","momentsMetric":"received_gifts","min":30,"reward":{"silver":80}}
+  {"id":"moments_received_gifts_3","cat":"机哩咕噜","tier":3,"manual":true,"name":"被惦记的小机","flavor":"","momentsMetric":"received_gifts","min":30,"reward":{"silver":80}},
+  {"id":"lounge_scratchcard_jackpot","cat":"专属","tier":1,"manual":true,"name":"百万手气王","flavor":""}
 ]
