@@ -1,16 +1,11 @@
+import { GOLD_PER_SILVER, RESIDENT_MONTHLY_SILVER_LIMIT, GLOBAL_MONTHLY_SILVER_LIMIT, DEMAND_DAILY_RATE_DENOMINATOR, INTEREST_RATE_DENOMINATOR, GRACE_DAYS, SYSTEM_LOAN_TERMS, TERM_DEPOSIT_TERMS, systemLoanRate, systemLoanLimit, termRateAllowed, exchangeFee } from "./bank-rates.js";
 import { createHash, randomUUID } from "node:crypto";
 import { EconomyError } from "./economy-errors.js";
 import { applyGameSettlement, validateGameSettlementInput } from "./game-settlement.js";
 const DAY_MS = 86_400_000;
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
-const GOLD_PER_SILVER = 500;
-const RESIDENT_MONTHLY_SILVER_LIMIT = 1_000;
-const GLOBAL_MONTHLY_SILVER_LIMIT = 10_000;
 const RESTRICTED_GOLD_SINGLE_LIMIT = 100_000;
 const RESTRICTED_SILVER_SINGLE_LIMIT = 200;
-const DEMAND_DAILY_RATE_DENOMINATOR = 10_000;
-const INTEREST_RATE_DENOMINATOR = 1_000_000;
-const GRACE_DAYS = 3;
 function runImmediate(database, operation) {
     if (database.isTransaction) {
         return operation();
@@ -81,37 +76,6 @@ function beijingDayFromDate(date) {
 function beijingDateFromDay(day) {
     return new Date(day * DAY_MS).toISOString().slice(0, 10);
 }
-function systemLoanRate(termDays) {
-    switch (termDays) {
-        case 14:
-            return 1000;
-        case 30:
-            return 800;
-        case 60:
-            return 600;
-    }
-}
-const SYSTEM_LOAN_TERMS = new Set([14, 30, 60]);
-const TERM_DEPOSIT_TERMS = new Set([14, 30, 60]);
-function systemLoanLimit(creditPoints) {
-    if (creditPoints >= 3)
-        return 1_000_000;
-    if (creditPoints >= 1)
-        return 500_000;
-    return 200_000;
-}
-function termRateAllowed(termDays, totalRatePpm) {
-    const ranges = {
-        14: [2_000, 3_000],
-        30: [5_000, 7_500],
-        60: [11_000, 16_000],
-    };
-    const range = ranges[termDays];
-    return TERM_DEPOSIT_TERMS.has(termDays) &&
-        Number.isInteger(totalRatePpm) &&
-        totalRatePpm >= range[0] &&
-        totalRatePpm <= range[1];
-}
 function assertPlayerLoanParty(loan, actorResidentId) {
     if (actorResidentId !== loan.lender_resident_id && actorResidentId !== loan.borrower_resident_id) {
         throw new EconomyError("UNAUTHORIZED_PARTY");
@@ -126,26 +90,6 @@ function assertTradeParty(trade, actorResidentId) {
     if (actorResidentId !== trade.payer_resident_id && actorResidentId !== trade.payee_resident_id) {
         throw new EconomyError("UNAUTHORIZED_PARTY");
     }
-}
-function exchangeFee(silverAlreadyIssued, silverRequested) {
-    let remaining = silverRequested;
-    let cursor = silverAlreadyIssued;
-    let fee = 0;
-    const brackets = [
-        { end: 300, percent: 5 },
-        { end: 700, percent: 10 },
-        { end: 1_000, percent: 20 },
-    ];
-    for (const bracket of brackets) {
-        if (remaining === 0)
-            break;
-        const available = Math.max(0, bracket.end - cursor);
-        const used = Math.min(available, remaining);
-        fee += (used * GOLD_PER_SILVER * bracket.percent) / 100;
-        cursor += used;
-        remaining -= used;
-    }
-    return fee;
 }
 export class EconomyService {
     #database;
@@ -485,7 +429,8 @@ export class EconomyService {
                 nextAmount: input.amount,
                 actor: input.actor,
             });
-            return this.getAccount(input.residentId);
+            return { ...this.getAccount(input.residentId),
+                lockChange: { previousAmount: account.silver_agent_lock, nextAmount: input.amount } };
         });
     }
     depositDemandGold(input) {
@@ -1035,7 +980,8 @@ export class EconomyService {
                 interestPaid,
                 principalPaid,
             });
-            return this.#systemLoan(input.loanId);
+            return { ...this.#systemLoan(input.loanId),
+                repayment: { amount: input.amount, interestPaid, principalPaid } };
         });
     }
     proposePlayerLoan(input) {
@@ -1165,7 +1111,8 @@ export class EconomyService {
                 interestPaid,
                 principalPaid,
             });
-            return this.#playerLoan(input.loanId);
+            return { ...this.#playerLoan(input.loanId),
+                repayment: { amount: input.amount, interestPaid, principalPaid } };
         });
     }
     refreshDebtStatus(input) {

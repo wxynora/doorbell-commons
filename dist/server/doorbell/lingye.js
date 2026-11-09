@@ -1,3 +1,5 @@
+import { projectBankFacts, bankOperationReceipt, bankEconomicError } from "../../economy/bank-receipts.js";
+import { ratePercentToPpm } from "../../economy/bank-rates.js";
 import { reporterRelayWorkAllowed } from "../../career/reporter-relay-qualification.js";
 import { playerPatrolView,playerPatrolAction,PATROL_SELECTION_INSTRUCTION } from "../../security/player-patrol-presentation.js";
 import { expireNatureRecoveredCommissions } from "../../career/nature-commission-recovery.js";
@@ -295,16 +297,18 @@ function validateArgs(op, args) {
             ["option"],
             ["amount", "option"],
             ["amount", "option", "termDays"],
-            ["amount", "option", "termDays", "totalRatePpm"],
-            ["amount", "option", "termDays", "to", "totalRatePpm"],
+            ["amount", "option", "termDays", "totalRatePercent"],
+            ["amount", "option", "termDays", "to", "totalRatePercent"],
         ]);
         assertNonEmptyString(args.option, "option");
         if (Object.hasOwn(args, "amount"))
             assertPositiveInteger(args.amount, "amount");
-        if (Object.hasOwn(args, "termDays") && !TERM_DAYS.has(args.termDays))
-            throw new LingyeActionInputError("termDays is invalid", "extra");
-        if (Object.hasOwn(args, "totalRatePpm"))
-            assertPositiveInteger(args.totalRatePpm, "totalRatePpm");
+        if (Object.hasOwn(args, "termDays") && !(Object.hasOwn(args, "to")
+            ? Number.isSafeInteger(args.termDays) && args.termDays >= 1 && args.termDays <= 60
+            : TERM_DAYS.has(args.termDays)))
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "金币定存与系统贷款只支持 14、30 或 60 天；玩家借款支持 1～60 天。");
+        if (Object.hasOwn(args, "totalRatePercent") && ratePercentToPpm(args.totalRatePercent) === undefined)
+            throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "总利率直接填写百分数，最多四位小数。金币定存须符合所选期限的利率区间；玩家借款为 0%～20%。");
         if (Object.hasOwn(args, "to"))
             assertNonEmptyString(args.to, "to");
         return;
@@ -681,8 +685,7 @@ function bankRevision(database, residentId) {
     return row.revision;
 }
 
-function bankOption(database, residentId, action, reference = null) {
-    const revision = bankRevision(database, residentId);
+function bankOption(database, residentId, action, reference = null, revision = bankRevision(database, residentId)) {
     const suffix = reference === null ? "" : `:${reference}`;
     return `bank:${action}:${revision}${suffix}`;
 }
@@ -744,7 +747,7 @@ function commandExists(database, key) {
     return database.prepare("SELECT 1 FROM economy_commands WHERE idempotency_key = ?").get(key) !== undefined;
 }
 
-function readBankFacts(database, backend, rules, residentId) {
+function readBankFacts(database, backend, rules, residentId, now = Date.now()) {
     const account = backend.forResident(residentId).getOwnAccount();
     const termDeposits = mapRows(database.prepare(`
       SELECT deposit_id, principal, term_days, total_rate_ppm, opened_day,
@@ -755,7 +758,7 @@ function readBankFacts(database, backend, rules, residentId) {
     `).all(residentId));
     const systemLoans = mapRows(database.prepare(`
       SELECT loan_id, principal_original, principal_outstanding, accrued_interest,
-             daily_rate_ppm, term_days, originated_day, due_day, status, created_at, repaid_at
+             daily_rate_ppm, term_days, originated_day, accrued_through_day, interest_remainder, due_day, status, created_at, repaid_at
       FROM economy_system_loans
       WHERE borrower_resident_id = ?
       ORDER BY created_at DESC, loan_id
@@ -764,13 +767,13 @@ function readBankFacts(database, backend, rules, residentId) {
       SELECT loan_id, lender_resident_id, borrower_resident_id, principal_original,
              principal_outstanding, accrued_interest, total_rate_ppm, term_days,
              status, lender_confirmed_at, borrower_confirmed_at,
-             originated_day, due_day, created_at, repaid_at
+             originated_day, accrued_through_day, interest_remainder, due_day, created_at, repaid_at
       FROM economy_player_loans
       WHERE lender_resident_id = ? OR borrower_resident_id = ?
       ORDER BY created_at DESC, loan_id
     `).all(residentId, residentId));
     const playerLoans = playerLoanRows.map((loan) => publicPlayerLoan(database, loan, residentId));
-    const month = new Date(Date.now() + 8 * 60 * 60 * 1_000).toISOString().slice(0, 7);
+    const month = new Date(now + 8 * 60 * 60 * 1_000).toISOString().slice(0, 7);
     const residentIssued = database.prepare(`
       SELECT COALESCE(silver_issued, 0) AS silver_issued
       FROM economy_exchange_resident_months
@@ -781,42 +784,44 @@ function readBankFacts(database, backend, rules, residentId) {
       FROM economy_exchange_global_months WHERE beijing_month = ?
     `).get(month)?.silver_issued ?? 0;
     const options = [];
+    const revision = bankRevision(database, residentId);
+    const currentOption = (action, reference = null) => bankOption(database, residentId, action, reference, revision);
     if (account.availableGold > 0)
-        options.push(option(bankOption(database, residentId, "demand-deposit"), ["amount"]));
+        options.push(option(currentOption("demand-deposit"), ["amount"]));
     if (account.demandGold > 0)
-        options.push(option(bankOption(database, residentId, "demand-withdraw"), ["amount"]));
+        options.push(option(currentOption("demand-withdraw"), ["amount"]));
     if (!account.highSpendRestricted && account.availableGold >= 525 && residentIssued < 1_000 && globalIssued < 10_000)
-        options.push(option(bankOption(database, residentId, "exchange-gold-silver"), ["amount"]));
+        options.push(option(currentOption("exchange-gold-silver"), ["amount"]));
     if (!account.highSpendRestricted && account.availableGold >= 1_000_000)
-        options.push(option(bankOption(database, residentId, "term-open"), ["amount", "termDays", "totalRatePpm"]));
+        options.push(option(currentOption("term-open"), ["amount", "termDays", "totalRatePercent"]));
     for (const deposit of termDeposits.filter((item) => item.state === "active"))
-        options.push(option(bankOption(database, residentId, "term-close", deposit.depositId)));
+        options.push(option(currentOption("term-close", deposit.depositId)));
     const openSystemLoan = systemLoans.find((loan) => loan.status !== "repaid");
     if (rules.minimumSystemLoanCreditDays !== null && !account.highSpendRestricted && !openSystemLoan)
-        options.push(option(bankOption(database, residentId, "system-loan-open"), ["amount", "termDays"]));
+        options.push(option(currentOption("system-loan-open"), ["amount", "termDays"]));
     if (rules.minimumSystemLoanCreditDays !== null && openSystemLoan && account.availableGold > 0)
-        options.push(option(bankOption(database, residentId, "system-loan-repay", openSystemLoan.loanId), ["amount"]));
+        options.push(option(currentOption("system-loan-repay", openSystemLoan.loanId), ["amount"]));
     if (account.availableSilver > account.silverAgentLock)
-        options.push(option(bankOption(database, residentId, "silver-lock-increase"), ["amount"]));
+        options.push(option(currentOption("silver-lock-increase"), ["amount"]));
     if (!account.highSpendRestricted && account.availableSilver > account.silverAgentLock)
-        options.push(option(bankOption(database, residentId, "player-loan-offer"), ["to", "amount", "termDays", "totalRatePpm"]));
+        options.push(option(currentOption("player-loan-offer"), ["to", "amount", "termDays", "totalRatePercent"]));
     if (!account.highSpendRestricted)
-        options.push(option(bankOption(database, residentId, "player-loan-request"), ["to", "amount", "termDays", "totalRatePpm"]));
+        options.push(option(currentOption("player-loan-request"), ["to", "amount", "termDays", "totalRatePercent"]));
     for (const loan of playerLoanRows) {
         if (loan.status === "proposed") {
             const needsConfirmation = loan.lenderResidentId === residentId
                 ? loan.lenderConfirmedAt === null
                 : loan.borrowerConfirmedAt === null;
             if (needsConfirmation)
-                options.push(option(bankOption(database, residentId, "player-loan-confirm", loan.loanId)));
-            options.push(option(bankOption(database, residentId, "player-loan-cancel", loan.loanId)));
+                options.push(option(currentOption("player-loan-confirm", loan.loanId)));
+            options.push(option(currentOption("player-loan-cancel", loan.loanId)));
         }
         if (loan.borrowerResidentId === residentId &&
             ["active", "overdue", "restricted"].includes(loan.status) && account.availableSilver > 0) {
-            options.push(option(bankOption(database, residentId, "player-loan-repay", loan.loanId), ["amount"]));
+            options.push(option(currentOption("player-loan-repay", loan.loanId), ["amount"]));
         }
     }
-    return {
+    return projectBankFacts({
         account,
         deposits: { demandGold: account.demandGold, termDeposits },
         exchange: {
@@ -833,7 +838,7 @@ function readBankFacts(database, backend, rules, residentId) {
             systemLoanCreditRuleConfigured: rules.minimumSystemLoanCreditDays !== null,
         },
         options,
-    };
+    }, now);
 }
 
 function bankReference(facts, reference) {
@@ -847,22 +852,22 @@ function bankReference(facts, reference) {
     return item;
 }
 
-function bankView(database, backend, rules, residentId, args) {
-    const facts = readBankFacts(database, backend, rules, residentId);
+function bankView(database, backend, rules, residentId, args, now = Date.now()) {
+    const facts = readBankFacts(database, backend, rules, residentId, now);
     if (args.reference)
-        return success("已读取银行记录。", { reference: bankReference(facts, args.reference), options: facts.options });
+        return success("已读取银行记录。", { reference: bankReference(facts, args.reference), rates: facts.rates, asOfDate: facts.asOfDate, options: facts.options });
     const section = args.section ?? null;
     return success("已读取银行当前事实。", section === null
         ? facts
-        : { section, value: facts[section], options: facts.options });
+        : { section, value: facts[section], rates: facts.rates, asOfDate: facts.asOfDate, options: facts.options });
 }
 
 function activeResidentDetentions(backend, residentId, now) {
     return backend.forResident(residentId).listOwnDetentions({ at: now, activeOnly: true });
 }
 
-function detainedBankView(database, backend, rules, residentId, args) {
-    const response = bankView(database, backend, rules, residentId, args);
+function detainedBankView(database, backend, rules, residentId, args, now) {
+    const response = bankView(database, backend, rules, residentId, args, now);
     const options = (response.data?.options ?? []).filter((entry) =>
         parseBankOption(entry.option)?.action === "system-loan-repay");
     return {
@@ -921,24 +926,28 @@ function securityRelease(database, backend, residentId, args, now) {
     });
 }
 
-function requireCurrentBankOption(database, backend, rules, residentId, optionValue, key) {
-    if (!commandExists(database, key) &&
-        !readBankFacts(database, backend, rules, residentId).options.some((entry) => entry.option === optionValue)) {
+function requireCurrentBankOption(database, backend, rules, residentId, optionValue, replayed, now) {
+    if (!replayed &&
+        !readBankFacts(database, backend, rules, residentId, now).options.some((entry) => entry.option === optionValue)) {
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个银行 option 已经不是当前状态。");
     }
 }
 
-function bankChoose(database, backend, rules, residentId, args) {
+function bankChoose(database, backend, rules, residentId, inputArgs, now = Date.now()) {
+    const args = Object.fromEntries(Object.entries(inputArgs).map(([key, value]) => key === "totalRatePercent"
+        ? ["totalRatePpm", ratePercentToPpm(value)] : [key, value]));
     const parsed = parseBankOption(args.option);
     if (!parsed)
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个银行 option 当前不可用。");
     if (args.to !== undefined && !["player-loan-offer", "player-loan-request"].includes(parsed.action))
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个银行 option 当前不可用。");
     const key = idempotencyKey(residentId, "go.bank.choose", args);
-    requireCurrentBankOption(database, backend, rules, residentId, args.option, key);
+    const replayed = commandExists(database, key);
+    requireCurrentBankOption(database, backend, rules, residentId, args.option, replayed, now);
     const command = backend.trustedSystemCommands;
     const resident = backend.forResident(residentId);
     let result;
+    try {
     switch (parsed.action) {
         case "demand-deposit":
             assertPositiveInteger(args.amount, "amount");
@@ -998,7 +1007,7 @@ function bankChoose(database, backend, rules, residentId, args) {
         case "player-loan-request": {
             assertNonEmptyString(args.to, "to");
             assertPositiveInteger(args.amount, "amount");
-            if (!TERM_DAYS.has(args.termDays) || !Number.isSafeInteger(args.totalRatePpm))
+            if ((!Number.isSafeInteger(args.termDays) || args.termDays < 1 || args.termDays > 60) || !Number.isSafeInteger(args.totalRatePpm))
                 throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个玩家借款 option 缺少当前要求的合同参数。");
             const counterpartyResidentId = residentForPublicFarm(database, args.to);
             if (counterpartyResidentId === residentId)
@@ -1032,11 +1041,20 @@ function bankChoose(database, backend, rules, residentId, args) {
         default:
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个银行 option 当前不可用。");
     }
+    } catch (error) {
+        if (error instanceof EconomyError) {
+            const message = bankEconomicError(error, parsed.action);
+            if (message) throw new LingyeBusinessError("OP_REJECTED", message);
+        }
+        throw error;
+    }
+    const publicResult = parsed.action.startsWith("player-loan-")
+        ? publicPlayerLoan(database, result, residentId) : result;
+    const current = readBankFacts(database, backend, rules, residentId, now);
     return success("银行业务已办理。", {
-        result: parsed.action.startsWith("player-loan-")
-            ? publicPlayerLoan(database, result, residentId)
-            : result,
-        current: readBankFacts(database, backend, rules, residentId),
+        result: publicResult,
+        receipt: bankOperationReceipt(database, residentId, key, parsed.action, args, publicResult, current, replayed, now),
+        current,
     });
 }
 
@@ -4033,12 +4051,12 @@ export function createLingyeActionExecutor(options) {
                 let result;
                 if (input.op === "go.bank.view")
                     result = detained
-                        ? detainedBankView(database, backend, economyRules, input.residentId, args)
-                        : bankView(database, backend, economyRules, input.residentId, args);
+                        ? detainedBankView(database, backend, economyRules, input.residentId, args, actionNow)
+                        : bankView(database, backend, economyRules, input.residentId, args, actionNow);
                 else if (input.op === "go.bank.choose") {
                     if (detained && parseBankOption(args.option)?.action !== "system-loan-repay")
                         return detainedFailure(detentions);
-                    result = bankChoose(database, backend, economyRules, input.residentId, args);
+                    result = bankChoose(database, backend, economyRules, input.residentId, args, actionNow);
                 }
                 else if (input.op === "go.security.commission" && Object.hasOwn(args, "option") &&
                     args.option.startsWith("security:release:"))
