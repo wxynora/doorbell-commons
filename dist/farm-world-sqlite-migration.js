@@ -227,18 +227,38 @@ function locateLedger(farm, scope) {
     return { owner, key, ledger };
 }
 
-export function decomposeFarmForPersistence(farm) {
+export function decomposeFarmForPersistence(farm, receiptKeys) {
     if (!isRecord(farm) || typeof farm.id !== "string" || farm.id.length === 0)
         fail("farm_world_invalid", "A persisted farm must have a valid id");
-    assertJsonCompatible(farm);
+    const selected = receiptKeys === undefined ? null : new Map();
+    if (selected) {
+        if (!Array.isArray(receiptKeys)) throw new TypeError("Farm receipt keys must be an array");
+        const scopes = new Set(LEGACY_FARM_RECEIPT_SCOPES.map(scope => pointer(scope.path)));
+        for (const entry of receiptKeys) {
+            if (!isRecord(entry) || !scopes.has(entry.scope) || typeof entry.receiptKey !== "string" || !entry.receiptKey)
+                throw new TypeError("Invalid farm receipt key");
+            const keys = selected.get(entry.scope) ?? new Set();
+            if (keys.has(entry.receiptKey)) fail("farm_receipt_duplicate", "Farm receipt key is duplicated");
+            keys.add(entry.receiptKey);
+            selected.set(entry.scope, keys);
+        }
+    }
     // Copy ledger parents only; receipt history is persisted separately.
     const state = { ...farm };
     const receipts = [];
     for (const scope of LEGACY_FARM_RECEIPT_SCOPES) {
         const located = locateLedger(state, scope);
-        if (!located)
+        const selectedKeys = selected?.get(pointer(scope.path));
+        if (!located) {
+            if (selectedKeys?.size) fail("farm_receipt_missing", "Selected farm receipt ledger is missing");
             continue;
-        for (const [receiptKey, receipt] of Object.entries(located.ledger)) {
+        }
+        const keys = selected ? [...(selectedKeys ?? [])] : Object.keys(located.ledger);
+        for (const receiptKey of keys) {
+            if (!Object.hasOwn(located.ledger, receiptKey))
+                fail("farm_receipt_missing", "Selected farm receipt is missing");
+            const receipt = located.ledger[receiptKey];
+            assertJsonCompatible(receipt);
             const persistedReceipt = scope.kind === "human"
                 ? normalizeMinimalHumanActionReceipt(receipt)
                 : receipt;
@@ -259,6 +279,7 @@ export function decomposeFarmForPersistence(farm) {
         }
         delete owner[located.key];
     }
+    assertJsonCompatible(state);
     return { state: structuredClone(state), receipts };
 }
 

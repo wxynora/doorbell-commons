@@ -893,7 +893,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     }
     const moments = r.ok && options.captureMoments ? recordMomentsActivities(f, r.momentActivities, now) : [];
     save(isTogetherSeason3(publicWorld) && !isQixiLantern2026Active(now)
-        ? ownFarmPersistenceScope(action, f.id) : null);
+        ? ownFarmPersistenceScope(action, f.id, moments) : null);
     return { status: r.ok ? 200 : 400, json: { ok: r.ok, text: r.text, ...vf(f), ...(moments.length ? {moment_activities:moments} : {}) } };
 }
 function authenticatedResultFarm(farmId, body) {

@@ -6,9 +6,13 @@ const OWN_FARM_ACTIONS = new Set([
     "plant", "water", "harvest", "run", "ripen", "use", "craft", "design",
     "upgrade-land", "accept-task",
 ]);
-export function ownFarmPersistenceScope(action, farmId) {
+export function ownFarmPersistenceScope(action, farmId, momentActivities = []) {
     if (!OWN_FARM_ACTIONS.has(action)) return null;
     return {farmIds: [farmId], componentKeys:
         action === "design" ? ["ugc"] :
-        action === "harvest" || action === "run" ? ["nature"] : [], allowCrossDomain: false};
+        action === "harvest" || action === "run" ? ["nature"] : [], allowCrossDomain: false,
+        // Planting changes no legacy receipt ledger except these new activities.
+        ...(action === "plant" ? {receiptKeysByFarm: {[farmId]: momentActivities.map(event => ({
+            scope: "/doorbellMomentsActivityReceipts", receiptKey: event.id,
+        }))}} : {})};
 }

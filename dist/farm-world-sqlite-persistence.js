@@ -90,7 +90,8 @@ function readReceiptRows(database, farmId) {
 // Compare already validated, freshly serialized receipts inside SQLite. Only
 // differences cross back into JS; no historical result cache is kept. The PK
 // lookup remains (farm_id, scope, receipt_key), including for a new receipt.
-function receiptDifferences(database, farmId, receipts) {
+function receiptDifferences(database, farmId, receipts, partial = false) {
+    if (partial && receipts.length === 0) return [];
     const candidates = new Map();
     for (const receipt of receipts) {
         const key = receiptKey(receipt);
@@ -114,9 +115,9 @@ function receiptDifferences(database, farmId, receipts) {
       WHERE stored.farm_id IS NULL OR stored.payload_hash != incoming.payload_hash
          OR stored.result_json != incoming.result_json
     `).all(JSON.stringify(receipts.map(r => [r.scope, r.receiptKey, r.payloadHash, r.resultJson])), farmId);
-    const count = database.prepare("SELECT COUNT(*) AS count FROM farm_action_receipts WHERE farm_id = ?").get(farmId).count;
+    const count = partial ? null : database.prepare("SELECT COUNT(*) AS count FROM farm_action_receipts WHERE farm_id = ?").get(farmId).count;
     const additions = rows.filter(row => row.farm_id === null).length;
-    if (count !== receipts.length - additions) {
+    if (!partial && count !== receipts.length - additions) {
         const keys = database.prepare("SELECT scope, receipt_key FROM farm_action_receipts WHERE farm_id = ?").all(farmId);
         const removed = keys.find(row => !candidates.has(`${row.scope}\u0000${row.receipt_key}`));
         if (removed)
@@ -161,7 +162,7 @@ function assertChefStoreTransition(existing, receipt, options) {
 function synchronizeReceipts(database, farmId, receipts, options = {}) {
     let compared;
     if (options.validatedReceipts === true) {
-        compared = receiptDifferences(database, farmId, receipts);
+        compared = receiptDifferences(database, farmId, receipts, options.partialReceipts === true);
     } else {
         // Public commitMutation may supply a pre-decomposed entry. Keep the
         // original parser/validation path for that untrusted representation.
@@ -291,8 +292,8 @@ function legacyWorldProjection(world) {
     return { farms, components };
 }
 
-function materializeFarm(entry) {
-    return { ...entry, decomposed: decomposeFarmForPersistence(entry.state) };
+function materializeFarm(entry, receiptKeys) {
+    return { ...entry, receiptKeys, decomposed: decomposeFarmForPersistence(entry.state, receiptKeys) };
 }
 
 function materializeComponent(entry) {
@@ -302,7 +303,7 @@ function materializeComponent(entry) {
 
 function selectedProjection(projection, hints, database) {
     if (hints === null || hints === undefined || hints.dirtyDiff === true) {
-        const farms = projection.farms.map(materializeFarm);
+        const farms = projection.farms.map(entry => materializeFarm(entry));
         const components = projection.components.map(materializeComponent);
         const persistedFarmIds = database.prepare("SELECT farm_id FROM farm_states").all().map((row) => row.farm_id);
         const candidateFarmIds = new Set(farms.map((entry) => entry.id));
@@ -323,7 +324,8 @@ function selectedProjection(projection, hints, database) {
         throw new TypeError("Farm persistence hints require farmIds and componentKeys arrays");
     const farmIds = new Set(hints.farmIds);
     const componentKeys = new Set(hints.componentKeys);
-    const farms = projection.farms.filter((entry) => farmIds.has(entry.id)).map(materializeFarm);
+    const farms = projection.farms.filter((entry) => farmIds.has(entry.id))
+        .map(entry => materializeFarm(entry, hints.receiptKeysByFarm?.[entry.id]));
     const components = projection.components.filter((entry) => componentKeys.has(entry.key)).map(materializeComponent);
     if (farms.length !== farmIds.size || components.length !== componentKeys.size)
         fail("farm_persistence_hint_invalid", "Farm persistence hint does not resolve in the candidate world");
@@ -394,6 +396,7 @@ export function createFarmWorldSqlitePersistence(database) {
                     durableBoundary,
                     mutationFarmCount: farms.length,
                     validatedReceipts: entry.validatedReceipts,
+                    partialReceipts: internallyDecomposed && entry.receiptKeys !== undefined,
                 }));
                 committedFarms.push(entry.id);
             }

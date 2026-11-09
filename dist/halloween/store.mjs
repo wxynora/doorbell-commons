@@ -88,6 +88,14 @@ export class HalloweenStore {
     this.db.prepare(`INSERT INTO halloween_effect_receipts VALUES (?,?,?,?,?,?)`)
       .run(this.eventId, farmId, targetKind, targetId, JSON.stringify(effect), now);
   }
+  plantEffectReceipts(farmId, prefix) {
+    // Generated prefixes end in ':'. The adjacent ';' bounds this operation
+    // using the existing (event, farm, kind, target) primary key.
+    const rows = this.db.prepare(`SELECT target_id,effect_json FROM halloween_effect_receipts
+      WHERE event_id=? AND farm_id=? AND target_kind='plant' AND target_id>=? AND target_id<?`)
+      .all(this.eventId, farmId, prefix, prefix.slice(0, -1) + ';');
+    return new Map(rows.map(row => [row.target_id, JSON.parse(row.effect_json)]));
+  }
   availableCandies(farmId) {
     return this.db.prepare(`SELECT candy_id,appearance_json,rarity,image,sender_name,source_json,created_at
       FROM halloween_candies WHERE event_id=? AND owner_farm_id=? AND status='available'

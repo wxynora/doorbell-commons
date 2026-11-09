@@ -496,6 +496,9 @@ function mergePersistenceHints(base, additional) {
     return {
         farmIds: [...new Set([...(left.farmIds ?? []), ...(right.farmIds ?? [])])],
         componentKeys: [...new Set([...(left.componentKeys ?? []), ...(right.componentKeys ?? [])])],
+        // Coordinator additions identify balance/counter projections. They do
+        // not add legacy receipts to the original action's declared farm.
+        ...(left.receiptKeysByFarm === undefined ? {} : {receiptKeysByFarm: left.receiptKeysByFarm}),
         allowCrossDomain: left.allowCrossDomain === true || right.allowCrossDomain === true,
         ...(durableValues.length === 0
             ? {}

@@ -18,6 +18,7 @@ class FarmActionEffects {
     this.virtualStates = new Map();
     this.pending = [];
     this.byTarget = new Map();
+    this.plantReceipts = new Map();
     this.capturedThefts = new Set();
   }
 
@@ -30,7 +31,7 @@ class FarmActionEffects {
     const priorInAction = this.byTarget.get(key);
     if (priorInAction) return this.result(priorInAction.effect, base);
 
-    const previous = this.store.effectReceipt(farmId, kind, targetId);
+    const previous = this.previousEffect(farmId, kind, targetId, this.plantReceipts);
     if (previous !== undefined) {
       this.byTarget.set(key, { effect: previous, persisted: true });
       return this.result(previous, base);
@@ -54,6 +55,15 @@ class FarmActionEffects {
   result(effect, base) {
     return { effect: effect ? structuredClone(effect) : null,
       adjustment: effect && base ? applyEffect(effect, base) : null };
+  }
+
+  previousEffect(farmId, kind, targetId, plantReceipts) {
+    const prefix = this.targetId('plant', '');
+    if (kind !== 'plant' || !targetId.startsWith(prefix))
+      return this.store.effectReceipt(farmId, kind, targetId);
+    if (!plantReceipts.has(farmId))
+      plantReceipts.set(farmId, this.store.plantEffectReceipts(farmId, prefix));
+    return plantReceipts.get(farmId).get(targetId);
   }
 
   targetId(kind, suffix) {
@@ -126,9 +136,12 @@ class FarmActionEffects {
     if (!this.db.isTransaction) throw new Error('halloween_effect_commit_transaction_required');
     if (!world || !Array.isArray(world.farms)) throw new TypeError('invalid_halloween_world');
     const states = new Map();
+    // Re-read once inside the write transaction to retain conflict/replay
+    // checks; the earlier action-local lookup is not a commit authority.
+    const plantReceipts = new Map();
     for (const target of this.pending) {
       if (target.persisted) continue;
-      const existing = this.store.effectReceipt(target.farmId, target.kind, target.targetId);
+      const existing = this.previousEffect(target.farmId, target.kind, target.targetId, plantReceipts);
       if (existing !== undefined) {
         if (!sameEffect(existing, target.effect)) throw new Error('halloween_effect_receipt_conflict');
         continue;
