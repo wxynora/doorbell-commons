@@ -4,22 +4,9 @@ import type { SnowTournamentEnginePort, SnowTournamentResults } from "./results.
 import type { SnowTournamentStore } from "./store.js";
 import type { SnowTournamentTeamService } from "./team-service.js";
 import { SnowTournamentRecovery } from "./recovery.js";
+import type { ScheduledSnowMatch } from "./relational-match-view.js";
 
 type GameIndex = 0 | 1 | 2;
-type ScheduledMatch = {
-  id: string;
-  stage: "round_robin" | "semifinal" | "final";
-  teamAId: string | null;
-  teamBId: string | null;
-  status: "scheduled" | "in_progress" | "completed" | "forfeit" | "cancelled";
-  scheduledAt: string | null;
-  originalScheduledAt?:string;
-  games?: unknown[];
-};
-type ScheduledEdition = {
-  id: string; phase: string; registrationCloseAt: string; teamFormationCloseAt:string; matches: ScheduledMatch[];
-  bracket: { semifinalMatchIds: string[] };
-};
 
 export interface SnowTournamentScheduleHost extends SnowTournamentEnginePort {
   /**
@@ -58,8 +45,8 @@ function drawTeams(ids: string[]) {
   return { teams, oppositeAttackers };
 }
 
-const pending = (match: ScheduledMatch) => match.status === "scheduled" || match.status === "in_progress";
-const sides = (match: ScheduledMatch) => [match.teamAId, match.teamBId];
+const pending = (match: ScheduledSnowMatch) => match.status === "scheduled" || match.status === "in_progress";
+const sides = (match: ScheduledSnowMatch) => [match.teamAId, match.teamBId];
 const minutes = 60_000;
 
 export class SnowTournamentScheduler {
@@ -88,7 +75,7 @@ export class SnowTournamentScheduler {
     let nextAt = window.nextOpen;
     const watch = (at: number | null) => { if (at !== null && at > now) nextAt = Math.min(nextAt, at); };
     const failures: { id: string; error: unknown }[] = [];
-    if (window.eligible && !this.store.read(window.id)) {
+    if (window.eligible && this.store.readEditionPhase(window.id)===undefined) {
       const recipients=this.store.transaction(()=>{
         this.teams.createEdition({
           id: window.id, registrationOpenAt: window.registrationOpenAt, registrationCloseAt: window.registrationCloseAt,
@@ -98,23 +85,28 @@ export class SnowTournamentScheduler {
       });
       this.options.registrationBell?.publish(recipients);
     }
-    for (const initial of this.store.unfinished() as ScheduledEdition[]) {
+    for (const initial of this.store.unfinishedSchedules()) {
       if (!initial.id.startsWith("snow-tournament:")) continue;
       if(["registration","team_formation"].includes(initial.phase))this.teams.refreshCalendar(initial.id);
-      this.options.onResult?.(initial.id);
       if (this.recovery.expire(initial.id,now)) {
         for (const match of initial.matches) if (pending(match)) this.host.invalidateMatch?.({editionId:initial.id,matchId:match.id});
         this.options.onResult?.(initial.id);
         continue;
       }
-      watch(this.recovery.boundary(initial.id,now));
+      if(initial.phase==="knockout" && initial.semifinalMatchIds.length &&
+          initial.matches.some(match=>match.stage==="final" && match.status==="scheduled" && match.scheduledAt===null && match.suspendedUntil===null) &&
+          initial.matches.some(match=>initial.semifinalMatchIds.includes(match.id) && match.scheduledAt!==null)) {
+        this.results.restoreFinalSchedule(initial.id,now);
+      }
+      watch(this.recovery.boundary(initial.id,now,initial.matches));
       if (initial.phase === "registration") {
         const deadline = Date.parse(initial.registrationCloseAt);
         if (now < deadline) { watch(deadline); continue; }
         this.teams.openTeamFormation(initial.id,new Date(now).toISOString());
         this.options.teamSignals?.sync(initial.id);
       }
-      const forming=this.store.read(initial.id) as ScheduledEdition;
+      const forming=initial.phase==="registration"?this.store.readSchedule(initial.id):initial;
+      if(!forming) continue;
       if (forming.phase === "team_formation") {
         const deadline=Date.parse(forming.teamFormationCloseAt);
         this.options.teamSignals?.sync(initial.id);
@@ -137,13 +129,14 @@ export class SnowTournamentScheduler {
       }
       // Reload after each terminal, because this can publish the next bracket.
       const visited = new Set<string>();
+      let resultChanged=false;
       for (;;) {
-        const edition = this.store.read(initial.id) as ScheduledEdition;
-        if (!["round_robin", "knockout"].includes(edition.phase)) break;
-        const ready: { match: ScheduledMatch; at: number }[] = [];
+        const edition = this.store.readSchedule(initial.id);
+        if (!edition || !["round_robin", "knockout"].includes(edition.phase)) break;
+        const ready: { match: ScheduledSnowMatch; at: number }[] = [];
         for (const match of edition.matches) {
           if (!pending(match) || visited.has(match.id) || !match.teamAId || !match.teamBId) continue;
-          if (match.stage === "final" && edition.matches.some(m => edition.bracket.semifinalMatchIds.includes(m.id) && pending(m))) continue;
+          if (match.stage === "final" && edition.matches.some(m => edition.semifinalMatchIds.includes(m.id) && pending(m))) continue;
           if (match.scheduledAt === null) continue;
           const at = Date.parse(match.scheduledAt);
           if (!Number.isFinite(at)) { failures.push({ id: match.id, error: new Error("snow_match_time_missing") }); visited.add(match.id); continue; }
@@ -160,7 +153,7 @@ export class SnowTournamentScheduler {
         // Host reconciliation is a short state transition, not a wait for the game to finish.
         await Promise.all(ready.map(async ({ match, at }) => {
           try {
-            let index = (match.games?.length ?? 0) as GameIndex;
+            let index = match.gamesPlayed as GameIndex;
             if (now < at) {
               watch(at);
               watch(await this.host.reconcileMatch({ editionId: edition.id, matchId: match.id, gameIndex: index, now, scheduledAt: at }));
@@ -173,7 +166,7 @@ export class SnowTournamentScheduler {
                 if (!this.host.readTerminal(input)) break;
               }
               this.results.consumeTerminal(edition.id, match.id, index);
-              this.options.onResult?.(edition.id);
+              resultChanged=true;
             }
           } catch (error) {
             failures.push({ id: match.id, error });
@@ -185,8 +178,9 @@ export class SnowTournamentScheduler {
             else this.recovery.failed(ref,now);
           }
         }));
-        watch(this.recovery.boundary(initial.id,now));
+        watch(this.recovery.boundary(initial.id,now,this.store.readSchedule(initial.id)?.matches??[]));
       }
+      if (resultChanged || this.store.readEditionPhase(initial.id)==="cancelled") this.options.onResult?.(initial.id);
     }
     try {
       if (!this.seededSnapshotExpiries) {

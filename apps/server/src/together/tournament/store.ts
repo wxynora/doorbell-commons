@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import { readEditionRows, saveEditionRows } from "./relational-edition.js";
 import { deleteRuntimeRows, publicRuntimeFromState, readPublicRuntimes, readRuntimeRows, readRuntimeRound, saveRuntimeRows, type PublicRuntime } from "./relational-runtime.js";
 import { saveBattleRows } from "./relational-battle.js";
-import { readMatchEditionView, readRoundRecovery, readTechnicalView } from "./relational-match-view.js";
+import { readMatchEditionView, readRoundRecovery, readScheduledSnowEditions, readTechnicalView } from "./relational-match-view.js";
 
 const SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
 const terminalStatus = (status: string) => ["completed", "forfeit", "cancelled"].includes(status);
@@ -51,13 +51,8 @@ export class SnowTournamentStore {
     return row ? this.read(row.edition_id) : null;
   }
 
-  unfinished(): unknown[] {
-    const rows = this.db.prepare(`SELECT e.edition_id FROM snow_tournament_editions e
-      JOIN snow_tournament_edition_details d ON d.edition_id=e.edition_id
-      WHERE d.phase IN ('registration','team_formation','round_robin','knockout')
-      ORDER BY e.registration_open_at,e.edition_id`).all() as { edition_id: string }[];
-    return rows.map(row => this.read(row.edition_id));
-  }
+  unfinishedSchedules() {return readScheduledSnowEditions(this.db);}
+  readSchedule(id:string) {return readScheduledSnowEditions(this.db,id)[0]??null;}
 
   /** Finished editions may still owe a verified refund or reward after a restart. */
   all():unknown[] {

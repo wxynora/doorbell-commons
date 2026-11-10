@@ -1,6 +1,7 @@
 const hour = 3_600_000;
 const day = 24 * hour;
 const beijingOffset = 8 * hour;
+export const snowFinalSlotGapMs = hour;
 
 export const teamFormationCloseAt = (registrationCloseAt:string) => new Date(Date.parse(registrationCloseAt)+day).toISOString();
 
@@ -23,7 +24,7 @@ export function weekendCalendar(closeAt: string, roundCount = 5): SnowTournament
     roundRobinAt: Array.from({ length: roundCount }, (_, index) =>
       iso(saturday + Math.floor(index / slots.length) * day + slots[index % slots.length]! * hour)),
     semifinalAt: iso(knockout),
-    finalAt: iso(knockout + hour),
+    finalAt: iso(knockout + snowFinalSlotGapMs),
   };
 }
 

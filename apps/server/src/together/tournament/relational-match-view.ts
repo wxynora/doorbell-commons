@@ -1,6 +1,27 @@
 import type Database from "better-sqlite3";
 import { readReceiptValue } from "./relational-values.js";
 
+export type ScheduledSnowMatch={id:string;stage:"round_robin"|"semifinal"|"final";teamAId:string|null;teamBId:string|null;
+  status:string;scheduledAt:string|null;originalScheduledAt:string|null;gamesPlayed:number;suspendedUntil:number|null};
+export type ScheduledSnowEdition={id:string;phase:string;registrationCloseAt:string;teamFormationCloseAt:string;
+  matches:ScheduledSnowMatch[];semifinalMatchIds:string[]};
+
+/** The clock needs deadlines and round counts, not player data or financial receipts. */
+export function readScheduledSnowEditions(db:Database.Database,editionId?:string):ScheduledSnowEdition[] {
+  const heads=db.prepare(`SELECT d.edition_id AS id,d.phase,d.registration_close_at AS registrationCloseAt,
+    d.team_formation_close_at AS teamFormationCloseAt FROM snow_tournament_edition_details d JOIN snow_tournament_editions e USING(edition_id)
+    WHERE ${editionId===undefined?"d.phase IN ('registration','team_formation','round_robin','knockout')":"d.edition_id=?"}
+    ORDER BY e.registration_open_at,d.edition_id`).all(...(editionId===undefined?[]:[editionId])) as Omit<ScheduledSnowEdition,"matches"|"semifinalMatchIds">[];
+  const matches=db.prepare(`SELECT m.match_id AS id,m.stage,m.team_a_id AS teamAId,m.team_b_id AS teamBId,
+    m.status,m.scheduled_at AS scheduledAt,m.original_scheduled_at AS originalScheduledAt,r.suspended_until AS suspendedUntil,
+    (SELECT COUNT(*) FROM snow_tournament_match_game_results g WHERE g.edition_id=m.edition_id AND g.match_id=m.match_id) AS gamesPlayed
+    FROM snow_tournament_match_records m LEFT JOIN snow_tournament_runtime_details r USING(edition_id,match_id)
+    WHERE m.edition_id=? ORDER BY m.position`);
+  const semifinals=db.prepare("SELECT match_id FROM snow_tournament_semifinals WHERE edition_id=? ORDER BY position");
+  return heads.map(head=>({...head,matches:matches.all(head.id) as ScheduledSnowMatch[],
+    semifinalMatchIds:(semifinals.all(head.id) as {match_id:string}[]).map(row=>row.match_id)}));
+}
+
 /** Read only the fields the match host needs; the returned view is never saved as an edition. */
 export function readMatchEditionView(db:Database.Database,editionId:string,matchId:string) {
   const head=db.prepare(`SELECT e.edition_id,e.registration_open_at,d.title,d.rules_version,d.phase

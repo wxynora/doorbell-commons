@@ -1,12 +1,12 @@
 import { rankTeams, seedKnockout, type RankingMatch } from "./competition.js";
-import type { SnowTournamentCalendar } from "./calendar.js";
+import { snowFinalSlotGapMs, type SnowTournamentCalendar } from "./calendar.js";
 import { cancelRegistration, type RegistrationRound } from "./registration.js";
 import { SnowTournamentStore } from "./store.js";
 
 type Game = { battleId:string; attackerTeamId:string; defenderTeamId:string; winnerTeamId:string; coreDamage:number; breakTimeRemaining:number;
   endTick?:number; endReason?:SnowTournamentTerminal["endReason"]; participants?:SnowTournamentTerminal["participants"]; finishedAt?:number };
 type Match = { id:string; stage:"round_robin"|"semifinal"|"final"; round:number; teamAId:string|null; teamBId:string|null; attackerTeamId:string|null; defenderTeamId:string|null; status:"scheduled"|"in_progress"|"completed"|"forfeit"|"cancelled"; scheduledAt:string|null; score:[number,number]|null; winnerTeamId:string|null; games?:Game[]; plannedAttackers?:[string,string,string] };
-type State = { id:string; phase:string; rulesVersion:string; registrationOpenAt:string; revision:number; battleStarted?:boolean; calendar?:SnowTournamentCalendar;
+type State = { id:string; phase:string; rulesVersion:string; registrationOpenAt:string; revision:number; battleStarted?:boolean; calendar?:Omit<SnowTournamentCalendar,"finalAt"> & {finalAt:string|null};
   teams:{id:string;status:string;drawOrder:number|null;captainId:string|null;members:{id:string;npc?:true}[];ineligibleMemberIds?:string[]}[]; matches:Match[]; standings:unknown[];
   bracket:{semifinalMatchIds:string[];finalMatchId:string|null;championTeamId:string|null}; registrationRounds:RegistrationRound[] };
 
@@ -29,6 +29,33 @@ export class SnowTournamentResults {
   constructor(private readonly store:SnowTournamentStore, private readonly engine:SnowTournamentEnginePort,
     private readonly now:()=>number=Date.now) {}
   private state(id:string):State { const state=this.store.read(id) as State|null; if (!state) throw new Error("edition_not_found"); return state; }
+
+  /** Repairs an unset final slot left behind by an earlier semifinal reschedule. */
+  restoreFinalSchedule(editionId:string,now:number):void {
+    this.store.transaction(()=>{
+      const state=this.state(editionId),final=state.matches.find(m=>m.id===state.bracket.finalMatchId);
+      const semis=state.matches.filter(m=>state.bracket.semifinalMatchIds.includes(m.id));
+      if(state.phase!=="knockout" || !final || final.scheduledAt!==null || !semis.length) return;
+      const ready=semis.every(m=>["completed","forfeit","cancelled"].includes(m.status));
+      if(this.alignFinalSchedule(state,final,semis,ready?now:undefined)) {
+        state.revision++;this.store.save(state.id,state.registrationOpenAt,state);
+      }
+    });
+  }
+
+  private alignFinalSchedule(state:State,final:Match,semis:Match[],readyAt?:number):boolean {
+    if(final.status!=="scheduled" || final.games?.length) return false;
+    const scheduled=[state.calendar?.semifinalAt,...semis.map(match=>match.scheduledAt)]
+      .map(value=>Date.parse(value??"")).filter(Number.isFinite);
+    if(!scheduled.length) return false;
+    const candidates=[Math.max(...scheduled)+snowFinalSlotGapMs,Date.parse(final.scheduledAt??""),Date.parse(state.calendar?.finalAt??"")];
+    if(readyAt!==undefined)candidates.push(readyAt+10*60_000);
+    const target=new Date(Math.max(...candidates.filter(Number.isFinite))).toISOString();
+    if(final.scheduledAt===target && (!state.calendar || state.calendar.finalAt===target)) return false;
+    final.scheduledAt=target;
+    if(state.calendar)state.calendar.finalAt=target;
+    return true;
+  }
 
   private finish(editionId:string,match:Match,status:"completed"|"forfeit"|"cancelled",at:number) {
     if (match.status==="scheduled" || match.status==="in_progress") this.store.scheduleSnapshotExpiry(editionId,match.id,at);
@@ -180,6 +207,7 @@ export class SnowTournamentResults {
       const a=final.teamAId && state.teams.find(t=>t.id===final.teamAId)?.status!=="withdrawn" ? final.teamAId : null;
       const b=final.teamBId && state.teams.find(t=>t.id===final.teamBId)?.status!=="withdrawn" ? final.teamBId : null;
       if (!a || !b) { this.finish(state.id,final,a||b?"forfeit":"cancelled",now); final.winnerTeamId=a||b; }
+      else this.alignFinalSchedule(state,final,semis,now);
     }
     if (["completed","forfeit","cancelled"].includes(final.status)) { state.phase="completed"; state.bracket.championTeamId=final.winnerTeamId; }
   }

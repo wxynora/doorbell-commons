@@ -1,6 +1,7 @@
 import { cancelRegistration, type RegistrationRound } from "./registration.js";
 import type { SnowTournamentCalendar } from "./calendar.js";
 import type { SnowTournamentStore } from "./store.js";
+import type { ScheduledSnowMatch } from "./relational-match-view.js";
 
 const minute=60_000;
 const day=86_400_000;
@@ -33,7 +34,7 @@ type Runtime={
   chat?:Record<string,{until:number}>;
   active?:{prepareUntil:number;nextTickAt:number|null;lastReadyAt?:number;battle:{status:string;runtime?:{started:boolean}}}|null;
 };
-const lead=(match:Match)=>match.stage==="round_robin"?8*minute:10*minute;
+const lead=(match:Pick<Match,"stage">)=>match.stage==="round_robin"?8*minute:10*minute;
 const duration=(match:Match)=>Math.max(0,3-(match.games?.length??0))*12*minute;
 
 function merge(pauses:[number,number][]):[number,number][] {
@@ -111,15 +112,14 @@ export class SnowTournamentRecovery {
       this.cancel(edition,"technical_makeup_expired",now);this.save(edition);return true;
     });
   }
-  boundary(editionId:string,now:number):number|null {
-    const edition=this.read(editionId),state=edition?.technical;
+  boundary(editionId:string,now:number,matches:ScheduledSnowMatch[]):number|null {
+    const state=this.store.readTechnical(editionId)?.technical as Technical|undefined;
     if (!state) return null;
     const boundaries=[state.expiresAt,...Object.values(state.pending).map(from=>from+timeout+1)];
-    for (const match of edition!.matches) if (!done(match.status) && match.scheduledAt) {
+    for (const match of matches) if (!done(match.status) && match.scheduledAt) {
       const scheduled=Date.parse(match.scheduledAt);
       boundaries.push(scheduled-lead(match),scheduled);
-      const suspended=this.runtime({editionId,matchId:match.id})?.suspendedUntil;
-      if (suspended!==undefined) boundaries.push(suspended);
+      if (match.suspendedUntil!==null) boundaries.push(match.suspendedUntil);
     }
     const future=boundaries.filter(at=>at>now);
     return future.length?Math.min(...future):null;

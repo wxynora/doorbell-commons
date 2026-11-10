@@ -38,6 +38,11 @@ const gold = 10_000;
 const roles = ["attack","defend"] as const;
 const grantKey = (...parts:string[]) => JSON.stringify(["snow-tournament",...parts]);
 
+const canCharge=(edition:SettlementEdition,round:RegistrationRound,now:number)=>edition.phase==="team_formation" &&
+  round.status==="paying" && (now<Date.parse(edition.teamFormationCloseAt)||round.deadlineConfirmedAt!==undefined);
+const paymentPending=(edition:SettlementEdition,round:RegistrationRound,item:TournamentPayment,now:number)=>
+  item.charge==="unknown" || item.refund==="pending" || item.charge==="not_started" && canCharge(edition,round,now);
+
 export function planSnowTournamentGrants(edition: SettlementEdition): Grant[] {
   const grants:Grant[] = [];
   const members = new Map<string,{valid:number;expected:number;team:string}>();
@@ -110,17 +115,27 @@ export class SnowTournamentSettlement {
   }
 
   private edition(id:string) { return this.store.read(id) as SettlementEdition | null; }
+  hasPending(value:unknown):boolean {
+    const edition=value as SettlementEdition;
+    const now=this.now();
+    return edition.registrationRounds.some(round=>round.payments.some(item=>paymentPending(edition,round,item,now))) ||
+      planSnowTournamentGrants(edition).some(grant=>!edition.settledGrants?.[grant.id]) ||
+      planSnowTournamentFurniture(edition).some(grant=>!edition.settledFurniture?.[grant.id]) ||
+      !!this.economy.grantHarvest && planSnowTournamentHarvest(edition).some(grant=>!edition.settledHarvest?.[grant.id]);
+  }
   private async advance(editionId:string) {
     const failures:{id:string;error:unknown}[]=[];
     const edition=this.edition(editionId);
     if (!edition) return failures;
+    const now=this.now();
     const harvest=this.settleHarvest(edition);
     for (const row of edition.registrationRounds) for (const item of row.payments) {
+      if (!paymentPending(edition,row,item,now)) continue;
       try { await this.payment(editionId,row.id,item.paymentId); }
       catch (error) { failures.push({id:item.paymentId,error}); }
     }
-    for (const grant of planSnowTournamentGrants(this.edition(editionId)!)) {
-      if (this.edition(editionId)?.settledGrants?.[grant.id]) continue;
+    for (const grant of planSnowTournamentGrants(edition)) {
+      if (edition.settledGrants?.[grant.id]) continue;
       try {
         const receipt=await this.economy.grant(grant);
         if (!receipt) throw new Error("snow_grant_unconfirmed");
@@ -139,8 +154,8 @@ export class SnowTournamentSettlement {
         });
       } catch (error) { failures.push({id:grant.id,error}); }
     }
-    for(const grant of planSnowTournamentFurniture(this.edition(editionId)!)) {
-      if(this.edition(editionId)?.settledFurniture?.[grant.id]) continue;
+    for(const grant of planSnowTournamentFurniture(edition)) {
+      if(edition.settledFurniture?.[grant.id]) continue;
       try {
         const receipt=await this.economy.grantFurniture?.(grant);
         if(!receipt) throw new Error("snow_furniture_unconfirmed");
@@ -184,8 +199,7 @@ export class SnowTournamentSettlement {
       const round=edition.registrationRounds.find(r=>r.id===roundId)!;
       return {edition,round,payment:round.payments.find(p=>p.paymentId===paymentId)!};
     };
-    const open=(state:ReturnType<typeof snapshot>)=>state.edition.phase==="team_formation" &&
-      state.round.status==="paying" && (this.now()<Date.parse(state.edition.teamFormationCloseAt)||state.round.deadlineConfirmedAt!==undefined);
+    const open=(state:ReturnType<typeof snapshot>)=>canCharge(state.edition,state.round,this.now());
     let current=snapshot();
     const input={paymentId,residentId:current.payment.residentId,gold};
     if (current.payment.charge==="not_started" && open(current)) {
@@ -198,9 +212,10 @@ export class SnowTournamentSettlement {
       if (receipt) {
         if (!this.matches(input,receipt) || (receipt.outcome==="paid" && !receipt.journalId)) throw new Error("snow_payment_receipt_mismatch");
         this.teams.paymentTransition(editionId,roundId,{kind:"charge_result",paymentId,outcome:receipt.outcome,receivedAt:this.now()});
+        current=snapshot();
       }
     }
-    const payment:TournamentPayment=snapshot().payment;
+    const payment=current.payment;
     if (payment.refund==="pending") {
       const request={...input,refundId:refundId(payment)};
       const receipt=await this.economy.refund(request);

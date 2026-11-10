@@ -168,7 +168,13 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
       if (!scheduler) return null;
       reportSettlement=report;
       registrationBell?.repairLegacy();
-      for (const entry of store.all() as {id:string}[]) reconcileSettlement(entry.id);
+      for (const entry of store.all() as {id:string;phase:string}[]) {
+        if (settlement?.hasPending(entry)) reconcileSettlement(entry.id);
+        else {
+          syncActivity(entry.id);
+          if (entry.phase==="completed" || entry.phase==="cancelled") resultBell?.queue(entry.id);
+        }
+      }
       const clock=startSnowTournamentClock(scheduler,report);
       matchHost?.bindClock(clock.wake);
       return {wake:clock.wake,stop(){matchHost?.bindClock(undefined);clock.stop();}};

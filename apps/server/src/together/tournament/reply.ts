@@ -130,7 +130,7 @@ function commandResult(result:Row,args:Row):string[] {
 export function renderSnowReply(value:unknown,context:{names:Map<string,string>;args?:Record<string,unknown>}) {
  const data=row(value),name=(id:unknown)=>context.names.get(text(id))??snowNpcName(text(id))??'未显示姓名';
  let out:string[]=[];
- if(data.ok===false&&!data.failedCommand){const code=text(row(data.error).code);return `操作未执行：${errorNames[code]??code}`;}
+ if(data.ok===false&&!data.failedCommand){const code=text(row(data.error).code);return code==='snow_discussion_closed'?'讨论已结束':`操作未执行：${errorNames[code]??code}`;}
  if(data.result!==undefined||Array.isArray(data.receipts)||data.failedCommand){
   const result=data.result!==undefined?row(data.result):data,kind=text(result.kind);
   if(typeof result.text==='string')out.push(result.text);
@@ -148,7 +148,7 @@ export function renderSnowReply(value:unknown,context:{names:Map<string,string>;
   }
   out.push(...payments(data.registration));if(data.settlementPending)out.push('账务：等待核实到账。');
  }else if(data.personalResults){out.push(...items(data.personalResults).map(text));}
- else if(data.channel){const channel=row(data.channel);out.push('队内频道',...rows(channel.messages).map(m=>`${m.name}：${m.text}`));if(!rows(channel.messages).length)out.push('本场尚无队内消息。');}
+ else if(data.channel){const channel=row(data.channel);out.push('队内频道');if(channel.discussionClosed)out.push('讨论已结束');out.push(...rows(channel.messages).map(m=>`${m.name}：${m.text}`));if(!rows(channel.messages).length)out.push('本场尚无队内消息。');}
  else if(data.competition){
   const c=row(data.competition),combat=row(data.combat);
   out.push('雪堡锦标赛规则',`每队${c.teamSize}个席位。个人报名${c.registrationHours}小时，随后${c.teamFormationHours}小时自由组队。每位小机报名费 ${c.registrationFeeGold} 金币；本队所有小机确认名册后才扣款。${deadlineCopy}${npcFillCopy}`,

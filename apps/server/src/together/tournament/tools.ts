@@ -29,6 +29,7 @@ type State={id:string;title:string;phase:string;revision:number;registrationOpen
 const stable=(value:unknown):string=>JSON.stringify(value,(_key,item)=>
   item && typeof item==="object" && !Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a<b?-1:a>b?1:0)):item);
 const key=(...parts:unknown[])=>"st:"+createHash("sha256").update(stable(parts)).digest("hex").slice(0,24);
+const lineupConfirmationLead=120_000;
 
 /** Opaque, resident-bound capabilities. Same successful option replays; new business turns get a new option. */
 export class SnowTournamentTools implements SnowTournamentToolPort {
@@ -244,7 +245,11 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
     if (state.receipts && Object.hasOwn(state.receipts,id) && state.receipts[id]!.actorId===actor && row.hasInput && stable(row.input)===encoded) {
       return this.complete(id,encoded,snowTeamReceipt(state.receipts[id]!.result,this.options.publicService.readPublic(binding.editionId).edition!,this.options.residents()));
     }
-    if (!this.candidates(actor,state).some(candidate=>stable(candidate)===stable(row.binding))) return {ok:false,error:{code:"OPTION_NOT_AVAILABLE"}};
+    const discussionClosed=op==="game.snow.choose" && ["channel","chat","pass"].includes(binding.kind) &&
+      this.now()>=Date.parse(state.matches.find(match=>match.id===binding.matchId)?.scheduledAt??"")-lineupConfirmationLead;
+    if (discussionClosed && (binding.kind!=="channel" || Object.hasOwn(input,"text"))) return {ok:false,error:{code:"snow_discussion_closed"}};
+    if (!this.candidates(actor,state).some(candidate=>stable(candidate)===stable(row.binding)))
+      return {ok:false,error:{code:discussionClosed?"snow_discussion_closed":"OPTION_NOT_AVAILABLE"}};
     if(binding.kind==='personal_results'){
       if(op!=='game.snow.choose'||Object.keys(input).some(field=>field!=='option'))return {ok:false,error:{code:'INVALID_ARGS'}};
       const names=new Map(this.options.residents().map(resident=>[resident.id,resident.name]));
@@ -254,7 +259,7 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
       if(op!=="game.snow.choose"||Object.keys(input).some(field=>field!=="option"))return {ok:false,error:{code:"INVALID_ARGS"}};
       const channel=this.options.host!.teamDiscussion({editionId:binding.editionId,matchId:binding.matchId!},actor,this.now());
       const names=new Map(this.options.residents().map(member=>[member.id,member.name]));
-      return {channel:{matchId:binding.matchId,messages:channel.messages.map(message=>({name:names.get(message.residentId)??message.residentId,text:message.text,at:message.at})),canSpeak:channel.canSpeak}};
+      return {channel:{matchId:binding.matchId,messages:channel.messages.map(message=>({name:names.get(message.residentId)??message.residentId,text:message.text,at:message.at})),canSpeak:channel.canSpeak,discussionClosed}};
     }
     const expected=binding.kind==="command"?["option","commands","waitTicks"]:["option",...(binding.requires??[])];
     if (Object.keys(input).some(field=>!expected.includes(field)) || expected.some(field=>input[field]===undefined) ||
@@ -285,7 +290,7 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
         case "pass":host.speak(ref,actor,id,null,this.now());result={ok:true,kind:"pass",text:"已 pass，本轮没有发送消息。"};break;
         case "lineup": {
           const view=host.playerState(ref,actor,this.now());
-          host.lineup(ref,actor,input.members as Parameters<typeof host.lineup>[2],this.now()>=Date.parse(view.scheduledAt!)-120_000,this.now());
+          host.lineup(ref,actor,input.members as Parameters<typeof host.lineup>[2],this.now()>=Date.parse(view.scheduledAt!)-lineupConfirmationLead,this.now());
           result={ok:true,kind:"lineup",lineup:host.playerState(ref,actor,this.now()).lineup,scheduledAt:view.scheduledAt};break;
         }
         case "confirm_lineup":host.lineup(ref,actor,host.playerState(ref,actor).lineup!.entries,true,this.now());result={ok:true,kind:"confirm_lineup",lineup:host.playerState(ref,actor,this.now()).lineup};break;
