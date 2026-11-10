@@ -35,7 +35,7 @@ export const snowTournamentResponseSchema = z.object({
     teamFormationCloseAt:timestampSchema.optional(),
     enrolledCount:z.number().int().nonnegative().optional(),teamLimit:z.number().int().nonnegative().optional(),
     calendar: z.object({
-      roundRobinAt: z.array(timestampSchema), semifinalAt: timestampSchema, finalAt: timestampSchema,
+      roundRobinAt: z.array(timestampSchema), semifinalAt: timestampSchema, finalAt: timestampSchema.nullable(),
     }).optional(),
     teams: z.array(teamSchema), matches: z.array(matchSchema),
     standings: z.array(z.object({

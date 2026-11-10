@@ -24,7 +24,7 @@ type Technical={
 };
 type Edition={
   id:string;registrationOpenAt:string;registrationCloseAt:string;revision:number;phase:string;
-  matches:Match[];calendar?:SnowTournamentCalendar;registrationRounds:RegistrationRound[];
+  matches:Match[];calendar?:Omit<SnowTournamentCalendar,"finalAt"> & {finalAt:string|null};registrationRounds:RegistrationRound[];
   bracket:{championTeamId:string|null;semifinalMatchIds?:string[]};technical?:Technical;
   teams?:{drawOrder:number|null}[];
 };
@@ -233,10 +233,12 @@ export class SnowTournamentRecovery {
     // These are future bracket slots, not fabricated matches or outcomes.
     if (edition.calendar) {
       edition.calendar.semifinalAt=new Date(Math.max(Date.parse(edition.calendar.semifinalAt),robinEnd+10*minute)).toISOString();
-      const hasSemis=(edition.bracket.semifinalMatchIds?.length??0)>0 ||
-        (edition.teams?.filter(t=>t.drawOrder!==null).length??0)>=4;
-      edition.calendar.finalAt=new Date(Math.max(Date.parse(edition.calendar.finalAt),semiEnd+10*minute,
-        robinEnd ? (hasSemis ? Date.parse(edition.calendar.semifinalAt)+46*minute : robinEnd+10*minute) : 0)).toISOString();
+      if (edition.calendar.finalAt!==null) {
+        const hasSemis=(edition.bracket.semifinalMatchIds?.length??0)>0 ||
+          (edition.teams?.filter(t=>t.drawOrder!==null).length??0)>=4;
+        edition.calendar.finalAt=new Date(Math.max(Date.parse(edition.calendar.finalAt),semiEnd+10*minute,
+          robinEnd ? (hasSemis ? Date.parse(edition.calendar.semifinalAt)+46*minute : robinEnd+10*minute) : 0)).toISOString();
+      }
     }
   }
 
