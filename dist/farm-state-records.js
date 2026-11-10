@@ -12,6 +12,8 @@ const scalar = value => value === null || typeof value === "string" ||
 const token = value => String(value).replaceAll("~", "~0").replaceAll("/", "~1");
 export const farmRecordPath = parts => parts.length ? "/" + parts.map(token).join("/") : "";
 const childPath = (parent, key) => `${parent}/${token(key)}`;
+export const RANCH_KIND_COLLECTIONS = ["/ranch/animals", "/ranch/pets"];
+const isRanchKindCollection = path => RANCH_KIND_COLLECTIONS.includes(path);
 const canonical = value => Array.isArray(value) ? value.map(canonical) :
     value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
 function memberIdentity(value) {
@@ -28,13 +30,7 @@ const plainObject = value => value != null && typeof value === "object" &&
 // Compare first; only changed branches need the durable record encoding.
 export function diffFarmStateRecords(before, after) {
     const changes = [];
-    const branch = (value, path, parent, member) => new Map(
-        [...encodeStateRecords(value)].map(([relative, row]) => {
-            const key = path + relative;
-            return [key, {...row, path:key, parent:relative ? path + row.parent : parent,
-                member:relative ? row.member : member}];
-        }),
-    );
+    const branch = (value, path, parent, member) => encodeStateRecords(value, {path, parent, member});
     const visit = (left, right, path, parent, member) => {
         if (isDeepStrictEqual(left, right)) return;
         if (plainObject(left) && plainObject(right)) {
@@ -58,7 +54,7 @@ export function diffFarmStateRecords(before, after) {
     return changes;
 }
 
-export function encodeStateRecords(value) {
+export function encodeStateRecords(value, root = {path:"", parent:null, member:null}) {
     const rows = new Map(), ancestors = new Set();
     const visit = (value, path, parent, member, previous) => {
         let kind, fields;
@@ -73,7 +69,20 @@ export function encodeStateRecords(value) {
         rows.set(path, { path, parent, member, previous, kind, fieldsJson: JSON.stringify(fields) });
         if (kind === "value") return;
         ancestors.add(value);
-        if (kind === "array") {
+        if (kind === "array" && isRanchKindCollection(path)) {
+            // Preserve legacy action numbers, but changing an animal never
+            // changes its identity or any other animal's record.
+            const members = [], seen = new Set();
+            for (const entry of value) {
+                if (typeof entry?.kindId !== "string" || !entry.kindId || seen.has(entry.kindId))
+                    throw new Error("farm_ranch_kind_invalid");
+                seen.add(entry.kindId);
+                const key = entry.kindId;
+                members.push(key);
+                visit(entry, childPath(path, key), path, key, null);
+            }
+            rows.get(path).fieldsJson = JSON.stringify({members});
+        } else if (kind === "array") {
             const occurrences = new Map();
             let previousMember = null;
             for (const entry of value) {
@@ -91,7 +100,7 @@ export function encodeStateRecords(value) {
         }
         ancestors.delete(value);
     };
-    visit(value, "", null, null, null);
+    visit(value, root.path, root.parent, root.member, null);
     return rows;
 }
 
@@ -120,6 +129,18 @@ export function decodeStateRecords(rows, root = "") {
                 Object.defineProperty(value, child.member, {value: visit(child.path), writable: true, enumerable: true, configurable: true});
             }
         } else if (row.kind === "array") {
+            const members = isRanchKindCollection(path) ? JSON.parse(row.fieldsJson)?.members : undefined;
+            if (Array.isArray(members)) {
+                if (members.length !== entries.length || new Set(members).size !== members.length)
+                    throw new Error("farm_ranch_kind_invalid");
+                value = members.map(key => {
+                    const entry = visit(childPath(path, key));
+                    if (entry?.kindId !== key) throw new Error("farm_ranch_kind_invalid");
+                    return entry;
+                });
+                active.delete(path);
+                return value;
+            }
             value = [];
             const byPrevious = new Map();
             for (const child of entries) {
@@ -264,6 +285,15 @@ export function readFarmCollectionItem(database, farmId, parts, selector) {
     let path;
     if (own(selector, "id")) path = childPath(parent, `id:${JSON.stringify(selector.id)}#0`);
     else if (Number.isSafeInteger(selector.index) && selector.index >= 0) {
+        const meta = isRanchKindCollection(parent) ? database.prepare(
+            "SELECT fields_json FROM farm_domain_records WHERE farm_id=? AND record_path=?"
+        ).get(farmId, parent) : undefined;
+        const members = meta ? JSON.parse(meta.fields_json)?.members : undefined;
+        if (Array.isArray(members)) {
+            const key = members[selector.index];
+            if (key === undefined) return undefined;
+            path = childPath(parent, key);
+        } else {
         const row = database.prepare(`WITH RECURSIVE ordered(record_path,member_key,n) AS (
           SELECT record_path,member_key,0 FROM farm_domain_records
           WHERE farm_id=? AND parent_path=? AND previous_key IS NULL
@@ -272,6 +302,7 @@ export function readFarmCollectionItem(database, farmId, parts, selector) {
           WHERE next.farm_id=? AND next.parent_path=? AND ordered.n<?
         ) SELECT record_path FROM ordered WHERE n=?`).get(farmId, parent, farmId, parent, selector.index, selector.index);
         path = row?.record_path;
+        }
     } else throw new TypeError("invalid_farm_collection_selector");
     if (!path) return undefined;
     const rows = readStoredRecords(database, "farm", farmId, path);

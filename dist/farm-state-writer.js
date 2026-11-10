@@ -41,9 +41,8 @@ export function writeFarmStatePaths(database, farmId, updates, options = {}) {
             if (typeof value==="number" && !Number.isFinite(value)) throw new TypeError("farm_state_not_json");
             if (value===null || ["string","number","boolean"].includes(typeof value))
                 Object.defineProperty(fields,parts.at(-1),{value,writable:true,enumerable:true,configurable:true});
-            else if (value!==undefined) for (const [key,row] of encodeStateRecords(value)) next.set(path+key,{
-                ...row,path:path+key,parent:key==="" ? parentPath : path+row.parent,member:key==="" ? parts.at(-1) : row.member,
-            });
+            else if (value!==undefined) for (const [key,row] of encodeStateRecords(value,{path,parent:parentPath,member:parts.at(-1)}))
+                next.set(key,row);
             next.set(parentPath,{...parent,fieldsJson:JSON.stringify(Object.fromEntries(Object.keys(fields).sort().map(key=>[key,fields[key]])))});
         }
         const insertOnly=[];

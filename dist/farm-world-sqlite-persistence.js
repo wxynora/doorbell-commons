@@ -1,6 +1,6 @@
 import { measureFarmPhase } from "./server/farm-request-timing.js";
 import {wakeGuestbookJudgments,enqueueGuestbookMessageChanges} from './server/doorbell/guestbook-judgments.mjs';
-import {encodeStateRecords,decodeStateRecords,stateRecordChanges,readStoredRecords,writeRecordChanges} from './farm-state-records.js';
+import {encodeStateRecords,decodeStateRecords,stateRecordChanges,readStoredRecords,writeRecordChanges,RANCH_KIND_COLLECTIONS} from './farm-state-records.js';
 import {snapshotFarmMutation,planFarmMutation} from './farm-mutation-scope.js';
 import {
     canonicalFarmWorldJson,
@@ -266,6 +266,25 @@ function materializeFarm(database,entry,explicitReceipts) {
     return {...entry,...plan,receipts,position,partialReceipts:plan.receipts===undefined || explicitReceipts!==undefined};
 }
 
+export function migrateRanchKindCollections(database) {
+    const legacy = database.prepare(`
+        SELECT f.farm_id,r.record_path FROM farm_states f CROSS JOIN farm_domain_records r
+          ON r.farm_id=f.farm_id AND r.record_path IN (?,?)
+        WHERE r.record_kind='array' AND json_type(r.fields_json,'$.members') IS NULL
+    `).all(...RANCH_KIND_COLLECTIONS);
+    if (!legacy.length) return 0;
+    return runLingyeWorldTransaction(database,()=>{
+        for (const {farm_id,record_path} of legacy) {
+            const before = readStoredRecords(database,"farm",farm_id,record_path);
+            const {path,parent,member} = before.get(record_path);
+            const collection = decodeStateRecords(before,path);
+            const after = encodeStateRecords(collection,{path,parent,member});
+            writeRecordChanges(database,"farm",farm_id,stateRecordChanges(before,after));
+        }
+        return legacy.length;
+    });
+}
+
 export function createFarmWorldSqlitePersistence(database) {
     assertDatabase(database);
     const commitEntries = input => {
@@ -324,6 +343,7 @@ export function createFarmWorldSqlitePersistence(database) {
             if (!keys.length) fail("farm_persistence_not_migrated","Farm world has not been imported into Lingye SQLite");
             const missing=REQUIRED_WORLD_COMPONENT_KEYS.filter(key=>!keys.includes(key));
             if (missing.length) fail("farm_persistence_corrupt",`Farm world is missing required components: ${missing.join(", ")}`);
+            migrateRanchKindCollections(database);
             return exportFarmWorldFromDatabase(database,options);
         },
         commitMutation(input) {
