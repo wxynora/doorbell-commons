@@ -1,5 +1,6 @@
 import type { SceneDecorationLayout } from "../scenes/field/scene-types";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRanchReturnRefresh } from "./use-ranch-return-refresh";
 import type { BoundFarmField } from "../../auth/auth-client";
 import type { FarmDecorationLayout, FarmLayoutSlot } from "../../auth/farm-decoration-client";
 import type { BoundBulletinRead, BulletinAcknowledgementScope } from "../../auth/bulletin-client";
@@ -236,6 +237,7 @@ export function FarmFieldContent({
   onReloadAfterLandUpgradeError,
   onReloadRanch,
   onRefreshField,
+  onRefreshVisible,
   onRequireResource,
   onRetryHarvestAssist,
   onRetryHarvestRequest,
@@ -289,6 +291,7 @@ export function FarmFieldContent({
   onReloadAfterLandUpgradeError?: () => void;
   onReloadRanch?: (() => void) | undefined;
   onRefreshField?: (() => void) | undefined;
+  onRefreshVisible?: (field: boolean, resources: readonly (keyof FarmReadResources)[]) => void;
   onRequireResource?: (resource: keyof FarmReadResources, force?: boolean) => void;
   onRetryHarvestAssist?: () => void;
   onRetryHarvestRequest?: () => void;
@@ -313,6 +316,9 @@ export function FarmFieldContent({
   const kitchen = resources.kitchen.stage === "ready" ? resources.kitchen.data : null;
   const ranch = resources.ranch.stage === "ready" ? resources.ranch.data : null;
   const [activeScene, setActiveScene] = useState<FarmSceneId>("field");
+  const wasActive = useRef(active);
+  const refreshRanchReturn = useCallback(() => onReloadRanch?.(), [onReloadRanch]);
+  useRanchReturnRefresh(!preview && active && activeScene === "ranch" ? ranch : null, refreshRanchReturn);
   const [visitedScenes, setVisitedScenes] = useState<ReadonlySet<FarmSceneId>>(
     () => new Set<FarmSceneId>(["field"]),
   );
@@ -434,6 +440,20 @@ export function FarmFieldContent({
     : activeSceneUiState.selectedTool
       ? getToolReadResource(activeScene, activeSceneUiState.selectedTool.id)
       : getSceneReadResource(activeScene);
+  useEffect(() => {
+    const resumed = active && !wasActive.current;
+    wasActive.current = active;
+    if (!resumed || preview || !onRefreshVisible) return;
+    const targets = new Set<keyof FarmReadResources>();
+    const sceneResource = getSceneReadResource(activeScene);
+    if (sceneResource) targets.add(sceneResource);
+    if (activeResourceKey) targets.add(activeResourceKey);
+    if (activeScene === "field" && !decorationEditing) targets.add("farmDecorations");
+    if (activeScene === "ranch" && activeSceneUiState.selectedTool?.id === "dispatch")
+      targets.add("farmCatalog");
+    if (decorationEditing) targets.delete("farmDecorations");
+    onRefreshVisible(activeScene === "field",[...targets]);
+  },[active,activeScene,activeResourceKey,activeSceneUiState.selectedTool?.id,decorationEditing,onRefreshVisible,preview]);
   const activeResourceState = activeResourceKey ? resources[activeResourceKey] : null;
   const displayedBulletin = resources.bulletin.stage === "ready" ? resources.bulletin.data : null;
   const [viewedBulletinKeys, setViewedBulletinKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -955,6 +975,14 @@ export function FarmFieldContent({
         onRequireResource?.("farmCatalog", returning);
       } else if (sceneId === "field") {
         onRefreshField?.();
+      }
+      if (returning) {
+        const panel = sceneUiStates[sceneId];
+        const extra = panel.bulletinOpen ? "bulletin"
+          : panel.selectedTool ? getToolReadResource(sceneId,panel.selectedTool.id) : null;
+        if (extra && extra !== getSceneReadResource(sceneId)) onRequireResource?.(extra,true);
+        if (sceneId === "ranch" && panel.selectedTool?.id === "dispatch" && extra !== "farmCatalog")
+          onRequireResource?.("farmCatalog",true);
       }
     }
     setVisitedScenes((current) =>

@@ -146,29 +146,47 @@ export class LoungeGameInvitationService implements LoungeGameInvitationPort {
     at = this.#now(),
   ): readonly LoungeGameInvitationPendingValidation[] {
     if (!validIdentifier(residentId)) return [];
+    const wakes = this.#wakes.pendingInvitations(residentId);
+    if (wakes.length === 0) return [];
     const communities = this.#database.listActiveHumanCommunities();
-    const recipient = communities.find((community) => community.resident.residentId === residentId);
-    const seated = this.#seatedResidents(communities);
-    return this.#wakes
-      .pending(residentId)
-      .filter((wake) => wake.reason === "game_invitation")
-      .map((wake) => {
-        const roomId = roomIdFromWakeId(wake.wakeId);
-        const valid =
-          roomId !== null &&
-          recipient !== undefined &&
-          this.#waitingRoom(roomId) !== null &&
-          !seated.has(residentId) &&
-          acceptsGameInvitation(preferencesFor(this.#database, recipient), at);
-        return { wakeId: wake.wakeId, residentId, roomId, valid };
-      });
+    return this.#validateInvitations(wakes, communities, at);
+  }
+
+  #validateInvitations(
+    wakes: ReturnType<LoungeWakeStore["pendingInvitations"]>,
+    communities: readonly HumanCommunityRecord[],
+    at: number,
+  ): LoungeGameInvitationPendingValidation[] {
+    const byResident = new Map(communities.map(community => [community.resident.residentId, community]));
+    const rooms = this.#readTableRooms();
+    const seated = this.#seatedResidents(communities, rooms.map(({room}) => room));
+    const waiting = new Set(rooms.flatMap(({table, room}) =>
+      table.room?.phase === "waiting" && room.phase === "waiting" ? [room.roomId] : [],
+    ));
+    return wakes.map((wake) => {
+      const residentId = wake.residentId;
+      const recipient = byResident.get(residentId);
+      const roomId = roomIdFromWakeId(wake.wakeId);
+      const valid =
+        roomId !== null &&
+        recipient !== undefined &&
+        waiting.has(roomId) &&
+        !seated.has(residentId) &&
+        acceptsGameInvitation(preferencesFor(this.#database, recipient), at);
+      return { wakeId: wake.wakeId, residentId, roomId, valid };
+    });
   }
 
   /** Cancel invalid persisted invitation wakes and notify Bell of each cancellation. */
   cancelInvalid(residentId: string, at = this.#now()): readonly string[] {
+    return this.#cancelInvalidInvitations(this.validatePending(residentId, at), at);
+  }
+
+  #cancelInvalidInvitations(validations: readonly LoungeGameInvitationPendingValidation[], at: number): string[] {
     const cancelled: string[] = [];
-    for (const pending of this.validatePending(residentId, at)) {
+    for (const pending of validations) {
       if (pending.valid) continue;
+      const residentId = pending.residentId;
       if (this.#wakes.finish(residentId, pending.wakeId, "cancelled", at) !== "changed") continue;
       this.#bell.notifyWakeCancelled(residentId, pending.wakeId);
       cancelled.push(pending.wakeId);
@@ -181,9 +199,13 @@ export class LoungeGameInvitationService implements LoungeGameInvitationPort {
     if (this.#closed || this.#reconciling) return;
     this.#reconciling = true;
     try {
-      for (const community of this.#database.listActiveHumanCommunities()) {
-        this.cancelInvalid(community.resident.residentId, this.#now());
-      }
+      const wakes = this.#wakes.pendingInvitations();
+      if (wakes.length === 0) return;
+      const at = this.#now();
+      const communities = this.#database.listActiveHumanCommunities();
+      const active = new Set(communities.map(community => community.resident.residentId));
+      const activeWakes = wakes.filter(wake => active.has(wake.residentId));
+      if (activeWakes.length) this.#cancelInvalidInvitations(this.#validateInvitations(activeWakes, communities, at), at);
     } finally {
       this.#reconciling = false;
     }
@@ -373,7 +395,14 @@ export class LoungeGameInvitationService implements LoungeGameInvitationPort {
     return room?.seats.some((seat) => seatBelongsToResident(seat, residentId)) ? room : null;
   }
 
-  #seatedResidents(communities: readonly HumanCommunityRecord[]): Set<string> {
+  #readTableRooms() {
+    return this.#tables.listPublicTables().flatMap(table => {
+      const room = table.room ? this.#tables.read(table.room.room_id) : undefined;
+      return room ? [{table, room}] : [];
+    });
+  }
+
+  #seatedResidents(communities: readonly HumanCommunityRecord[], rooms = this.#readTableRooms().map(({room}) => room)): Set<string> {
     const residents = new Set<string>();
     const accountResidents = new Map<string, string[]>();
     for (const community of communities) {
@@ -381,11 +410,7 @@ export class LoungeGameInvitationService implements LoungeGameInvitationPort {
       residentsForAccount.push(community.resident.residentId);
       accountResidents.set(community.account.accountId, residentsForAccount);
     }
-    for (const table of this.#tables.listPublicTables()) {
-      const roomId = table.room?.room_id;
-      if (!roomId) continue;
-      const room = this.#tables.read(roomId);
-      if (!room) continue;
+    for (const room of rooms) {
       for (const seat of room.seats) {
         const seatResidentId = seat.residentId;
         if (typeof seatResidentId === "string" && validIdentifier(seatResidentId)) {

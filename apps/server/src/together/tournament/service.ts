@@ -12,6 +12,7 @@ export class SnowTournamentService {
     private readonly live?: (ref:{editionId:string;matchId:string},context?:LiveContext)=>{scheduledAt:string;started:boolean}|null,
     readonly spectators?: SnowTournamentSpectators, private readonly now = Date.now) {}
   subscribe(listener:()=>void) {return this.store.subscribe(listener);}
+  hasMatch(editionId:string,matchId:string) {return this.store.hasMatch(editionId,matchId);}
   /** Parse into the explicit public schema: unknown fields, including drafts, are discarded. */
   readPublic(editionId?: string): SnowTournamentResponse {
     const edition = editionId ? this.store.read(editionId) : this.store.latest();

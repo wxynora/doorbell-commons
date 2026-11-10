@@ -40,8 +40,8 @@ type LoungeLoadState =
 function loungeSnapshotSequence(snapshot: LoungeSnapshot): number {
   return Math.max(
     0,
-    ...snapshot.messages.map((message) => message.sequence),
-    ...snapshot.activities.map((activity) => activity.sequence),
+    snapshot.messages.at(-1)?.sequence ?? 0,
+    snapshot.activities.at(-1)?.sequence ?? 0,
   );
 }
 
@@ -55,16 +55,26 @@ function compareLoungeSnapshots(left: LoungeSnapshot, right: LoungeSnapshot): nu
   return 0;
 }
 
-function latestResidentActivity(snapshot: LoungeSnapshot, residentId: string, kind: string) {
-  const activity = snapshot.activities.filter(item => item.resident_id === residentId && item.kind === kind)
-    .sort((a, b) => b.sequence - a.sequence)[0];
-  return activity ? { time: Date.parse(activity.created_at), result: typeof activity.data.result === "string" ? activity.data.result : null } : null;
-}
+type SceneActivities = Map<string, {pet?: LoungeSnapshot["activities"][number]; game_result?: LoungeSnapshot["activities"][number]}>;
+const latestSceneActivities = new WeakMap<LoungeSnapshot["activities"], SceneActivities>();
 
 function scenePresenceForSnapshot(
   snapshot: LoungeSnapshot,
   standingImages: Readonly<Record<string, string>>,
 ): LoungeScenePresence[] {
+  let latest = latestSceneActivities.get(snapshot.activities);
+  if (!latest) {
+    latest = new Map();
+    for (const activity of snapshot.activities) {
+      const {resident_id: residentId, kind} = activity;
+      if (!residentId || (kind !== "pet" && kind !== "game_result")) continue;
+      const current = latest.get(residentId) ?? {};
+      if (!current[kind] || current[kind].sequence < activity.sequence) current[kind] = activity;
+      latest.set(residentId, current);
+    }
+    latestSceneActivities.set(snapshot.activities, latest);
+  }
+  const activities = latest;
   return snapshot.presence.map((presence) => ({
     residentId: presence.resident_id,
     name: presence.resident_name,
@@ -76,12 +86,20 @@ function scenePresenceForSnapshot(
       idleSince: Date.parse(presence.last_spoke_at ?? presence.entered_at),
       inGame: presence.area_id === "mahjong" || presence.area_id === "round-table",
       inPet: presence.area_id === "pet",
-      petAt: latestResidentActivity(snapshot, presence.resident_id, "pet")?.time ?? null,
-      resultAt: latestResidentActivity(snapshot, presence.resident_id, "game_result")?.time ?? null,
-      result: latestResidentActivity(snapshot, presence.resident_id, "game_result")?.result ?? null,
+      petAt: activityTime(activities.get(presence.resident_id)?.pet),
+      resultAt: activityTime(activities.get(presence.resident_id)?.game_result),
+      result: activityResult(activities.get(presence.resident_id)?.game_result),
     },
     avatarSrc: presence.slot_id ? null : (standingImages[presence.resident_id] ?? null),
   }));
+}
+
+function activityTime(activity?: LoungeSnapshot["activities"][number]) {
+  return activity ? Date.parse(activity.created_at) : null;
+}
+
+function activityResult(activity?: LoungeSnapshot["activities"][number]) {
+  return typeof activity?.data.result === "string" ? activity.data.result : null;
 }
 
 export function PublicLoungePage({
@@ -196,14 +214,9 @@ export function PublicLoungePage({
     const controller = new AbortController();
     let stream: EventSource | null = null;
     setLoadState({ stage: "loading" });
-    void loader({ signal: controller.signal })
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        if (result.ok) {
-          streamAvailableRef.current = true;
-          snapshotRef.current = result.data;
-          setLoadState({ stage: "ready", snapshot: result.data });
-
+    let snapshotLoaded = false;
+    let fallbackStarted = false;
+    const openStream = () => {
           if (typeof EventSource === "undefined") return;
           stream = new EventSource("/api/lounge/stream", { withCredentials: true });
           const setStreamProtocolError = () => {
@@ -231,6 +244,7 @@ export function PublicLoungePage({
             }
             const previous = snapshotRef.current;
             if (previous && compareLoungeSnapshots(parsed.data, previous) < 0) return;
+            snapshotLoaded = true;
             streamAvailableRef.current = true;
             snapshotRef.current = parsed.data;
             setLoadState({ stage: "ready", snapshot: parsed.data });
@@ -259,6 +273,7 @@ export function PublicLoungePage({
             // but wait for a fresh snapshot before accepting table actions.
             streamAvailableRef.current = false;
             postSceneState(snapshotRef.current);
+            if (!snapshotLoaded && !fallbackStarted) loadInitial(false);
           };
           stream.addEventListener("snapshot", handleSnapshot);
           stream.addEventListener("delta", handleDelta);
@@ -271,6 +286,17 @@ export function PublicLoungePage({
             stream = null;
           };
           if (controller.signal.aborted) closeStream();
+    };
+    function loadInitial(startStream: boolean) {
+      fallbackStarted = true;
+      void loader({ signal: controller.signal })
+        .then((result) => {
+        if (controller.signal.aborted || snapshotLoaded) return;
+        if (result.ok) {
+          streamAvailableRef.current = startStream;
+          snapshotRef.current = result.data;
+          setLoadState({ stage: "ready", snapshot: result.data });
+          if (startStream) openStream();
         } else {
           snapshotRef.current = null;
           setLoadState({ stage: "error", issue: result.issue });
@@ -278,7 +304,7 @@ export function PublicLoungePage({
         }
       })
       .catch(() => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || snapshotLoaded) return;
         snapshotRef.current = null;
         setLoadState({
           stage: "error",
@@ -286,12 +312,15 @@ export function PublicLoungePage({
         });
         postSceneState(null);
       });
+    }
+    if (loadSnapshot || typeof EventSource === "undefined") loadInitial(true);
+    else openStream();
     return () => {
       controller.abort();
       stream?.close();
       stream = null;
     };
-  }, [loader, postSceneState, reloadKey, suppliedSnapshot]);
+  }, [loadSnapshot, loader, postSceneState, reloadKey, suppliedSnapshot]);
 
   useEffect(() => {
     const handleSceneMessage = (event: MessageEvent) => {

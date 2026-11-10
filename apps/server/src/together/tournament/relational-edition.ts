@@ -97,6 +97,20 @@ function readVariant(db:Database.Database,editionId:string,kind:string,id:string
   return readReceiptValue(db,editionId,kind,id);
 }
 const mapSections=["receipts","roundRecovery","settledGrants","settledFurniture","settledHarvest"] as const;
+export type SnowSettlementReceiptSection="settledGrants"|"settledFurniture"|"settledHarvest";
+
+/** Append one confirmed receipt without rewriting unrelated edition rows. */
+export function appendSnowSettlementReceipt(db:Database.Database,editionId:string,section:SnowSettlementReceiptSection,id:string,value:unknown):void {
+  const inserted=db.prepare(`INSERT INTO snow_tournament_edition_map_entries(edition_id,section,entry_key,position,encoding)
+    SELECT ?,?,?,COALESCE(MAX(position)+1,0),NULL FROM snow_tournament_edition_map_entries WHERE edition_id=? AND section=?
+    ON CONFLICT(edition_id,section,entry_key) DO NOTHING`).run(editionId,section,id,editionId,section);
+  if(!inserted.changes)return;
+  writeReceiptValue(db,editionId,"edition-map:"+section,id,value);
+  const at=editionFields.findIndex(([key])=>key===section);
+  db.prepare(`UPDATE snow_tournament_edition_details SET field_presence=substr(field_presence,1,?)||'o'||substr(field_presence,?)
+    WHERE edition_id=? AND substr(field_presence,?,1)<>'o'`).run(at,at+2,editionId,at+1);
+}
+
 function saveMap(db:Database.Database,editionId:string,section:string,value:RecordValue):void {
   const prior=db.prepare("SELECT entry_key FROM snow_tournament_edition_map_entries WHERE edition_id=? AND section=?").all(editionId,section) as {entry_key:string}[];
   const keys=new Set(Object.keys(value));

@@ -70,7 +70,7 @@ export interface LoungeSayInput {
 }
 
 export interface LoungeServiceOptions {
-  database: Pick<CommunityDatabase, "listActiveHumanCommunities" | "residentAvatarStore">;
+  database: Pick<CommunityDatabase, "findActiveHumanCommunityByResidentId" | "listActiveHumanCommunities" | "residentAvatarStore">;
   registrationAuth: Pick<RegistrationAuthService, "getCurrentSession">;
   store: LoungeStore;
   now?: () => number;
@@ -307,6 +307,13 @@ export class LoungeService {
 
   readSnapshotForResident(residentId: string): LoungeSnapshot {
     return this.#renderSnapshot(this.#snapshotParts(), residentId);
+  }
+
+  readChatWakeFacts(residentId: string, after: number) {
+    if (!this.#presence.has(residentId)) this.chooseArea({residentId, areaId: "conversation"});
+    else this.#activeCommunity(residentId);
+    const {latestSequence, lastMessageAt, directed} = this.#store.readChatWakeFacts(residentId, after);
+    return {latestSequence, lastMessageAt, hasDirectedMessage: directed === 1};
   }
 
   /**
@@ -743,9 +750,7 @@ export class LoungeService {
   }
 
   #activeCommunity(residentId: string): HumanCommunityRecord {
-    const community = this.#database
-      .listActiveHumanCommunities()
-      .find((entry) => entry.resident.residentId === residentId);
+    const community = this.#database.findActiveHumanCommunityByResidentId(residentId);
     if (!community) throw new Error("Lounge resident is not active");
     return community;
   }

@@ -57,3 +57,59 @@ export function editionStreamFrame(before:SnowTournamentResponse|null,after:Snow
   return Object.keys(changes).length||teams.put.length||teams.remove.length||matches.put.length||matches.remove.length
     ? {kind:"patch",base:revision,revision:revision+1,id:after.edition.id,changes,teams,matches}:null;
 }
+
+type WireFrame=SnowBattleStream|SnowEditionStream;
+type WirePacket={revision:number;text:string};
+type StreamSource<State>={
+  initial:()=>State;
+  subscribe:(changed:(read:()=>State)=>void)=>()=>void;
+  encode:(state:State)=>WireFrame|null;
+  snapshot:(state:State,revision:number)=>WireFrame;
+};
+
+class SharedSnowFeed<State> {
+  private readLatest:()=>State;
+  private dirty=true;
+  private latest!:State;
+  private patch:{base:number;packet:WirePacket}|undefined;
+  private currentSnapshot:WirePacket|undefined;
+  private revision=0;
+  constructor(private readonly source:StreamSource<State>){this.readLatest=source.initial;}
+  changed(read:()=>State){this.readLatest=read;this.dirty=true;}
+  read(after:number):WirePacket|null {
+    if(this.dirty){
+      const latest=this.readLatest(),frame=this.source.encode(latest);
+      this.latest=latest;this.currentSnapshot=undefined;this.patch=undefined;this.dirty=false;
+      if(frame){
+        const packet={revision:frame.revision,text:JSON.stringify(frame)};
+        this.revision=frame.revision;
+        if(frame.kind==="patch")this.patch={base:frame.base,packet};
+        else this.currentSnapshot=packet;
+      }
+    }
+    if(after===this.revision)return null;
+    if(this.patch?.base===after)return this.patch.packet;
+    return this.currentSnapshot??={revision:this.revision,text:JSON.stringify(this.source.snapshot(this.latest,this.revision))};
+  }
+}
+
+/** One encoder and one current public board per watched match or edition. */
+export class SharedSnowStreams<Key,State> {
+  private readonly active=new Map<string,{feed:SharedSnowFeed<State>;listeners:Set<()=>void>;stop:()=>void}>();
+  constructor(private readonly keyOf:(key:Key)=>string,private readonly sourceFor:(key:Key)=>StreamSource<State>){}
+  connect(key:Key,notify:()=>void){
+    const id=this.keyOf(key);
+    let group=this.active.get(id);
+    if(!group){
+      const source=this.sourceFor(key),feed=new SharedSnowFeed(source),listeners=new Set<()=>void>();
+      const stop=source.subscribe(read=>{feed.changed(read);for(const listener of listeners)listener();});
+      group={feed,listeners,stop};this.active.set(id,group);
+    }
+    const joined=group;
+    joined.listeners.add(notify);
+    return {read:(after:number)=>joined.feed.read(after),close:()=>{
+      if(!joined.listeners.delete(notify)||joined.listeners.size)return;
+      joined.stop();this.active.delete(id);
+    }};
+  }
+}

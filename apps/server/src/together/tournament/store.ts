@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { isDeepStrictEqual } from "node:util";
-import { readEditionRows, saveEditionRows } from "./relational-edition.js";
+import { appendSnowSettlementReceipt, readEditionRows, saveEditionRows, type SnowSettlementReceiptSection } from "./relational-edition.js";
 import { deleteRuntimeRows, publicRuntimeFromState, readPublicRuntimes, readRuntimeRows, readRuntimeRound, saveRuntimeRows, type PublicRuntime } from "./relational-runtime.js";
 import { saveBattleRows } from "./relational-battle.js";
 import { readMatchEditionView, readRoundRecovery, readScheduledSnowEditions, readTechnicalView } from "./relational-match-view.js";
@@ -40,6 +40,13 @@ export class SnowTournamentStore {
   }
 
   readMatchEdition(editionId:string,matchId:string) {return readMatchEditionView(this.db,editionId,matchId);}
+  readMatchStatus(editionId:string,matchId:string) {
+    return this.db.prepare("SELECT status FROM snow_tournament_match_records WHERE edition_id=? AND match_id=?")
+      .get(editionId,matchId) as {status:string|null}|undefined;
+  }
+  hasMatch(editionId:string,matchId:string):boolean {
+    return this.db.prepare("SELECT 1 FROM snow_tournament_match_records WHERE edition_id=? AND match_id=?").get(editionId,matchId)!==undefined;
+  }
   readEditionPhase(editionId:string) {
     return (this.db.prepare("SELECT phase FROM snow_tournament_edition_details WHERE edition_id=?").get(editionId) as {phase:string}|undefined)?.phase;
   }
@@ -183,5 +190,9 @@ export class SnowTournamentStore {
   save(id: string, registrationOpenAt: string, state: unknown): void {
     this.db.transaction(()=>saveEditionRows(this.db,id,registrationOpenAt,state as Record<string,unknown>))();
     this.changed();
+  }
+
+  saveSettlementReceipt(id:string,section:SnowSettlementReceiptSection,receipt:{id:string}):void {
+    this.db.transaction(()=>appendSnowSettlementReceipt(this.db,id,section,receipt.id,receipt))();
   }
 }

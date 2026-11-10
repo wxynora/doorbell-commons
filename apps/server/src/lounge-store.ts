@@ -139,6 +139,29 @@ export class LoungeStore {
     private readonly residentSocial?: ResidentSocialStore,
   ) {}
 
+  readChatWakeFacts(residentId: string, after: number) {
+    return this.database.prepare(`
+      SELECT COALESCE((
+        SELECT sequence FROM lounge_public_messages
+        WHERE sequence > @after AND resident_id <> @resident AND withdrawn_at IS NULL
+        ORDER BY sequence DESC LIMIT 1
+      ), @after) AS latestSequence, (
+        SELECT created_at FROM lounge_public_messages
+        WHERE withdrawn_at IS NULL ORDER BY sequence DESC LIMIT 1
+      ) AS lastMessageAt, EXISTS (
+        SELECT 1 FROM lounge_public_messages AS reply
+        JOIN lounge_public_messages AS parent ON parent.message_id = reply.reply_to_message_id
+        WHERE reply.sequence > @after AND reply.resident_id <> @resident
+          AND reply.withdrawn_at IS NULL AND parent.withdrawn_at IS NULL
+          AND parent.resident_id = @resident
+      ) AS directed
+    `).get({resident: residentId, after}) as {
+      latestSequence: number;
+      lastMessageAt: number | null;
+      directed: 0 | 1;
+    };
+  }
+
   listMessages(): LoungeMessageRecord[] {
     const rows = this.database
       .prepare(

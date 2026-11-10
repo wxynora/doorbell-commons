@@ -25,10 +25,22 @@ function mergeActivities(
   delta: LoungeSnapshotDelta,
 ): LoungeSnapshot["activities"] {
   if (delta.append_activities === undefined) return snapshot.activities;
+  const appended = delta.append_activities;
+  if (appended.length === 0) return snapshot.activities;
+  let previous = snapshot.activities.at(-1)?.sequence ?? -1;
+  const appendedIds = new Set(appended.map(activity => activity.activity_id));
+  const freshTail = appendedIds.size === appended.length && appended.every(activity => {
+    const follows = activity.sequence > previous;
+    previous = activity.sequence;
+    return follows;
+  });
+  if (freshTail && !snapshot.activities.some(activity => appendedIds.has(activity.activity_id))) {
+    return [...snapshot.activities, ...appended];
+  }
   const activities = new Map(
     snapshot.activities.map((activity) => [activity.activity_id, activity]),
   );
-  for (const activity of delta.append_activities) activities.set(activity.activity_id, activity);
+  for (const activity of appended) activities.set(activity.activity_id, activity);
   return [...activities.values()].sort(
     (left, right) =>
       compareSequence(left, right) || left.activity_id.localeCompare(right.activity_id),

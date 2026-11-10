@@ -146,12 +146,7 @@ export class SnowTournamentSettlement {
             receipt.journalIds.some(id=>typeof id!=="string" || !id)) {
           throw new Error("snow_grant_receipt_mismatch");
         }
-        this.store.transaction(()=>{
-          const latest=this.edition(editionId)!;
-          const grants=latest.settledGrants??={};
-          grants[grant.id]=receipt;
-          this.store.save(editionId,latest.registrationOpenAt,latest);
-        });
+        this.store.saveSettlementReceipt(editionId,"settledGrants",receipt);
       } catch (error) { failures.push({id:grant.id,error}); }
     }
     for(const grant of planSnowTournamentFurniture(edition)) {
@@ -162,10 +157,7 @@ export class SnowTournamentSettlement {
         if(receipt.id!==grant.id || receipt.editionId!==grant.editionId || receipt.residentId!==grant.residentId || receipt.itemId!==grant.itemId ||
           receipt.quantity!==1 || !Number.isSafeInteger(receipt.grantedAt) || !Number.isSafeInteger(receipt.expiresAt) ||
           receipt.expiresAt<receipt.grantedAt+30*24*60*60*1000) throw new Error("snow_furniture_receipt_mismatch");
-        this.store.transaction(()=>{
-          const latest=this.edition(editionId)!;(latest.settledFurniture??={})[grant.id]=receipt;
-          this.store.save(editionId,latest.registrationOpenAt,latest);
-        });
+        this.store.saveSettlementReceipt(editionId,"settledFurniture",receipt);
       } catch(error) {failures.push({id:grant.id,error});}
     }
     return failures.concat(await harvest);
@@ -182,11 +174,7 @@ export class SnowTournamentSettlement {
           receipt.bonusPercent!==15 || !Number.isSafeInteger(receipt.grantedAt) || receipt.grantedAt<0 ||
           !Number.isSafeInteger(receipt.expiresAt) || receipt.expiresAt!==receipt.grantedAt+CHAMPION_HARVEST_MS)
           throw new Error("snow_harvest_receipt_mismatch");
-        this.store.transaction(()=>{
-          const latest=this.edition(edition.id)!;
-          (latest.settledHarvest??={})[grant.id]=receipt;
-          this.store.save(edition.id,latest.registrationOpenAt,latest);
-        });
+        this.store.saveSettlementReceipt(edition.id,"settledHarvest",receipt);
         return null;
       } catch (error) { return {id:grant.id,error}; }
     }));

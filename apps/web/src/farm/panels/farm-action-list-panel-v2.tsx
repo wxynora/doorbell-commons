@@ -5,7 +5,7 @@ import type {
   FarmActionListItemKind,
   FarmActionListSchedule,
 } from "@doorbell/protocol";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createFarmActionList,
   deleteFarmActionList,
@@ -256,26 +256,52 @@ export function FarmActionListPanelV2({
     useState<readonly FarmActionListActivityOption[]>(previewActivityOptions);
   const [draft, setDraft] = useState<ListDraft | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [activityPending,setActivityPending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(preview ? "" : "正在读取清单…");
   const [notifyFeedback, setNotifyFeedback] = useState<
     Record<string, { sending: boolean; message: string }>
   >({});
+  const editor = useRef(0);
+  const activityRequest = useRef<Promise<readonly FarmActionListActivityOption[] | null> | null>(null);
 
   const load = useCallback(async () => {
-    const [listResult, optionResult] = await Promise.all([
-      getFarmActionList(),
-      getFarmActionListOptions(),
-    ]);
+    const listResult = await getFarmActionList();
     if (!listResult.ok) return setStatus(farmActionListIssueMessage(listResult.issue));
     setLists(listResult.data.lists);
-    if (optionResult.ok) setActivities(optionResult.data.activities);
     setStatus("");
   }, []);
 
   useEffect(() => {
     if (!preview && visible) void load();
   }, [load, preview, visible]);
+
+  const loadActivities = () => {
+    if (preview) return Promise.resolve(previewActivityOptions);
+    if (activityRequest.current) return activityRequest.current;
+    const session = editor.current;
+    const request = getFarmActionListOptions().then(result => {
+      if (editor.current !== session) return null;
+      if (!result.ok) {
+        activityRequest.current = null;
+        setStatus(farmActionListIssueMessage(result.issue));
+        return null;
+      }
+      setActivities(result.data.activities);
+      return result.data.activities;
+    });
+    activityRequest.current=request;
+    return request;
+  };
+
+  const openDraft = (value:ListDraft|null) => {
+    editor.current++;
+    activityRequest.current=null;
+    setActivityPending(false);
+    setAddMenuOpen(false);
+    setDraft(value);
+    if (value?.items.some(item=>item.kind==="activity")) void loadActivities();
+  };
 
   const saveDraft = async () => {
     if (!draft) return;
@@ -319,7 +345,7 @@ export function FarmActionListPanelV2({
           last_notification: null,
         };
         setLists((current) => [list, ...current.filter((entry) => entry.list_id !== list.list_id)]);
-        setDraft(null);
+        openDraft(null);
         return;
       }
       const result = draft.listId
@@ -330,7 +356,7 @@ export function FarmActionListPanelV2({
         : await createFarmActionList(request);
       if (!result.ok) return setStatus(farmActionListIssueMessage(result.issue));
       await load();
-      setDraft(null);
+      openDraft(null);
     } finally {
       setBusy(false);
     }
@@ -377,9 +403,20 @@ export function FarmActionListPanelV2({
     await load();
   };
 
-  const addItem = (kind: FarmActionListItemKind) => {
+  const addItem = async (kind: FarmActionListItemKind) => {
+    const session=editor.current;
+    let options=activities;
+    if(kind==="activity"&&!preview){
+      setActivityPending(true);
+      const loaded=await loadActivities();
+      if(editor.current!==session)return;
+      setActivityPending(false);
+      if(!loaded)return;
+      if(!loaded.length){setStatus("当前没有可以加入清单的活动。");return;}
+      options=loaded;
+    }
     setDraft((current) =>
-      current ? { ...current, items: [...current.items, newItem(kind, activities)] } : current,
+      current ? { ...current, items: [...current.items, newItem(kind, options)] } : current,
     );
     setAddMenuOpen(false);
   };
@@ -390,7 +427,7 @@ export function FarmActionListPanelV2({
         <button
           aria-label={draft ? "返回清单总览" : "返回农场"}
           className="farm-action-lists-v2__back"
-          onClick={() => (draft ? setDraft(null) : onBack())}
+          onClick={() => (draft ? openDraft(null) : onBack())}
           type="button"
         >
           <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -406,7 +443,7 @@ export function FarmActionListPanelV2({
           <button
             aria-label="新建清单"
             className="farm-action-lists-v2__new"
-            onClick={() => setDraft(emptyDraft())}
+            onClick={() => openDraft(emptyDraft())}
             type="button"
           >
             +
@@ -548,7 +585,8 @@ export function FarmActionListPanelV2({
               {Object.entries(LABELS).map(([kind, label]) => (
                 <button
                   key={kind}
-                  onClick={() => addItem(kind as FarmActionListItemKind)}
+                  disabled={kind === "activity" && activityPending}
+                  onClick={() => void addItem(kind as FarmActionListItemKind)}
                   type="button"
                 >
                   {label}
@@ -622,6 +660,8 @@ export function FarmActionListPanelV2({
                         })
                       }
                     >
+                      {!activities.some(entry=>entry.activity_id===item.activity_id) &&
+                        <option value={item.activity_id}>{itemText(item,activities)}</option>}
                       {activities.map((entry) => (
                         <option key={entry.activity_id} value={entry.activity_id}>
                           {entry.name}
@@ -650,10 +690,10 @@ export function FarmActionListPanelV2({
             })}
           </div>
           <footer>
-            <button onClick={() => setDraft(null)} type="button">
+            <button onClick={() => openDraft(null)} type="button">
               取消
             </button>
-            <button disabled={busy} onClick={() => void saveDraft()} type="button">
+            <button disabled={busy || activityPending} onClick={() => void saveDraft()} type="button">
               {busy ? "保存中…" : "保存清单"}
             </button>
           </footer>
@@ -665,7 +705,7 @@ export function FarmActionListPanelV2({
               <header>
                 <div className="farm-action-list-card-v2__title">
                   <h3>{list.name}</h3>
-                  <button onClick={() => setDraft(draftFromList(list))} type="button">
+                  <button onClick={() => openDraft(draftFromList(list))} type="button">
                     编辑
                   </button>
                 </div>
@@ -710,7 +750,7 @@ export function FarmActionListPanelV2({
           {lists.length === 0 ? (
             <button
               className="farm-action-lists-v2__empty"
-              onClick={() => setDraft(emptyDraft())}
+              onClick={() => openDraft(emptyDraft())}
               type="button"
             >
               ＋ 新建第一张清单

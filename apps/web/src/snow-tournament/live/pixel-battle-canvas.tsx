@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { SnowPixelBattle } from "../../../../../packages/protocol/src/snow-tournament";
 import { drawSnowPixelScene, PIXEL_FIELD, pixelUnitsAtPoint, pixelUnitsInCell } from "./pixel-scene";
-import { SnowPixelTimeline } from "./timeline";
+import { createSnowFrameLoop, SnowPixelTimeline } from "./timeline";
 import {SnowReplicaTimeline} from "./replica-timeline";
 import type {BattleStreamUpdate} from "./stream-client";
 import { SnowPixelPortrait, SnowPixelUnitGuide } from "./unit-guide";
@@ -12,6 +12,7 @@ export function SnowPixelBattleCanvas({ battle, replica, paused=false, onSelect,
   const canvas = useRef<HTMLCanvasElement>(null);
   const timeline = useRef(new SnowPixelTimeline());
   const simulation=useRef(new SnowReplicaTimeline()),usesReplica=useRef(false);
+  const animate=useRef(false),invalidate=useRef<(()=>void)|null>(null);
   const [displayed,setDisplayed]=useState(battle),displayTick=useRef(battle.tick);
   const selectedRef = useRef<Cell | null>(null);
   const selectedIdsRef = useRef<string[]>([]);
@@ -22,25 +23,30 @@ export function SnowPixelBattleCanvas({ battle, replica, paused=false, onSelect,
     const at=performance.now();usesReplica.current=!!replica;
     if(replica){simulation.current.accept(replica);if(paused)simulation.current.pause(at);}
     else {timeline.current.accept(battle,at);if(paused)timeline.current.pause(at);}
+    animate.current=!paused&&battle.started&&battle.status==="running";
     setDisplayed(battle);displayTick.current=battle.tick;
+    invalidate.current?.();
   }, [battle,replica,paused]);
-  useEffect(() => { setSelected(null); setSelectedIds([]); selectedRef.current = null; selectedIdsRef.current = []; }, [battle.id]);
+  useEffect(() => { setSelected(null); setSelectedIds([]); selectedRef.current = null; selectedIdsRef.current = []; invalidate.current?.(); }, [battle.id]);
   useEffect(() => {
     const element = canvas.current;
     const context = element?.getContext("2d");
     if (!element || !context) return;
-    let frameId: number;
-    let disposed = false;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const draw = (at: number) => {
-      if (disposed) return;
+    const loop=createSnowFrameLoop(at=>{
       const next=usesReplica.current?simulation.current.frame(at,reduced.matches):timeline.current.frame(at,reduced.matches);
       drawSnowPixelScene(context,next,selectedRef.current,selectedIdsRef.current);
       if(next.battle&&displayTick.current!==next.battle.tick){displayTick.current=next.battle.tick;setDisplayed(next.battle);}
-      frameId = requestAnimationFrame(draw);
+      return animate.current||next.events.length>0;
+    });
+    invalidate.current=loop.invalidate;
+    reduced.addEventListener("change",loop.invalidate);
+    loop.invalidate();
+    return () => {
+      invalidate.current=null;
+      reduced.removeEventListener("change",loop.invalidate);
+      loop.close();
     };
-    frameId = requestAnimationFrame(draw);
-    return () => { disposed = true; cancelAnimationFrame(frameId); };
   }, []);
   const selectedUnits = displayed.units.filter(unit => selectedIds.includes(unit.id));
   return <div className="snow-pixel-live">
@@ -63,7 +69,7 @@ export function SnowPixelBattleCanvas({ battle, replica, paused=false, onSelect,
             const chosen = hit.length ? hit : pixelUnitsInCell(frame.units, lane, position);
             const ids = chosen.map(unit => unit.unit.id);
             selectedIdsRef.current = ids; setSelectedIds(ids);
-            selectedRef.current = ids.length ? null : cell; setSelected(cell); onSelect?.(cell);
+            selectedRef.current = ids.length ? null : cell; setSelected(cell); invalidate.current?.(); onSelect?.(cell);
           }} />;
       }))}
       {overlay}

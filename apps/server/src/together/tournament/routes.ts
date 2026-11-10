@@ -3,8 +3,9 @@ import { OneBotUnavailableError } from "../../qq-group-membership.js";
 import { AuthenticationRequiredError, QqNotGroupMemberError, RegistrationProfileRequiredError, type RegistrationAuthService } from "../../registration-auth.js";
 import { readHumanSessionToken, serializeClearedHumanSessionCookie } from "../../session-cookie.js";
 import type { SnowTournamentService } from "./service.js";
-import type { SnowReplicaBattle } from "@doorbell/protocol";
-import {BattleStreamEncoder,editionStreamFrame} from "./stream-wire.js";
+import type { SnowReplicaBattle, SnowTournamentResponse } from "@doorbell/protocol";
+import {BattleStreamEncoder,editionStreamFrame,SharedSnowStreams} from "./stream-wire.js";
+import type {SnowDanmakuUpdate} from "./spectators.js";
 import type { ServerResponse } from "node:http";
 import { snowDanmakuInputSchema } from "@doorbell/protocol";
 import { z } from "zod";
@@ -17,7 +18,7 @@ export type SnowTournamentBattleRead = {
 
 export function registerSnowTournamentRoutes(app: FastifyInstance, options: {
   registrationAuth: Pick<RegistrationAuthService, "getCurrentSession">;
-  service: Pick<SnowTournamentService, "readPublic"> & Partial<Pick<SnowTournamentService,"subscribe"|"spectators">>;
+  service: Pick<SnowTournamentService, "readPublic"> & Partial<Pick<SnowTournamentService,"subscribe"|"spectators"|"hasMatch">>;
   secureCookies: boolean;
   battleRead?: SnowTournamentBattleRead;
   keepalive?: (response: ServerResponse) => void;
@@ -48,26 +49,45 @@ export function registerSnowTournamentRoutes(app: FastifyInstance, options: {
   });
   const connections = new Set<() => void>();
   app.addHook("preClose", async () => { for (const close of connections) close(); });
-  // One pending notification and one last delivered state per connection. Slow
-  // readers receive a delta from that state to the latest, not a queued history.
+  // One pending notification per connection, without a queue of old frames.
   const stream=(raw:ServerResponse,token:string,subscribe:(listener:()=>void)=>()=>void,read:()=>string|null,eventId?:()=>number)=>{
     raw.writeHead(200,{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-store",connection:"keep-alive","x-accel-buffering":"no"});
     options.keepalive?.(raw);
-    let closed=false,sending=false,pending=false;
+    let closed=false,sending=false,pending=false,admitted=true;
     let unsubscribe:(()=>void)|undefined;
     const close=()=>{if(closed)return;closed=true;unsubscribe?.();connections.delete(close);if(!raw.writableEnded)raw.end();};
     const send=async()=>{
       if(closed)return;pending=true;if(sending||raw.writableNeedDrain)return;sending=true;
       try {while(pending&&!closed&&!raw.writableNeedDrain){
-        pending=false;await options.registrationAuth.getCurrentSession(token);
-        if(!closed){const data=read();if(data!==null)raw.write(`${eventId?`id: ${eventId()}\n`:""}event: update\ndata: ${data}\n\n`);}
+        pending=false;
+        const data=read();if(data===null)continue;
+        if(!admitted)await options.registrationAuth.getCurrentSession(token);
+        admitted=false;
+        if(!closed)raw.write(`${eventId?`id: ${eventId()}\n`:""}event: update\ndata: ${data}\n\n`);
       }}catch{close();}finally{sending=false;}
     };
     connections.add(close);raw.once("close",close);raw.on("drain",()=>{if(pending)void send();});
-    unsubscribe=subscribe(()=>{void send();});void send();
+    try {unsubscribe=subscribe(()=>{void send();});void send();}catch{close();}
+  };
+  const sharedStream=(raw:ServerResponse,token:string,connect:(listener:()=>void)=>{
+    read(after:number):{revision:number;text:string}|null;close():void;
+  })=>{
+    let revision=0,connection:ReturnType<typeof connect>;
+    stream(raw,token,listener=>{connection=connect(listener);return connection.close;},()=>{
+      const packet=connection.read(revision);
+      if(!packet)return null;
+      revision=packet.revision;return packet.text;
+    });
   };
   const subscribeEdition=options.service.subscribe?.bind(options.service);
-  if(subscribeEdition)app.get("/api/snow-tournament/stream",{exposeHeadRoute:false},async(request,reply)=>{
+  const editions=subscribeEdition?new SharedSnowStreams<string|undefined,SnowTournamentResponse>(id=>id??"",id=>{
+    const read=()=>options.service.readPublic(id);
+    let previous:ReturnType<typeof read>|null=null,revision=0;
+    return {initial:read,subscribe:changed=>subscribeEdition(()=>changed(read)),
+      encode(next){const frame=editionStreamFrame(previous,next,revision);if(frame){previous=next;revision=frame.revision;}return frame;},
+      snapshot:(data,revision)=>({kind:"snapshot",revision,data})};
+  }):null;
+  if(editions)app.get("/api/snow-tournament/stream",{exposeHeadRoute:false},async(request,reply)=>{
     const query=request.query as Record<string,unknown>;
     if(Object.keys(query).some(key=>key!=="editionId")||(query.editionId!==undefined&&(typeof query.editionId!=="string"||!query.editionId)))
       return reply.code(400).send({error:{code:"invalid_request"}});
@@ -77,11 +97,8 @@ export function registerSnowTournamentRoutes(app: FastifyInstance, options: {
       return reply.code(status).send({error:{code:status===503?"service_unavailable":"authentication_required"}});
     }
     if(reply.raw.destroyed)return reply;
-    reply.hijack();let previous:ReturnType<SnowTournamentService["readPublic"]>|null=null,revision=0;
-    stream(reply.raw,token,subscribeEdition,()=>{
-      const next=options.service.readPublic(query.editionId as string|undefined),frame=editionStreamFrame(previous,next,revision);
-      if(!frame)return null;previous=next;revision=frame.revision;return JSON.stringify(frame);
-    });return reply;
+    reply.hijack();
+    sharedStream(reply.raw,token,listener=>editions.connect(query.editionId as string|undefined,listener));return reply;
   });
   const live = options.battleRead;
   const spectators = options.service.spectators;
@@ -125,23 +142,46 @@ export function registerSnowTournamentRoutes(app: FastifyInstance, options: {
         const query=cursor.parse(request.query),{token}=await authenticate(request.headers.cookie);
         let after=request.headers["last-event-id"]===undefined?query.after??0:z.coerce.number().int().nonnegative().parse(request.headers["last-event-id"]);
         const initial=spectators.read(request.params,after);let first=true;
+        let next:SnowDanmakuUpdate|undefined,catchUp=false;
         if(reply.raw.destroyed)return reply;
         reply.hijack();
-        stream(reply.raw,token,listener=>spectators.subscribe(request.params,listener),()=>{
-          const messages=first?initial:spectators.read(request.params,after);first=false;
-          if(messages.length)after=messages.at(-1)!.sequence;
+        stream(reply.raw,token,listener=>spectators.subscribe(request.params,update=>{
+          if(update.sequence<=after)return;
+          catchUp ||= next!==undefined;
+          next=update;
+          listener();
+        }),()=>{
+          if(first){
+            first=false;
+            after=initial.at(-1)?.sequence??after;
+            return JSON.stringify({messages:initial});
+          }
+          if(!next)return null;
+          const update=next,needsCatchUp=catchUp;next=undefined;catchUp=false;
+          if(!needsCatchUp){after=update.sequence;return update.text;}
+          // Only a connection that missed intermediate packets reads history.
+          const messages=spectators.read(request.params,after);
+          if(!messages.length)return null;
+          after=messages.at(-1)!.sequence;
           return JSON.stringify({messages});
         },()=>after);return reply;
       }catch(cause){return reject(reply,cause);}
     });
   }
   if (!live) return;
+  const battles=new SharedSnowStreams<MatchRef,SnowReplicaBattle|null>(ref=>JSON.stringify([ref.editionId,ref.matchId]),ref=>{
+    const encoder=new BattleStreamEncoder();
+    return {initial:()=>live.read(ref),subscribe:changed=>live.subscribe(ref,changed),encode:next=>encoder.read(next),
+      snapshot:(battle,revision)=>({kind:"snapshot",revision,battle})};
+  });
   app.get<{Params: MatchRef}>("/api/snow-tournament/:editionId/matches/:matchId/stream", { exposeHeadRoute: false }, async (request, reply) => {
     const token = readHumanSessionToken(request.headers.cookie);
     if (!token) return reply.code(401).send({ error:{code:"authentication_required"} });
     try {
       await options.registrationAuth.getCurrentSession(token);
-      if (!options.service.readPublic(request.params.editionId).edition?.matches.some(m => m.id === request.params.matchId)) {
+      const {editionId,matchId}=request.params;
+      const exists=options.service.hasMatch?.(editionId,matchId)??options.service.readPublic(editionId).edition?.matches.some(m=>m.id===matchId);
+      if (!exists) {
         return reply.code(404).send({ error:{code:"match_not_found"} });
       }
     } catch (error) {
@@ -150,12 +190,7 @@ export function registerSnowTournamentRoutes(app: FastifyInstance, options: {
     }
     if (reply.raw.destroyed) return reply;
     reply.hijack();
-    const encoder=new BattleStreamEncoder();
-    let readLatest=()=>live.read(request.params);
-    stream(reply.raw,token,listener=>live.subscribe(request.params,read=>{readLatest=read;listener();}),()=>{
-      const frame=encoder.read(readLatest());
-      return frame?JSON.stringify(frame):null;
-    });
+    sharedStream(reply.raw,token,listener=>battles.connect(request.params,listener));
     return reply;
   });
 }

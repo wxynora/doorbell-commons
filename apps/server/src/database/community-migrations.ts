@@ -20,7 +20,7 @@ import { tournamentEngine } from "../together/tournament/engine-adapter.js";
 import { validateSnowMatchRuntime } from "../together/tournament/match-host.js";
 import { readRoundRecovery } from "../together/tournament/relational-match-view.js";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 64;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 65;
 const DAILY_POLL_SCHEMA_SQL = `
   CREATE TABLE lingye_daily_polls (
     issue_date TEXT PRIMARY KEY,
@@ -3275,6 +3275,17 @@ CREATE TABLE lingye_daily_farm_question_citations (
       CREATE INDEX lingye_moments_promotion_expiry ON lingye_moments_promotion_index(ends_at, moment_id);
     `);
     database.pragma('user_version = 64');
+  })();
+
+  if (databaseSchemaVersion < 65) database.transaction(() => {
+    database.exec(`
+      CREATE INDEX lounge_wakes_pending_resident ON lounge_wakes(resident_id, expires_at)
+        WHERE json_extract(record_json, '$.status') = 'pending';
+      CREATE INDEX lounge_wakes_pending_invitation ON lounge_wakes(resident_id)
+        WHERE json_extract(record_json, '$.status') = 'pending'
+          AND json_extract(record_json, '$.reason') = 'game_invitation';
+    `);
+    database.pragma('user_version = 65');
   })();
 
 }

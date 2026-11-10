@@ -2380,9 +2380,17 @@ export class CommunityDatabase {
   }
 
   findActiveHumanCommunityByResidentId(residentId: string): HumanCommunityRecord | undefined {
-    return this.listActiveHumanCommunities().find(
-      (community) => community.resident.residentId === residentId,
-    );
+    const row = this.#database.prepare(
+      `SELECT a.account_id, a.qq_number, a.created_at, a.membership_status,
+              r.profile_id, r.resident_id, r.resident_name, h.home_id, h.home_name,
+              f.farm_doorplate, f.farm_human_key
+       FROM residents AS r
+       JOIN human_accounts AS a ON a.account_id = r.account_id
+       JOIN homes AS h ON h.resident_id = r.resident_id
+       JOIN farm_bindings AS f ON f.home_id = h.home_id
+       WHERE r.resident_id = ? AND a.membership_status = 'active' AND f.farm_human_key IS NOT NULL`,
+    ).get(residentId) as HumanCommunityRow | undefined;
+    return row ? mapCommunity(row) : undefined;
   }
 
   findHomeIdByResidentId(residentId: string): string | undefined {

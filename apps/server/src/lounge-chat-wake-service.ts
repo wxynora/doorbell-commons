@@ -3,10 +3,11 @@ import type { LoungeSnapshot } from "@doorbell/protocol";
 import type { LoungeService } from "./lounge-service.js";
 import type { LoungeChatSessionStore } from "./lounge-chat-session-store.js";
 import type { LoungeWakeStore } from "./lounge-wake-store.js";
-import { evaluateLoungeChatWake } from "./lounge-chat-wake-policy.js";
+import { evaluateLoungeChatWake, type LoungeChatWakeMessages } from "./lounge-chat-wake-policy.js";
 
 export interface LoungeChatWakeOptions {
   lounge: Pick<LoungeService, "readSnapshotForResident" | "subscribe" | "chooseArea" | "leave"> & {
+    readChatWakeFacts?: LoungeService["readChatWakeFacts"];
     readSnapshotsForResidents?: (
       residentIds: readonly string[],
     ) => Map<string, LoungeSnapshot>;
@@ -41,7 +42,7 @@ export class LoungeChatWakeService {
       for(const timer of this.timers.values())clearTimeout(timer);this.timers.clear();
       const sessions = this.options.sessions.list();
       let snapshots: Map<string, LoungeSnapshot> | undefined;
-      if (this.options.lounge.readSnapshotsForResidents) {
+      if (sessions.length && !this.options.lounge.readChatWakeFacts && this.options.lounge.readSnapshotsForResidents) {
         try {
           snapshots = this.options.lounge.readSnapshotsForResidents(
             sessions.map((session) => session.residentId),
@@ -72,28 +73,44 @@ export class LoungeChatWakeService {
       this.schedule(residentId, session.expiresAt);
       return;
     }
-    let currentSnapshot=snapshot ?? lounge.readSnapshotForResident(residentId);
-    if (!currentSnapshot.presence.some(person => person.resident_id === residentId)) {
-      lounge.chooseArea({ residentId, areaId: "conversation" });
-      currentSnapshot = lounge.readSnapshotForResident(residentId);
-    }
+    const facts = lounge.readChatWakeFacts
+      ? lounge.readChatWakeFacts(residentId, session.lastDeliveredSequence)
+      : this.readSnapshotWakeFacts(residentId, session.lastDeliveredSequence, snapshot);
     if (this.options.currentMode) session.mode = this.options.currentMode(residentId);
-    const messages=currentSnapshot.messages;
-    const unseen=messages.filter(message=>message.sequence>session.lastDeliveredSequence && message.resident_id!==residentId);
-    const owners=new Map(messages.map(message=>[message.message_id,message.resident_id]));
-    const latest=unseen.at(-1),last=messages.at(-1);
-    const result=evaluateLoungeChatWake({now,session,messages:{latestSequence:latest?.sequence??session.lastDeliveredSequence,lastMessageAt:last?Date.parse(last.created_at):null,hasDirectedMessage:unseen.some(message=>message.reply_to_message_id!==null&&owners.get(message.reply_to_message_id)===residentId)}});
-    if(result.due && latest) {
-      const recorded=sessions.recordWake(residentId,session.enteredAt,now,latest.sequence,()=>{
-        wakes.enqueue({wakeId:randomUUID(),residentId,reason:"lounge_chat",sourceKey:`chat:${session.enteredAt}:${latest.sequence}`,sessionEnteredAt:session.enteredAt,text:this.options.message,now,expiresAt:session.expiresAt});
+    const result=evaluateLoungeChatWake({now,session,messages:facts});
+    if(result.due) {
+      const sequence = facts.latestSequence;
+      const recorded=sessions.recordWake(residentId,session.enteredAt,now,sequence,()=>{
+        wakes.enqueue({wakeId:randomUUID(),residentId,reason:"lounge_chat",sourceKey:`chat:${session.enteredAt}:${sequence}`,sessionEnteredAt:session.enteredAt,text:this.options.message,now,expiresAt:session.expiresAt});
       });
       if(recorded)bell.notifyResident(residentId);
     }
     const next=result.due?session.expiresAt:Math.min(result.nextDueAt??session.expiresAt,session.expiresAt);
     this.schedule(residentId, next);
   }
+  private readSnapshotWakeFacts(residentId:string, after:number, snapshot?:LoungeSnapshot):LoungeChatWakeMessages {
+    const {lounge} = this.options;
+    let current = snapshot ?? lounge.readSnapshotForResident(residentId);
+    if (!current.presence.some(person => person.resident_id === residentId)) {
+      lounge.chooseArea({residentId, areaId:"conversation"});
+      current = lounge.readSnapshotForResident(residentId);
+    }
+    const messages = current.messages;
+    const unseen = messages.filter(message => message.sequence > after && message.resident_id !== residentId);
+    const owners = new Map(messages.map(message => [message.message_id, message.resident_id]));
+    const latest = unseen.at(-1), last = messages.at(-1);
+    return {latestSequence:latest?.sequence??after,lastMessageAt:last?Date.parse(last.created_at):null,
+      hasDirectedMessage:unseen.some(message=>message.reply_to_message_id!==null&&owners.get(message.reply_to_message_id)===residentId)};
+  }
   private schedule(residentId: string, at: number): void {
-    const timer=setTimeout(()=>{this.timers.delete(residentId);this.reconcile();},Math.max(0,at-this.now()));
+    const timer=setTimeout(()=>{
+      this.timers.delete(residentId);
+      if (this.closed) return;
+      this.running = true;
+      try { this.reconcileSession(residentId); }
+      catch (error) { this.options.onError(error); }
+      finally { this.running = false; }
+    },Math.max(0,at-this.now()));
     timer.unref?.();this.timers.set(residentId,timer);
   }
 }

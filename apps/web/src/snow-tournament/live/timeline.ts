@@ -4,6 +4,27 @@ export type PixelUnit = SnowPixelBattle["units"][number];
 export type AnimatedUnit = { unit: PixelUnit; position: number; walkFrame: 0 | 1 | 2; moving: boolean };
 type Motion = { position: number; at: number; speed: number; stopAt: number | null };
 
+/** Draw on demand; keep one frame queued only while the scene needs animation. */
+export function createSnowFrameLoop(
+  draw:(at:number)=>boolean,
+  request:(callback:FrameRequestCallback)=>number = callback=>requestAnimationFrame(callback),
+  cancel:(id:number)=>void = id=>cancelAnimationFrame(id),
+) {
+  let frame:number|null=null,closed=false;
+  const invalidate=()=>{
+    if(closed||frame!==null)return;
+    frame=request(at=>{
+      frame=null;
+      if(!closed&&draw(at))invalidate();
+    });
+  };
+  return {invalidate,close(){
+    closed=true;
+    if(frame!==null)cancel(frame);
+    frame=null;
+  }};
+}
+
 /** Local visual clock: move at the real speed between state changes; never settle combat here. */
 export class SnowPixelTimeline {
   private battle: SnowPixelBattle | null = null;

@@ -73,7 +73,6 @@ import type {
 import type { NeighborhoodMessageActionExecutor } from "../scenes/neighborhood/neighborhood-scene";
 import { BackIcon, RefreshIcon } from "./chrome";
 import { FarmFieldContent } from "./farm-field-content";
-import { useRanchReturnRefresh } from "./use-ranch-return-refresh";
 import { useFarmVisibility } from "./use-farm-visibility";
 import { hasCurrentKitchenShelf, mergeKitchenPurchaseResource } from "./kitchen-shop-state";
 import {
@@ -108,7 +107,6 @@ interface LiveFarmPageProps extends FarmPageProps {
 
 export function LiveFarmPage({ active = true, actionListLauncher, onBack, previewData }: LiveFarmPageProps) {
   const visible = useFarmVisibility(active);
-  const wasVisibleRef = useRef(visible);
   const [state, setState] = useState<FarmPageState>(
     previewData ? { stage: "ready", data: previewData } : { stage: "loading" },
   );
@@ -319,10 +317,6 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
   const saveDecorationLayout=useCallback((layout:FarmDecorationLayout,saveSlot?:FarmLayoutSlot,name?:string)=>submitDecorationLayout({layout,...(saveSlot?{save_slot:saveSlot,...(name!==undefined?{name}:{})}:{})}),[submitDecorationLayout]);
   const loadDecorationLayout=useCallback((slot:FarmLayoutSlot)=>submitDecorationLayout({load_slot:slot}),[submitDecorationLayout]);
   const renameDecorationLayout=useCallback((slot:FarmLayoutSlot,name:string)=>submitDecorationLayout({rename_slot:slot,name}),[submitDecorationLayout]);
-  useRanchReturnRefresh(
-    !previewData && resources.ranch.stage === "ready" ? resources.ranch.data : null,
-    refreshRanchReturn,
-  );
 
   const refreshField = useCallback(
     async ({ showLoading = false }: { showLoading?: boolean } = {}) => {
@@ -352,14 +346,12 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
     [previewData],
   );
 
-  const refreshRequestedResources = useCallback((background = false) => {
+  const refreshRequestedResources = useCallback(() => {
     const requestedResources = [...requestedResourcesRef.current];
     if (requestedResources.includes("farmCatalog")) {
       setSettingsInitializationKey((current) => current + 1);
     }
-    for (const resource of requestedResources) {
-      requireResource(resource, true, !background, background);
-    }
+    for (const resource of requestedResources) requireResource(resource, true);
   }, [requireResource]);
 
   const refreshResourceInBackground = useCallback(
@@ -379,13 +371,10 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
     refreshResourceInBackground("farmDecorations");
   }, [refreshField, refreshResourceInBackground]);
 
-  useEffect(() => {
-    const resumed = visible && !wasVisibleRef.current;
-    wasVisibleRef.current = visible;
-    if (!resumed || previewData) return;
-    void refreshField();
-    refreshRequestedResources(true);
-  }, [previewData, refreshField, refreshRequestedResources, visible]);
+  const refreshVisibleScene = useCallback((field:boolean, targets: readonly (keyof FarmReadResources)[]) => {
+    if (field) void refreshField();
+    for (const resource of targets) requireResource(resource,true,false,true);
+  },[refreshField,requireResource]);
 
   const openCurrentFarmShop = useCallback(
     async (retry = false) => {
@@ -1283,9 +1272,10 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
             onSmeltingAction={previewData ? undefined : submitSmeltingAction}
             onReloadAfterHarvestError={reload}
             onReloadAfterLandUpgradeError={reload}
-            onReloadRanch={previewData ? undefined : () => requireResource("ranch", true)}
+            onReloadRanch={previewData ? undefined : refreshRanchReturn}
             onRequireResource={requestVisibleResource}
             onRefreshField={refreshFieldScene}
+            onRefreshVisible={refreshVisibleScene}
             onRetryHarvestAssist={() => {
               if (harvestAction.stage === "error" && harvestAction.attempt) {
                 void submitHarvestAssist(harvestAction.attempt);

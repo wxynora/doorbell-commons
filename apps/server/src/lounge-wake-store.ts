@@ -4,6 +4,8 @@ import type { BellWakeRecord } from "./community-database.js";
 
 export type LoungeWakeReason = "lounge_chat" | "game_invitation" | "game_turn" | "game_reaction";
 interface Row { wake_id:string; resident_id:string; source_key:string; record_json:string; expires_at:number|null; }
+const pendingStatus = "json_extract(record_json, '$.status') = 'pending'";
+const pendingInvitation = `${pendingStatus} AND json_extract(record_json, '$.reason') = 'game_invitation'`;
 export class LoungeWakeStore {
   constructor(private readonly db:Database.Database) {}
   enqueue(input:{wakeId:string;residentId:string;reason:LoungeWakeReason;sourceKey:string;text:string;now:number;expiresAt?:number;sessionEnteredAt?:number;gameContext?:GameContextCursor & {roomId:string}}):BellWakeRecord {
@@ -35,7 +37,13 @@ export class LoungeWakeStore {
     return row?JSON.parse(row.record_json) as BellWakeRecord:undefined;
   }
   pending(residentId:string):BellWakeRecord[] {
-    return (this.db.prepare("SELECT record_json FROM lounge_wakes WHERE resident_id=? ORDER BY rowid").all(residentId) as Pick<Row,"record_json">[]).map(row=>JSON.parse(row.record_json) as BellWakeRecord).filter(wake=>wake.status==="pending");
+    return (this.db.prepare(`SELECT record_json FROM lounge_wakes WHERE resident_id=? AND ${pendingStatus} ORDER BY rowid`).all(residentId) as Pick<Row,"record_json">[]).map(row=>JSON.parse(row.record_json) as BellWakeRecord);
+  }
+  pendingInvitations(residentId?: string): BellWakeRecord[] {
+    const residentFilter = residentId === undefined ? "" : " AND resident_id=?";
+    return (this.db.prepare(`SELECT record_json FROM lounge_wakes WHERE ${pendingInvitation}${residentFilter} ORDER BY rowid`)
+      .all(...(residentId === undefined ? [] : [residentId])) as Pick<Row,"record_json">[])
+      .map(row => JSON.parse(row.record_json) as BellWakeRecord);
   }
   finish(residentId:string,wakeId:string,status:"acked"|"blocked"|"cancelled",now:number,blockReason:string|null=null,errorCode:string|null=null):"changed"|"duplicate"|"conflict"|"missing" {
     return this.db.transaction(()=>{
@@ -56,7 +64,7 @@ export class LoungeWakeStore {
     return this.pending(residentId).filter(wake=>wake.reason==="lounge_chat" && (enteredAt===null || wake.payload?.sessionEnteredAt!==enteredAt)).filter(wake=>this.finish(residentId,wake.wakeId,"cancelled",now)==="changed").map(wake=>wake.wakeId);
   }
   expire(residentId:string,now:number):string[] {
-    const rows=this.db.prepare("SELECT wake_id FROM lounge_wakes WHERE resident_id=? AND expires_at IS NOT NULL AND expires_at<=?").all(residentId,now) as Pick<Row,"wake_id">[];
+    const rows=this.db.prepare(`SELECT wake_id FROM lounge_wakes WHERE resident_id=? AND expires_at<=? AND ${pendingStatus}`).all(residentId,now) as Pick<Row,"wake_id">[];
     return rows.filter(row=>this.finish(residentId,row.wake_id,"cancelled",now)==="changed").map(row=>row.wake_id);
   }
 }
