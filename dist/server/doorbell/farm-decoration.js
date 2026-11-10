@@ -1,7 +1,7 @@
 import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
 import { jsonOut, readJsonBody } from "../http.js";
-import { projectHumanFarmDecorations, handleHumanFarmDecorationSave } from "../farm-decoration-action.js";
+import { projectHumanFarmDecorations, projectHumanFarmScene, handleHumanFarmDecorationSave } from "../farm-decoration-action.js";
 import { humanFieldError, isPlainObject, requireDoorbellHumanFieldService, validateFarmBinding } from "./contract.js";
 
 const LAYOUT_SAVE_MAX_BODY_BYTES = 256 * 1024;
@@ -10,9 +10,10 @@ export async function handleDoorbellHumanFarmDecorations(req, res, method, actio
   if (!requireDoorbellHumanFieldService(req, res, method)) return;
   try {
     const body = await readJsonBody(req, action === "save" ? LAYOUT_SAVE_MAX_BODY_BYTES : MAX_BODY_BYTES);
-    if (!isPlainObject(body) || (action === "read" && (Object.keys(body).length !== 2 || !Object.hasOwn(body, "farm_human_key") || !Object.hasOwn(body, "expected_farm_doorplate")))) return humanFieldError(res, 400, "invalid_request", "invalid_request");
+    if (!isPlainObject(body) || (action !== "save" && (Object.keys(body).length !== 2 || !Object.hasOwn(body, "farm_human_key") || !Object.hasOwn(body, "expected_farm_doorplate")))) return humanFieldError(res, 400, "invalid_request", "invalid_request");
     const binding = validateFarmBinding(body);
     if (binding.error) return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
+    if (action === "scene") return jsonOut(res, 200, projectHumanFarmScene(binding.farm));
     if (action === "read") return jsonOut(res, 200, projectHumanFarmDecorations(binding.farm));
     const out = handleHumanFarmDecorationSave(binding.farm, body);
     return jsonOut(res, out.status, out.json);

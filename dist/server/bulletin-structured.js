@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { projectHumanField } from "./human-structured.js";
+import { projectFarmGrowth } from "../engine.js";
 import { projectHealthBulletinNotices } from "./bulletin-health-notices.js";
 import { taskView } from "../tasks.js";
 
@@ -152,25 +152,16 @@ function projectMaturePlots(farm, now) {
   }
 
   try {
-    // The Human field projector is the existing pure authority for lazy crop
-    // growth.  It advances only a clone internally, so this read does not
-    // mutate the persisted farm or duplicate the growth rule here.
-    const field = projectHumanField(farm, now);
-    const plots = field?.data?.plots;
-    if (!Array.isArray(plots)) {
-      return {
-        available: false,
-        unavailable: unavailable("invalid_projection", "地块纯投影没有可供叮咚播报读取的成熟状态。"),
-      };
-    }
+    const { plots } = projectFarmGrowth(farm, now);
     const entries = plots
-      .filter((plot) => isRecord(plot) && plot.state === "ripe" && Number.isSafeInteger(plot.plot_id) && plot.plot_id > 0)
-      .map((plot) => ({
-        plot_id: plot.plot_id,
-        seed_type: plot.seed_type === "common" || plot.seed_type === "fantasy" || plot.seed_type === "limited"
-          ? plot.seed_type
+      .filter(({id, crop}) => Number.isSafeInteger(id) && id > 0 && crop &&
+        (crop.ripe || crop.progress >= crop.growTicks))
+      .map(({id, crop}) => ({
+        plot_id: id,
+        seed_type: crop.seedType === "common" || crop.seedType === "fantasy" || crop.seedType === "limited"
+          ? crop.seedType
           : null,
-        watered: nonNegativeInt(plot.watered, 0),
+        watered: nonNegativeInt(crop.waterCount, 0),
       }))
       .sort((left, right) => left.plot_id - right.plot_id);
     for (const entry of entries) {

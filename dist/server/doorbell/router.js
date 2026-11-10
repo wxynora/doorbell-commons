@@ -356,7 +356,7 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             await handleDoorbellHumanActionListAuthorityRead(req, res, method);
             return true;
         }
-        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "farm-decorations" && ["read", "save"].includes(parts[4]) && parts.length === 5) {
+        if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "farm-decorations" && ["read", "scene", "save"].includes(parts[4]) && parts.length === 5) {
             await handleDoorbellHumanFarmDecorations(req, res, method, parts[4]);
             return true;
         }

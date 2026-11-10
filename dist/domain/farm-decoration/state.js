@@ -41,21 +41,23 @@ function decorationCatalogFor(owned, now, saleStartAt) {
       };
     });
 }
-export function decorationRevision(farm, now = Date.now(), saleStartAt) {
-  const state = decorationState(farm,now);
-  const catalog = decorationCatalogFor(state.owned, now, saleStartAt);
+export function decorationRevision(farm, now = Date.now(), saleStartAt, state = decorationState(farm, now), catalog = decorationCatalogFor(state.owned, now, saleStartAt)) {
   return `farm-decoration-v1:${createHash("sha256").update(JSON.stringify({ coins: farm.coins, state, plots: (farm.plots ?? []).map(plot => plot.id), catalog, saved_layouts:farm.farmDecorationLayouts })).digest("hex")}`;
 }
-export function decorationResource(farm, now = Date.now(), saleStartAt) {
-  const state = decorationState(farm,now);
+export function decorationResource(farm, now = Date.now(), saleStartAt, state = decorationState(farm, now)) {
+  const placedCounts = new Map();
+  for (const { item_id } of state.layout.decorations) {
+    placedCounts.set(item_id, (placedCounts.get(item_id) ?? 0) + 1);
+  }
+  const lease = championLease(farm);
   if (!Number.isSafeInteger(farm.coins) || farm.coins < 0) throw new Error("Invalid farm coin balance");
   return {
     catalog: decorationCatalogFor(state.owned, now, saleStartAt),
     house: houseState(state.owned, state.layout.house),
     inventory: FARM_DECORATION_CATALOG.filter(item => item.layer !== "house").map(item => {
       const owned_quantity = state.owned[item.item_id] ?? 0;
-      const placed_quantity = state.layout.decorations.filter(instance => instance.item_id === item.item_id).length;
-      return { item_id: item.item_id, owned_quantity, placed_quantity, available_quantity: item.purchase_mode === "unlock" ? null : owned_quantity - placed_quantity, unlocked: owned_quantity > 0, ...(item.item_id===CHAMPION_FURNITURE_ID && championLease(farm) ? {expires_at:new Date(championLease(farm).expires_at).toISOString()} : {}) };
+      const placed_quantity = placedCounts.get(item.item_id) ?? 0;
+      return { item_id: item.item_id, owned_quantity, placed_quantity, available_quantity: item.purchase_mode === "unlock" ? null : owned_quantity - placed_quantity, unlocked: owned_quantity > 0, ...(item.item_id===CHAMPION_FURNITURE_ID && lease ? {expires_at:new Date(lease.expires_at).toISOString()} : {}) };
     }),
     layout: state.layout, coins: farm.coins, grid: decorationGrid(farm, state.layout.house, state.layout.field),
   };

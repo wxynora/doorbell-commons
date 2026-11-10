@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
-import { playerFarms } from "../../store.js";
+import { NPC_ID } from "../../config.js";
+import { playerFarms, readFarm } from "../../store.js";
 import { jsonOut } from "../http.js";
 
 export const DOORBELL_SERVICE_TOKEN = process.env.AIFARM_DOORBELL_SERVICE_TOKEN ?? "";
@@ -67,6 +68,8 @@ export function validateFarmBinding(body) {
         return { error: { status: 400, code: "invalid_request", message: "farm_human_key is required" } };
     if (!FARM_DOORPLATE_RE.test(expectedDoorplate))
         return { error: { status: 400, code: "invalid_request", message: "expected_farm_doorplate is invalid" } };
+    const bound = readFarm(expectedDoorplate);
+    if (bound && bound.id !== NPC_ID && bound.humanKey === humanKey) return { farm: bound };
     const farm = farmByHumanKey(humanKey);
     if (!farm)
         return { error: { status: 404, code: "farm_credential_not_found", message: "The farm human credential is invalid" } };

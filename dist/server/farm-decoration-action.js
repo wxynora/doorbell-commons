@@ -1,6 +1,6 @@
 import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
-import { replaceFarm, getNatureWorld } from "../store.js";
+import { replaceFarm, readNatureWorld } from "../store.js";
 import { natureSnapshot } from "../nature.js";
 import { floodVisuals } from "../domain/farm-decoration/flood-visuals.js";
 import { decorationResource, decorationRevision, decorationState } from "../domain/farm-decoration/state.js";
@@ -8,21 +8,50 @@ import { validateDecorationLayout } from "../domain/farm-decoration/layout.js";
 import { createMinimalHumanActionReceipt, replayMinimalHumanActionReceipt } from "../minimal-action-receipt.js";
 import { isLayoutSlot, savedLayoutSlots, layoutSlotSummaries, saveLayoutSlot, renameLayoutSlot } from "../domain/farm-decoration/layout-slots.js";
 
-export function projectHumanFarmDecorations(farm, now = Date.now()) {
-  const world = getNatureWorld();
+import { decorationById } from "../domain/farm-decoration/catalog.js";
+import { houseState } from "../domain/farm-decoration/house.js";
+import { championLease, CHAMPION_FURNITURE_ID } from "../domain/farm-decoration/champion-lease.js";
+
+function decorationEnvironment(farm, now) {
+  const world = readNatureWorld();
   const nature = natureSnapshot(world, now);
   const hour = ((now / 3600000 + 8) % 24 + 24) % 24;
   const night = hour < 5 || hour >= 19 ? 1 : hour < 7 ? (7 - hour) / 2 : hour < 17 ? 0 : (hour - 17) / 2;
   return {
-    data: { ...decorationResource(farm,now), saved_layouts: layoutSlotSummaries(farm,now), environment: {
       status: nature.status,
       season: nature.season ? { id: nature.season.id, name: nature.season.name } : null,
       weather: nature.weather ? { condition: nature.weather.condition } : null,
       night,
       disaster: nature.currentEvent ? { type: nature.currentEvent.type, phase: nature.currentEvent.phase } : null,
       flood: floodVisuals(world, farm),
-    } },
-    revision: decorationRevision(farm,now), server_time: new Date(now).toISOString(),
+  };
+}
+
+export function projectHumanFarmScene(farm, now = Date.now()) {
+  const state = decorationState(farm, now);
+  const placed = new Set(state.layout.decorations.map(item => item.item_id));
+  const lease = placed.has(CHAMPION_FURNITURE_ID) ? championLease(farm) : null;
+  return {
+    data: {
+      layout: state.layout,
+      house: houseState(state.owned, state.layout.house),
+      catalog: [...placed].map(id => decorationById.get(id)),
+      inventory: lease ? [{
+        item_id: CHAMPION_FURNITURE_ID, owned_quantity: 1, placed_quantity: 1,
+        available_quantity: 0, unlocked: true, expires_at: new Date(lease.expires_at).toISOString(),
+      }] : [],
+      environment: decorationEnvironment(farm, now),
+    },
+  };
+}
+
+export function projectHumanFarmDecorations(farm, now = Date.now()) {
+  const state = decorationState(farm, now);
+  const resource = decorationResource(farm, now, undefined, state);
+  return {
+    data: { ...resource, saved_layouts: layoutSlotSummaries(farm, now), environment: decorationEnvironment(farm, now) },
+    revision: decorationRevision(farm, now, undefined, state, resource.catalog),
+    server_time: new Date(now).toISOString(),
   };
 }
 function canonical(value) {
