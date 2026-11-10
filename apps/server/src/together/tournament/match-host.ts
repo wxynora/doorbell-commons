@@ -72,6 +72,7 @@ type Runtime = {
   attackers: [string, string, string] | null;
   lineups: Partial<Record<"0" | "1", Lineup>>;
   chat?: Partial<Record<"0" | "1", Chat>>;
+  pregameWindowAt?:number;
   suspendedUntil?:number;
   rounds: (Terminal | null)[]; active: ActiveRound | null;
 };
@@ -80,6 +81,8 @@ type RoundRecovery={attempt:0|1;input:Parameters<SnowMatchEngine["create"]>[0];
   battleId:string;voided:{battleId:string;at:number;runtime:string|null}[]};
 const second = 1000;
 const minute = 60 * second;
+const lineupConfirmationLead = 2 * minute;
+const discussionLead = 5 * minute + lineupConfirmationLead;
 const roles = ["attack", "defend"] as const;
 function readyNpcSeats(teams:Team[],members:Record<Role,string>) {
   const npc=roles.map(side=>members[side]).filter(id=>teams.some(team=>team.members.some(member=>member.id===id&&member.npc)));
@@ -281,8 +284,8 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
         this.chooseDirections(saved, saved.choiceTeamId);
       }
       if (input.now < saved.matchAt) {
-        const next = [saved.matchAt - 8 * minute, saved.matchAt - 2 * minute, saved.matchAt];
-        if (input.now >= saved.matchAt - 8 * minute && input.now < saved.matchAt - 2 * minute) {
+        const next = [saved.matchAt - discussionLead, saved.matchAt - lineupConfirmationLead, saved.matchAt];
+        if (input.now >= saved.matchAt - discussionLead && input.now < saved.matchAt - lineupConfirmationLead) {
           for (const [index,team] of teams.entries()) {
             const chat = this.discussion(saved,team,index === 0 ? "0" : "1",input.now);
             if (chat) next.push(chat.until);
@@ -348,7 +351,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
   }
 
   private discussion(state:Runtime,team:Team,key:"0"|"1",now:number) {
-    const starts=state.matchAt-8*minute, ends=state.matchAt-2*minute;
+    const starts=state.matchAt-discussionLead, ends=state.matchAt-lineupConfirmationLead;
     if (now<starts || now>=ends) return null;
     const eligible=team.members.filter(m=>!m.npc&&!team.ineligibleMemberIds?.includes(m.id)).map(m=>m.id);
     if (!eligible.length) return null;
@@ -454,8 +457,8 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
   lineup(ref: MatchRef, actor: string, entries: Line[], confirmed: boolean, now: number) {
     return this.mutate(ref, state => {
       const team = this.match(ref).teams.find(team => team.captainId === actor);
-      if (!team || !state.attackers || now < state.matchAt - 8 * minute || now >= state.matchAt ||
-          (confirmed && now < state.matchAt - 2 * minute)) throw new Error("snow_lineup_closed");
+      if (!team || !state.attackers || now < state.matchAt - discussionLead || now >= state.matchAt ||
+          (confirmed && now < state.matchAt - lineupConfirmationLead)) throw new Error("snow_lineup_closed");
       const key = team.id === state.teamIds[0] ? "0" : "1";
       if (state.lineups[key]?.confirmed) throw new Error("snow_lineup_locked");
       if (entries.length !== 3 || new Set(entries.map(e => e.member)).size !== 3 || entries.some(({member,skills}, i) =>
@@ -610,13 +613,14 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       chatReadThrough:state?.chat?.[slot]?.readThrough?.[actor]??0,
       canChat:!!chat && chat.order[chat.turn%chat.order.length]===actor,
       chatTurn:chat?.turn??null,
+      pregameWindowAt:state?.pregameWindowAt,
       canChooseSide:team.captainId===actor && match.stage!=="round_robin" && match.status==="scheduled" &&
         !state?.attackers && now<Date.parse(match.scheduledAt!)-10*minute &&
         (edition.standings.length?edition.standings.map(row=>row.teamId):[...teams].sort((a,b)=>(a.drawOrder??Infinity)-(b.drawOrder??Infinity)).map(t=>t.id))
           .find(id=>teams.some(t=>t.id===id))===team.id,
-      canLineup:!!current && team.captainId===actor && !ownLineup?.confirmed && now>=state.matchAt-8*minute && now<state.matchAt,
-      canConfirmLineup:!!current && team.captainId===actor && !!ownLineup && !ownLineup.confirmed && now>=state.matchAt-2*minute && now<state.matchAt,
-      lineupPhase:state && now<state.matchAt ? now>=state.matchAt-2*minute?"confirmation":"discussion":"locked",
+      canLineup:!!current && team.captainId===actor && !ownLineup?.confirmed && now>=state.matchAt-discussionLead && now<state.matchAt,
+      canConfirmLineup:!!current && team.captainId===actor && !!ownLineup && !ownLineup.confirmed && now>=state.matchAt-lineupConfirmationLead && now<state.matchAt,
+      lineupPhase:state && now<state.matchAt ? now>=state.matchAt-lineupConfirmationLead?"confirmation":"discussion":"locked",
       canReady:!!current && isPlayer && !!round && !round.ready.includes(actor) && round.nextTickAt===null && now<round.prepareUntil,
       canCommand:!!current && isPlayer && !!round?.battle.runtime?.started && round.battle.status==="running",
       role:side,battleId:side && round?round.battle.battleId:null,gameIndex:side && round?round.index:null,
@@ -631,7 +635,8 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
     if (!["round_robin","knockout"].includes(edition.phase) || !["scheduled","in_progress"].includes(match.status)) return [];
     const result:SnowPlayerSignal[]=[];
     const put=(residentId:string,kind:SnowPlayerSignal["kind"],identity:unknown)=>{
-      const facts=this.playerState(ref,residentId,now);
+      const {pregameWindowAt,...facts}=this.playerState(ref,residentId,now);
+      if (pregameWindowAt!==undefined && (kind==="chat" || kind==="lineup")) identity=[pregameWindowAt,identity];
       result.push({key:JSON.stringify([ref.editionId,ref.matchId,residentId,kind,identity]),...ref,residentId,kind,facts});
     };
     for (const team of teams) {
@@ -639,8 +644,8 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       const actor=chat?.order[chat.turn%chat.order.length];
       if (actor && !team.ineligibleMemberIds?.includes(actor)) put(actor,"chat",chat!.turn);
       if (team.captainId && !team.ineligibleMemberIds?.includes(team.captainId) &&
-          now>=state.matchAt-8*minute && now<state.matchAt && !state.lineups[slot]?.confirmed) {
-        put(team.captainId,"lineup",now>=state.matchAt-2*minute?"confirm":"draft");
+          now>=state.matchAt-discussionLead && now<state.matchAt && !state.lineups[slot]?.confirmed) {
+        put(team.captainId,"lineup",now>=state.matchAt-lineupConfirmationLead?"confirm":"draft");
       }
     }
     const round=state.active;

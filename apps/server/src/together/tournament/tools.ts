@@ -131,11 +131,12 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
       if (!match.teamAId || !match.teamBId || ![match.teamAId,match.teamBId].includes(own.id) || !["scheduled","in_progress"].includes(match.status)) continue;
       const view=this.options.host.playerState({editionId:state.id,matchId:match.id},actor,now);
       const base={matchId:match.id};
+      const pregame=view.pregameWindowAt===undefined?base:{...base,context:String(view.pregameWindowAt)};
       if(this.now()>=Date.parse(match.scheduledAt!)-600_000)put({kind:"channel",...base});
       if (view.canChooseSide) for (const side of ["attack","defend"] as const) put({kind:"side",...base,side});
-      if (view.canChat) {put({kind:"chat",...base,serial:view.chatTurn!,requires:["text"]});put({kind:"pass",...base,serial:view.chatTurn!});}
-      if (view.canLineup) put({kind:"lineup",...base,serial:view.lineupRevision,requires:["members"]});
-      if (view.canConfirmLineup) put({kind:"confirm_lineup",...base,serial:view.lineupRevision});
+      if (view.canChat) {put({kind:"chat",...pregame,serial:view.chatTurn!,requires:["text"]});put({kind:"pass",...pregame,serial:view.chatTurn!});}
+      if (view.canLineup) put({kind:"lineup",...pregame,serial:view.lineupRevision,requires:["members"]});
+      if (view.canConfirmLineup) put({kind:"confirm_lineup",...pregame,serial:view.lineupRevision});
       if (view.canReady && view.battleId) put({kind:"ready",...base,battleId:view.battleId});
       if (view.canCommand && view.battleId) {
         put({kind:"command",...base,battleId:view.battleId,serial:view.commandRevision!,requires:["commands","waitTicks"]});
@@ -181,7 +182,7 @@ export class SnowTournamentTools implements SnowTournamentToolPort {
     const own=state.teams.find(t=>t.members.some(m=>m.id===actor) && t.status!=="withdrawn");
     const matches=this.options.host && own ? state.matches.filter(m=>["scheduled","in_progress"].includes(m.status) && m.teamAId && m.teamBId && [m.teamAId,m.teamBId].includes(own.id))
       .map(m=>{
-        const {messages:_messages,chatTurn:_chat,lineupRevision:_lineup,commandRevision:_command,...facts}=this.options.host!.playerState({editionId:state.id,matchId:m.id},actor,this.now());
+        const {messages:_messages,chatTurn:_chat,lineupRevision:_lineup,commandRevision:_command,pregameWindowAt:_window,...facts}=this.options.host!.playerState({editionId:state.id,matchId:m.id},actor,this.now());
         const match=publicState.matches.find(entry=>entry.id===m.id)!;
         return {...facts,stage:match.stage,round:match.round};
       }).filter(facts=>facts.canChooseSide || this.now()>=Date.parse(facts.scheduledAt!)-600_000).sort((a,b)=>Date.parse(a.scheduledAt!)-Date.parse(b.scheduledAt!)).slice(0,1):[];
