@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 export {writeFarmStatePaths,readFarmStateRevision,findFarmIdByHumanKey,appendFarmStateItems} from "./farm-state-writer.js";
 
 // Each row is one entity's scalar fields, a collection, or a scalar value.
@@ -19,6 +20,44 @@ function memberIdentity(value) {
     return "value:" + createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
 }
 
+const objectFields = value => Object.fromEntries(Object.keys(value).sort()
+    .filter(key => scalar(value[key])).map(key => [key, value[key]]));
+const plainObject = value => value != null && typeof value === "object" &&
+    [Object.prototype, null].includes(Object.getPrototypeOf(value));
+
+// Compare first; only changed branches need the durable record encoding.
+export function diffFarmStateRecords(before, after) {
+    const changes = [];
+    const branch = (value, path, parent, member) => new Map(
+        [...encodeStateRecords(value)].map(([relative, row]) => {
+            const key = path + relative;
+            return [key, {...row, path:key, parent:relative ? path + row.parent : parent,
+                member:relative ? row.member : member}];
+        }),
+    );
+    const visit = (left, right, path, parent, member) => {
+        if (isDeepStrictEqual(left, right)) return;
+        if (plainObject(left) && plainObject(right)) {
+            const row = value => ({path,parent,member,previous:null,kind:"object",fieldsJson:JSON.stringify(objectFields(value))});
+            const a = row(left), b = row(right);
+            if (a.fieldsJson !== b.fieldsJson) changes.push({path,before:a,after:b});
+            for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
+                const a = own(left,key) && !scalar(left[key]);
+                const b = own(right,key) && !scalar(right[key]);
+                if (b && right[key] === undefined && (!a || left[key] !== undefined)) throw new TypeError("farm_state_not_json");
+                if (a || b) visit(a ? left[key] : undefined,b ? right[key] : undefined,childPath(path,key),path,key);
+            }
+            return;
+        }
+        for (const change of stateRecordChanges(
+            left === undefined ? new Map() : branch(left,path,parent,member),
+            right === undefined ? new Map() : branch(right,path,parent,member),
+        )) changes.push(change);
+    };
+    visit(before, after, "", null, null);
+    return changes;
+}
+
 export function encodeStateRecords(value) {
     const rows = new Map(), ancestors = new Set();
     const visit = (value, path, parent, member, previous) => {
@@ -29,8 +68,7 @@ export function encodeStateRecords(value) {
                 (!Array.isArray(value) && ![Object.prototype, null].includes(Object.getPrototypeOf(value))))
                 throw new TypeError("farm_state_not_json");
             kind = Array.isArray(value) ? "array" : "object";
-            fields = kind === "array" ? null : Object.fromEntries(Object.keys(value).sort()
-                .filter(key => scalar(value[key])).map(key => [key, value[key]]));
+            fields = kind === "array" ? null : objectFields(value);
         }
         rows.set(path, { path, parent, member, previous, kind, fieldsJson: JSON.stringify(fields) });
         if (kind === "value") return;

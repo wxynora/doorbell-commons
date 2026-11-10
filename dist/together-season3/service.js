@@ -1,7 +1,11 @@
+import { isDeepStrictEqual } from "node:util";
 import {
   getPublicExpeditionWorld,
+  readPublicExpeditionWorld,
   getNatureWorld,
+  readNatureWorld,
   getFarm,
+  readFarm,
   playerFarms,
   replaceFarmsAndPublicExpeditionAtomic,
 } from "../store.js";
@@ -48,6 +52,20 @@ export function configureTogetherSeason3Authority({ getDatabase, getBackend }) {
   backendProvider = getBackend;
 }
 const clone = (value) => structuredClone(value);
+const contributionKey = (kind,sourceId) => `${kind}:\0${sourceId}`;
+// The ending settlement writes only reward bookkeeping, account fields,
+// seeds, titles and its two inboxes. All other branches stay read-only.
+function rewardDraft(farm) {
+  const draft = {...farm,seeds:{...farm.seeds},log:[...farm.log]};
+  if (farm.titles) draft.titles=[...farm.titles];
+  if (farm.inbox) draft.inbox=[...farm.inbox];
+  if (farm.ranch) {
+    draft.ranch={...farm.ranch};
+    if (farm.ranch.notices) draft.ranch.notices=[...farm.ranch.notices];
+  }
+  if (farm.publicExpeditionRewards) draft.publicExpeditionRewards=clone(farm.publicExpeditionRewards);
+  return draft;
+}
 const assertResult = (result) => {
   if (!result.ok) {
     const error = new Error(result.code);
@@ -93,9 +111,10 @@ function identityFor(farm, now) {
   };
 }
 
-function prepare(raw, nature, farms, now, isolateRewardFarms = false) {
+function prepare(raw, nature, farms, now) {
   let state = assertResult(advanceTogetherSeason3(raw, nature, now)).state;
   state.storyTitle = content.title;
+  const known = new Map(state.contributions.map(entry=>[contributionKey(entry.kind,entry.sourceId),entry]));
   for (const farm of farms) {
     for (const source of collectSeason3AuthorityReceipts({
       database: databaseProvider(),
@@ -103,11 +122,17 @@ function prepare(raw, nature, farms, now, isolateRewardFarms = false) {
       state,
       now,
     })) {
+      const key=contributionKey(source.kind,source.sourceId);
+      const prior=known.get(key);
+      if (prior?.farmId === source.farmId && prior.occurredAt === source.occurredAt) continue;
       const result = recordTogetherSeason3Source(state, { ...source, now }, nature);
       if (!result.ok) {
         if (result.code === "season3_ended") continue;
         assertResult(result);
-      } else state = result.state;
+      } else {
+        state = result.state;
+        known.set(key,result.contribution);
+      }
     }
   }
   appendSeason3Story(state, state.phase, now);
@@ -116,20 +141,22 @@ function prepare(raw, nature, farms, now, isolateRewardFarms = false) {
     state.endingTitle = content.ending.title;
     state.endingTitleId = content.ending.titleId;
     state.endingText = season3EndingText(state);
-    if (isolateRewardFarms) {
-      for (let index = 0; index < farms.length; index += 1) farms[index] = clone(farms[index]);
-    }
+    const contributors=new Set(state.contributions.map(entry=>entry.farmId));
+    for (let index = 0; index < farms.length; index += 1)
+      if (contributors.has(farms[index].id)) farms[index] = rewardDraft(farms[index]);
     settlePublicExpeditionRewards(state, farms, now);
   }
   return state;
 }
 
 function commit(state, farms, nextNatureWorld) {
+  const replacements = farms.filter((farm) => {
+    const current = readFarm(farm.id);
+    return farm !== current && !isDeepStrictEqual(farm,current);
+  }).map((farm) => ({ id: farm.id, farm }));
+  if (!replacements.length && nextNatureWorld === undefined && isDeepStrictEqual(state,readPublicExpeditionWorld())) return;
   return replaceFarmsAndPublicExpeditionAtomic({
-    replacements: farms.filter((farm) => {
-      const current = getFarm(farm.id);
-      return farm !== current && JSON.stringify(farm) !== JSON.stringify(current);
-    }).map((farm) => ({ id: farm.id, farm })),
+    replacements,
     nextPublicExpeditionWorld: state,
     ...(nextNatureWorld === undefined ? {} : { nextNatureWorld }),
   });
@@ -165,29 +192,30 @@ export function activateStoredTogetherSeason3({ enabled = false, now = Date.now(
     state.interviews = createInterviewState({ eventId: state.eventId });
   }
   appendSeason3Story(state, state.phase, now);
-  const farms = playerFarms().map(clone);
+  const farms = playerFarms();
   commit(state, farms, nature);
   return { ok: true, changed: result.changed, world: clone(state) };
 }
 
 export function readStoredTogetherSeason3(farm, now = Date.now()) {
-  const current = getFarm(farm?.id);
-  if (!current || !isTogetherSeason3(getPublicExpeditionWorld()))
+  const current = readFarm(farm?.id);
+  const raw = readPublicExpeditionWorld();
+  if (!current || !isTogetherSeason3(raw))
     throw new Error("season3_not_active");
-  const farms = playerFarms().map(clone);
-  const state = prepare(getPublicExpeditionWorld(), getNatureWorld(), farms, now);
+  const farms = playerFarms();
+  const state = prepare(raw,readNatureWorld(),farms,now);
   commit(state, farms);
   syncSources(state);
-  return { world: clone(state), farm: clone(getFarm(current.id)) };
+  return {world:state,farm:{id:current.id}};
 }
 
 // Status is a projection of existing tasks. It never claims an NPC, creates a
 // second career job, or adds a notification/read-state store.
 export function storedTogetherSeason3StatusText(farm, now = Date.now()) {
-  const raw = getPublicExpeditionWorld();
-  const actor = getFarm(farm?.id);
+  const raw = readPublicExpeditionWorld();
+  const actor = readFarm(farm?.id);
   if (!actor || !isTogetherSeason3(raw)) return "";
-  const state = assertResult(advanceTogetherSeason3(raw, getNatureWorld(), now)).state;
+  const state = assertResult(advanceTogetherSeason3(raw,readNatureWorld(),now)).state;
   return statusText(state, actor, now);
 }
 
@@ -218,11 +246,13 @@ function statusText(state, actor, now) {
 export function storedTogetherSeason3Notices(farm, now, { includeTasks = false } = {}) {
   const farms = playerFarms();
   const actorIndex = farms.findIndex((entry) => entry.id === farm.id);
-  if (actorIndex < 0 || !isTogetherSeason3(getPublicExpeditionWorld())) return "";
+  const raw = readPublicExpeditionWorld();
+  if (actorIndex < 0 || !isTogetherSeason3(raw)) return "";
   // Authority receipt collection reads other farms. Only ending rewards may
   // mutate them; isolate those farms before settlement and otherwise clone the viewer.
-  const state = prepare(getPublicExpeditionWorld(), getNatureWorld(), farms, now, true);
-  const actor = clone(farms[actorIndex]);
+  const state = prepare(raw, readNatureWorld(), farms, now);
+  const actor = {...farms[actorIndex]};
+  if (actor.publicExpeditionReads) actor.publicExpeditionReads=clone(actor.publicExpeditionReads);
   farms[actorIndex] = actor;
   const messages = takePublicAiNotices(state, actor, now, farms);
   if (includeTasks || messages.length) {
@@ -238,12 +268,13 @@ export function storedTogetherSeason3Notices(farm, now, { includeTasks = false }
 }
 
 export function runStoredTogetherSeason3(farm, input = {}, now = Date.now()) {
-  const current = getFarm(farm?.id);
-  if (!current || !isTogetherSeason3(getPublicExpeditionWorld()))
+  const current = readFarm(farm?.id);
+  const raw = readPublicExpeditionWorld();
+  if (!current || !isTogetherSeason3(raw))
     throw new Error("season3_not_active");
-  const nature = getNatureWorld();
-  let farms = playerFarms().map(clone);
-  let state = prepare(getPublicExpeditionWorld(), nature, farms, now);
+  const nature = readNatureWorld();
+  let farms = playerFarms();
+  let state = prepare(raw,nature,farms,now);
   let actor = farms.find((item) => item.id === current.id);
   if (!actor) throw new Error("season3_actor_unavailable");
   const identity = identityFor(actor, now);
@@ -253,7 +284,7 @@ export function runStoredTogetherSeason3(farm, input = {}, now = Date.now()) {
     syncSources(state);
     return {
       ok: true,
-      farm: clone(getFarm(actor.id)),
+      farm: clone(readFarm(actor.id)),
       text: withOwnReward(
         season3Text(state, actor, {
           actions,
@@ -390,14 +421,14 @@ export function runStoredTogetherSeason3(farm, input = {}, now = Date.now()) {
   if (action.kind === "question") {
     return {
       ok: true,
-      farm: clone(getFarm(actor.id)),
+      farm: clone(readFarm(actor.id)),
       text: [response, season3InterviewTaskText(nextActions, action.args.npcId)]
         .filter(Boolean).join("\n\n"),
     };
   }
   return {
     ok: true,
-    farm: clone(getFarm(actor.id)),
+    farm: clone(readFarm(actor.id)),
     text: withOwnReward(
       [response, actionScene, season3NextStepsText(state, { actions: nextActions, identity, farmId: actor.id })]
         .filter(Boolean).join("\n\n"),

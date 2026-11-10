@@ -117,7 +117,7 @@ export function appendNpcMotionReceipt(farm, out, sourceOp, now, { motions, save
             ...(updated?{farm:view(updated,now)}:{}),
             ...(sourceOp.startsWith('go.') && receipt.options.length ? {data:{...out.json.data,npc_motion:{options:receipt.options}}}: {})}};
     } catch (error) {
-        restore();
+        restore(error);
         console.error('[npc-motion] receipt settlement failed');
         return original;
     }

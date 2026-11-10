@@ -7,7 +7,16 @@ import { advanceRanch } from '../ranch/progression.js';
 export function advanceFarmGrowth(farm, now, onChanged) {
     const elapsed = Math.floor((now - farm.lastTickAt) / TICK_MS);
     if (elapsed <= 0) return 0;
-    for (const plot of farm.plots) {
+    advancePlotGrowth(farm.plots, elapsed);
+    advanceRanch(farm, elapsed);
+    farm.lastTickAt += elapsed * TICK_MS;
+    onChanged?.(farm.id);
+    return elapsed;
+}
+
+export function advancePlotGrowth(plots, elapsed) {
+    if (elapsed <= 0) return;
+    for (const plot of plots) {
         if (!plot.crop || plot.crop.ripe) continue;
         const effect = agronomyGrowthEffect(plot);
         let ticks = elapsed;
@@ -20,8 +29,4 @@ export function advanceFarmGrowth(farm, now, onChanged) {
         plot.crop.progress = Math.min(plot.crop.growTicks, plot.crop.progress + ticks);
         if (plot.crop.progress >= plot.crop.growTicks) plot.crop.ripe = true;
     }
-    advanceRanch(farm, elapsed);
-    farm.lastTickAt += elapsed * TICK_MS;
-    onChanged?.(farm.id);
-    return elapsed;
 }

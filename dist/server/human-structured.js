@@ -2,16 +2,13 @@ import { agronomyGrowthEffect } from "../career/p3-world.js";
 import { createHash } from "node:crypto";
 import { HUMAN_HARVEST_DAILY_CAP } from "../config.js";
 import { getCrop, landTierByLevel } from "../content.js";
-import { advance, humanHarvestLeft, nextUpgradeReq, plotRemainMs, upgradeLand } from "../engine.js";
+import { humanHarvestLeft, nextUpgradeReq, petBuffs, plotRemainMs, projectFarmGrowth } from "../engine.js";
+import { checkLandUpgrade } from "../domain/field/land.js";
+import { championCropBonus } from "../domain/champion-harvest.js";
 import { natureSnapshot } from "../nature.js";
-import { getNatureWorld } from "../store.js";
+import { readNatureWorld } from "../store.js";
 import { currentDayIndex, currentSeason } from "../time.js";
 import { equippedTitle } from "../titles.js";
-import { cloneFarmForMutation } from "../farm-mutation-scope.js";
-import { LEGACY_FARM_RECEIPT_SCOPES } from "../farm-world-sqlite-migration.js";
-import { farmRecordPath } from "../farm-state-records.js";
-
-const RECEIPT_PATHS = new Set(LEGACY_FARM_RECEIPT_SCOPES.map(({ path }) => farmRecordPath(path)));
 
 const SEASON_IDS_BY_NAME = {
     "春": "spring",
@@ -90,34 +87,27 @@ function nextShanghaiMidnight(dayIndex) {
     return new Date((dayIndex + 1) * 86_400_000 - 8 * 3_600_000).toISOString();
 }
 
-function stripReceipts(value, path = "") {
-    if (Array.isArray(value))
-        return value.map((nested, index) => stripReceipts(nested, `${path}/${index}`));
-    if (!value || typeof value !== "object")
-        return value;
-    const result = {};
-    for (const key of Object.keys(value)) {
-        const nestedPath = path + farmRecordPath([key]);
-        if ((key.startsWith("doorbellHuman") && key.endsWith("Receipts")) ||
-            key === "doorbellHumanBulletinReadState" || RECEIPT_PATHS.has(nestedPath))
-            continue;
-        result[key] = stripReceipts(value[key], nestedPath);
-    }
-    return result;
-}
-
 function readRevision(projectedFarm, data, dayIndex, now) {
-    // The revision is a write precondition, so include every hidden farm field
-    // that the reused Human harvest chain can observe.  The receipt ledger is
-    // deliberately excluded: recording/replaying a receipt or acknowledging a
-    // bulletin must not make an otherwise identical field snapshot stale.
+    // Bind the two field actions to their actual preconditions and yield
+    // inputs, not to kitchen stock, messages, logs or action receipts.
+    const {luck,dropMult} = petBuffs(projectedFarm,now);
     const canonical = JSON.stringify(canonicalize({
-        schema: "field-v1",
-        rule_version: "human-harvest-assist-v1",
+        schema: "field-action-inputs",
         day: dayIndex,
-        season: currentSeason(now),
-        data,
-        farm: stripReceipts(projectedFarm),
+        farmId: projectedFarm.id,
+        season: data.season,
+        weather: data.weather,
+        landTier: projectedFarm.landTier,
+        landUpgrade: data.land.next_upgrade,
+        coins: projectedFarm.coins,
+        plots: projectedFarm.plots,
+        remainingAssists: data.harvest_assist.remaining,
+        rngState: projectedFarm.rngState,
+        seasonEventAt: projectedFarm.seasonEventAt,
+        speedPotion: projectedFarm.items?.speed_potion ?? 0,
+        knownCrops: Object.keys(projectedFarm.codex ?? {}).sort(),
+        petBuffs: {luck,dropMult},
+        championBonusPercent: championCropBonus(projectedFarm,100,now),
     }));
     return `field-v1:${createHash("sha256").update(canonical).digest("hex")}`;
 }
@@ -129,18 +119,16 @@ function readRevision(projectedFarm, data, dayIndex, now) {
  */
 export function projectHumanField(farm, now = Date.now()) {
     const dayIndex = currentDayIndex(now);
-    const currentNature = natureSnapshot(getNatureWorld(), now);
+    const currentNature = natureSnapshot(readNatureWorld(), now);
     const legacySeason = currentSeason(now);
     const season = currentNature.season
         ? { id: currentNature.season.id, name: currentNature.season.name }
         : { id: SEASON_IDS_BY_NAME[legacySeason.name], name: legacySeason.name };
     if (!season.id)
         throw new Error("Farm season is unavailable");
-    // Lazy growth is projected on a clone.  This keeps field reads pure while
-    // making the revision match the exact pre-action state after the old
-    // Human UI's leading `advance(farm, now)` call.
-    const projectedFarm = cloneFarmForMutation(farm);
-    advance(projectedFarm, now);
+    // Ranch production can advance the same RNG used by harvesting; project
+    // its animals, not the unrelated kitchen, inventory or past receipts.
+    const projectedFarm = projectFarmGrowth(farm,now,{includeRanch:true});
     const title = equippedTitle(projectedFarm);
     const plots = projectedFarm.plots
         .map((plot) => projectPlot(plot, projectedFarm, now, 0))
@@ -152,7 +140,7 @@ export function projectHumanField(farm, now = Date.now()) {
         throw new Error("Farm land tier is unavailable");
     const pendingLandUpgrade = nextUpgradeReq(projectedFarm);
     const landUpgradePreview = pendingLandUpgrade
-        ? upgradeLand(cloneFarmForMutation(projectedFarm), now)
+        ? checkLandUpgrade(projectedFarm)
         : null;
     const welcome = typeof projectedFarm.welcome === "string" && projectedFarm.welcome.trim()
         ? projectedFarm.welcome.trim()

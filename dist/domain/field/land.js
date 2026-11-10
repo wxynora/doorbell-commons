@@ -17,7 +17,7 @@ export function nextUpgradeReq(farm) {
     return { next, req: LAND_UPGRADE_REQ[next.tier] };
 }
 
-export function upgradeLand(farm, now) {
+export function checkLandUpgrade(farm) {
     const nu = nextUpgradeReq(farm);
     if (!nu)
         return { ok: false, error: "已是最高品阶，无需升级" };
@@ -36,6 +36,13 @@ export function upgradeLand(farm, now) {
         miss.push(`总收集度 ${pct.toFixed(1)}/${req.codexPct}%`);
     if (miss.length)
         return { ok: false, error: `升级到「${next.name}」还差：${miss.join("、")}` };
+    return {ok:true,next,req};
+}
+
+export function upgradeLand(farm, now) {
+    const check = checkLandUpgrade(farm);
+    if (!check.ok) return check;
+    const {next,req} = check;
     farm.coins -= req.coins;
     bumpDaily(farm, now, "coinSpend", req.coins);
     farm.landTier = next.tier;

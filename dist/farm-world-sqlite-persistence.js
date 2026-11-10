@@ -252,7 +252,7 @@ function materializeFarm(database,entry,explicitReceipts) {
     const position=farmPosition(database,entry.id,entry.position);
     let plan;
     if (entry.before!==undefined || !position.exists) {
-        const before=entry.before===null || !position.exists ? null : entry.before?.records ? entry.before : snapshotFarmMutation(entry.before);
+        const before=entry.before===null || !position.exists ? null : entry.before?.receiptEntries instanceof Map ? entry.before : snapshotFarmMutation(entry.before);
         plan=planFarmMutation(entry.state,before,explicitReceipts);
     } else {
         // Explicit legacy mutation callers (for example an excluded activity)
@@ -297,7 +297,8 @@ export function createFarmWorldSqlitePersistence(database) {
                 else if (entry.recordChanges.length)
                     database.prepare("UPDATE farm_states SET resident_id=?,state_revision=state_revision+1 WHERE farm_id=?").run(residentId,entry.id);
                 if (entry.position.exists && entry.recordChanges.some(change=>change.path==="/messages"||change.path.startsWith("/messages/"))) {
-                    const beforeMessages=entry.beforeRecords.has("/messages") ? decodeStateRecords(entry.beforeRecords,"/messages") : [];
+                    const beforeMessages=entry.messagesBefore ??
+                        (entry.beforeRecords.has("/messages") ? decodeStateRecords(entry.beforeRecords,"/messages") : []);
                     enqueueGuestbookMessageChanges(database,entry.id,beforeMessages,entry.state.messages??[]);
                 }
                 writeRecordChanges(database,"farm",entry.id,entry.recordChanges);

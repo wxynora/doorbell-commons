@@ -697,7 +697,7 @@ export async function handleLegacyHumanRoute({
             save();
         }
         catch (error) {
-            restoreCommittedWorldInMemory();
+            restoreCommittedWorldInMemory(error);
             throw error;
         }
         persistHumanReadFarm();

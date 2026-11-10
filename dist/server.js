@@ -1,5 +1,5 @@
 import { ownFarmPersistenceScope } from "./server/farm-persistence-scope.js";
-import { withFarmMutationScope, currentFarmMutationScope, captureComponentMutation, cloneFarmForMutation, snapshotFarmMutation, planFarmMutation } from "./farm-mutation-scope.js";
+import { withFarmMutationScope, currentFarmMutationScope, captureComponentMutation, cloneFarmForMutation, snapshotFarmMutation, farmMutationChanged } from "./farm-mutation-scope.js";
 import { encodeStateRecords, stateRecordChanges } from "./farm-state-records.js";
 import {configureGuestbookJudgments} from './server/doorbell/guestbook-judgments.mjs';
 import { createTogetherDecorationRewards } from "./server/doorbell/together-decoration.js";
@@ -16,10 +16,10 @@ import { glimmerContentEditor } from './content.js';
 import { createServer } from "node:http";
 import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { advance, steal, visitorWater, tryWaterReward, buyPotionSet, ensureHumanKey, pushSocialInbox, pushLog, craft, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog } from "./engine.js";
-import { dispatch, farmView, viewShop, viewEncyclopedia, shopBrief, viewMarket, buyFromMarket, visitView, tendNpc, hasDamagedPublicName, viewKitchen } from "./game.js";
+import { advance, projectFarmGrowth, steal, visitorWater, tryWaterReward, buyPotionSet, ensureHumanKey, pushSocialInbox, pushLog, craft, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog } from "./engine.js";
+import { dispatch, farmView, viewShop, viewBag, viewEncyclopedia, shopBrief, viewMarket, buyFromMarket, visitView, tendNpc, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText } from "./flavor.js";
-import { createFarm, getFarm, allFarms, playerFarms, captureLiveFarmMutation, replaceFarm, replaceFarmAndMysteryMerchantAtomic, save, getGlimmerWorld, getNatureWorld, getMysteryMerchantWorld, getPublicExpeditionWorld, getQixiLantern2026World, restoreCommittedWorldInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, withWorldCommitContext, advanceStoredMysteryMerchantWorld } from "./store.js";
+import { createFarm, getFarm, readFarm, allFarms, playerFarms, captureLiveFarmMutation, replaceFarm, replaceFarmAndMysteryMerchantAtomic, save, getGlimmerWorld, getNatureWorld, getMysteryMerchantWorld, getPublicExpeditionWorld, readPublicExpeditionWorld, getQixiLantern2026World, restoreCommittedWorldInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, withWorldCommitContext, advanceStoredMysteryMerchantWorld } from "./store.js";
 import { MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, NPC_ID, GROW_TICKS, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { sweepNonces, htmlReadme, htmlGuide } from "./agent.js";
@@ -88,7 +88,10 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     if (detention && !detentionAllowsFarmAction(action))
         return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: detentionBlockedFarmActionText(detention) } };
     if (action === 'decorate') return handleFarmDecorationAction(farm, params);
-    if (isNpcMotionChoice(action, params)) return npcMotionChoiceReceipt(farm, params.option, now, {save, view: farmView, detail});
+    if (isNpcMotionChoice(action, params)) {
+        captureLiveFarmMutation(farm);
+        return npcMotionChoiceReceipt(farm, params.option, now, {save, view: farmView, detail});
+    }
     if (action === "together" && isHalloweenCandyEatOption(params.option)) {
         return activeHalloweenCandyTool?.execute({ farmId: farm.id, option: params.option, now }) ??
             { status: 503, json: { ok: false, code: "service_unavailable", text: "小屋的门暂时没敲开，过会儿再来试试吧。" } };
@@ -96,11 +99,11 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     if (action === 'together' && isMidAutumnOption(params.option)) {
         return runMidAutumnTogether(activeLingyeWorldDatabase, farm.id, params.option, now, null, (database, options) => createMidAutumnRuntime(database, {...options, backend: activeLingyeWorldBackend}));
     }
-    const careerBenefits = farmDoorbellKitchenCareerBenefits(
+    const careerBenefits = action === "kitchen" ? farmDoorbellKitchenCareerBenefits(
         activeLingyeWorldDatabase,
         activeLingyeWorldBackend,
         farm,
-    );
+    ) : {};
     const body = { ...params };
     if (action === "wander") {
         const result = wanderResult({ ...body, by: farm.id }, now, true);
@@ -152,7 +155,6 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     return result;
 }
 function executeDoorbellFarmAction(farm, action, params, detail, now, sourceOp) {
-    captureLiveFarmMutation(farm);
     const halloweenCandyEat = action === "together" && isHalloweenCandyEatOption(params.option);
     const execute = () => {
         try {
@@ -162,7 +164,7 @@ function executeDoorbellFarmAction(farm, action, params, detail, now, sourceOp) 
                     isNpcMotionChoice(action, params) ? undefined : sourceOp, now,
                     { motions: glimmerContentEditor.motions, save, restore: restoreCommittedWorldInMemory, getFarm, view: farmView, context:{args:params,residentId:farm.doorbellMcpMigration?.residentId ?? farm.id} });
             });
-        } catch (error) { restoreCommittedWorldInMemory(); throw error; }
+        } catch (error) { restoreCommittedWorldInMemory(error); throw error; }
     };
     if (!activeHalloweenFarmRuntime || currentHalloweenFarmAction()) return execute();
     const out = withHalloweenFarmAction(activeHalloweenFarmRuntime.service, {
@@ -329,44 +331,68 @@ function agentReadyText(f, humanUrl, agentUrl, isNew) {
 }
 function saveKnownFarmChanges(farmIds, now, componentKeys = []) {
     if (componentKeys.includes("ugc")) captureComponentMutation("ugc", allUgc());
-    save(isTogetherSeason3(getPublicExpeditionWorld()) && !isQixiLantern2026Active(now)
+    save(isTogetherSeason3(readPublicExpeditionWorld()) && !isQixiLantern2026Active(now)
         ? { farmIds: [...new Set(farmIds)], componentKeys, allowCrossDomain: false }
         : null);
 }
+function farmPublicWorldForAction() {
+    const world = readPublicExpeditionWorld();
+    return isTogetherSeason3(world) ? world : getPublicExpeditionWorld();
+}
+
+function hasGrowthToSettle(farm, now) {
+    let advanced = false;
+    projectFarmGrowth(farm, now, { includeRanch:true, onChanged:() => { advanced = true; } });
+    return advanced;
+}
+
+// The bag text only reads inventory. Use the usual write path when this
+// request actually has elapsed growth, newly earned titles, or a detailed view.
+function readUnchangedBag(farm, now) {
+    if (!farm.titles || !farm.ranch?.kitchen || hasGrowthToSettle(farm,now)) return null;
+    const probe = {...farm, titles:[...farm.titles], log:[...farm.log]};
+    if (checkTitles(probe).length) return null;
+    return viewBag(farm);
+}
+
 function runFarmCore(farmId, action, b, encArg, now, options = {}) {
-    if (action === "design") captureComponentMutation("ugc", allUgc());
-    if (action === "harvest" || action === "run") getNatureWorld();
-    let currentFarm = getFarm(farmId);
+    let currentFarm = readFarm(farmId);
     if (!currentFarm)
         return { status: 400, json: { ok: false, text: `找不到农场 ${farmId || "(没给 farm)"}` } };
     const projectedRead = action === "visit" || action === "leaderboard" || action === "ranking" ||
         action === "help" || action === "shop" || action === "market" || action === "encyclopedia" ||
         (action === "kitchen" && (!b.op || b.op === "view")) ||
         (action === "guestbook" && b.on === undefined);
-    let f = projectedRead && action !== "market" ? cloneFarmForMutation(currentFarm) : currentFarm;
-    if (projectedRead && action !== "market") {
+    const detail = options.detail === true || b?.detail === true || b?.detail === "1" || b?.detail === "true"
+        || b?.verbose === true || b?.verbose === "1" || b?.verbose === "true";
+    if (action === "visit") {
+        const visitor = b.by ? readFarm(String(b.by)) : null;
+        const detention = visitor ? activeDetentionForFarm(visitor, now) : null;
+        if (detention)
+            return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: detentionBlockedFarmActionText(detention) } };
+        if (!reachable(currentFarm))
+            return { status: 403, json: { ok: false, text: `「${currentFarm.name}」设了谢绝来访，已闭门谢客。` } };
+    }
+    // A plain revisit with no elapsed growth only needs a temporary shop view.
+    const settledVisit = action === "visit" && !detail && currentFarm.id !== NPC_ID &&
+        !hasGrowthToSettle(currentFarm,now);
+    let f = settledVisit ? {...currentFarm, shop:{...currentFarm.shop}}
+        : projectedRead && action !== "market" ? cloneFarmForMutation(currentFarm) : currentFarm;
+    if (projectedRead && action !== "market" && !settledVisit) {
         advance(f, now);
         if (f.id === NPC_ID)
             tendNpc(f, now);
     }
     const persistProjectedRead = () => {
-        if (projectedRead) {
-            const plan = planFarmMutation(f, snapshotFarmMutation(currentFarm));
-            if (plan.recordChanges.length || plan.receiptKeys.length) replaceFarm(currentFarm.id, f);
+        if (projectedRead && !settledVisit) {
+            const before = captureLiveFarmMutation(currentFarm);
+            if (farmMutationChanged(f, before ?? snapshotFarmMutation(currentFarm))) replaceFarm(currentFarm.id, f);
         }
     };
     const careerBenefits = options.careerBenefits ?? farmCareerBenefits(activeLingyeWorldDatabase, f);
-    const detail = options.detail === true || b?.detail === true || b?.detail === "1" || b?.detail === "true"
-        || b?.verbose === true || b?.verbose === "1" || b?.verbose === "true";
     const vf = (ff) => detail ? { farm: farmView(ff, now) } : {};
     if (action === "visit") {
         let moments = [];
-        const visitor = b.by ? getFarm(String(b.by)) : null;
-        const detention = visitor ? activeDetentionForFarm(visitor, now) : null;
-        if (detention)
-            return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: detentionBlockedFarmActionText(detention) } };
-        if (!reachable(f))
-            return { status: 403, json: { ok: false, text: `「${f.name}」设了谢绝来访，已闭门谢客。` } };
         const visitorId = String(b.by ?? ""); // 串门任务：身份已知（带 by）时按家去重计一次
         if (visitorId && visitorId !== f.id) {
             const v = getFarm(visitorId);
@@ -393,7 +419,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
                 plots: farmView(f, now).plots,
             } } : {};
         persistProjectedRead();
-        return { status: 200, json: { ok: true, text: visitView(f, now, visitorId ? getFarm(visitorId) : undefined, targetRef), ...publicDetail, ...(moments.length ? {moment_activities:moments} : {}) } };
+        return { status: 200, json: { ok: true, text: visitView(f, now, visitorId ? readFarm(visitorId) : undefined, targetRef), ...publicDetail, ...(moments.length ? {moment_activities:moments} : {}) } };
     }
     if (action === "leaderboard" || action === "ranking") {
         persistProjectedRead();
@@ -409,7 +435,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     const isGuardBribe = action === "kitchen" && b.op === "use" && b.target === "guard-dog" && !!b.by;
     const isByAction = action === "steal" || action === "buy" || action === "message" || isGuardBribe || (action === "water" && !!b.by) || (action === "delete-message" && !!b.by) || (action === "buy-potion-set" && !!b.by);
     const byId = isByAction ? String(b.by ?? "") : "";
-    const principal = isByAction ? getFarm(byId) : f;
+    const principal = isByAction ? readFarm(byId) : f;
     if (!principal || !principal.token || token !== principal.token)
         return { status: isByAction ? 403 : 401, json: { ok: false, text: isByAction
                     ? "需要带上你农场的 id + token（by + token）证明这是你本人。"
@@ -417,13 +443,26 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     const detention = activeDetentionForFarm(principal, now);
     if (detention && !detentionAllowsFarmAction(action))
         return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: detentionBlockedFarmActionText(detention) } };
+    if (activeLingyeWorldDatabase && farmActionTouchesLockedCareerObject(activeLingyeWorldDatabase, f.id, action, b))
+        return { status: 400, json: { ok: false, text: lockedCareerObjectText(action) } };
+    if (action === "design") captureComponentMutation("ugc", allUgc());
+    if (action === "harvest" || action === "run") getNatureWorld();
+    if (action === "bag" && !detail && options.suppressTogetherNotices && isTogetherSeason3(readPublicExpeditionWorld())) {
+        const debuff = f.ranch?.kitchen?.debuff;
+        if (!debuff) {
+            const text = readUnchangedBag(f, now);
+            if (text !== null) return {status:200,json:{ok:true,text}};
+        }
+    }
     if (!projectedRead) {
+        captureLiveFarmMutation(f);
+        if (principal !== f) captureLiveFarmMutation(principal);
         advance(f, now);
         if (f.id === NPC_ID)
             tendNpc(f, now);
+    } else if (action === "market") {
+        captureLiveFarmMutation(f);
     }
-    if (activeLingyeWorldDatabase && farmActionTouchesLockedCareerObject(activeLingyeWorldDatabase, f.id, action, b))
-        return { status: 400, json: { ok: false, text: lockedCareerObjectText(action) } };
     if (action === "steal" && recordQixi2026StealAttempt(principal, now))
         save(); // 已鉴权的偷菜发起即重置静默计时；后续业务拒绝也不回滚
     if (action === "guestbook" && b.on === undefined) {
@@ -447,7 +486,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     const debuffText = cookingDebuffReason(principal, action, b, now);
     if (debuffText)
         return { status: 400, json: { ok: false, text: debuffText, ...vf(principal) } };
-    const publicWorld = getPublicExpeditionWorld();
+    const publicWorld = farmPublicWorldForAction();
     const publicFarms = playerFarms();
     advancePublicExpedition(publicWorld, publicFarms, now);
     const publicTask = currentPublicTask(publicWorld);
@@ -907,21 +946,21 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
 }
 function authenticatedResultFarm(farmId, body) {
     const token = String(body?.token ?? "");
-    const by = body?.by ? getFarm(String(body.by)) : undefined;
+    const by = body?.by ? readFarm(String(body.by)) : undefined;
     if (by?.token && by.token === token)
         return by;
-    const own = getFarm(farmId);
+    const own = readFarm(farmId);
     return own?.token && own.token === token ? own : undefined;
 }
 function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
-    const initialPublicWorld = getPublicExpeditionWorld();
+    const initialPublicWorld = farmPublicWorldForAction();
     const publicWorldBefore = isTogetherSeason3(initialPublicWorld) ? null : currentFarmMutationScope()?.components.get("publicExpedition");
     const out = runFarmCore(farmId, action, body, encArg, now, options);
-    if (action === "together" && isTogetherSeason3(getPublicExpeditionWorld())) return out;
+    if (action === "together" && isTogetherSeason3(readPublicExpeditionWorld())) return out;
     const viewer = authenticatedResultFarm(farmId, body);
     if (!viewer || !out?.json || out.status === 401 || out.status === 403)
         return out;
-    const world = getPublicExpeditionWorld();
+    const world = farmPublicWorldForAction();
     const season3 = isTogetherSeason3(world);
     const publicFarms = season3 ? null : playerFarms();
     const rewardBefore = season3 ? new Map() : new Map([[viewer.id, { farm: viewer, before: snapshotFarmMutation(viewer) }]]);
@@ -952,7 +991,7 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
     if (extras.length)
         out.json.text = `${String(out.json.text ?? "")}\n\n${extras.join("\n\n")}`;
     const publicStateChanged = !season3 && ((publicWorldBefore && stateRecordChanges(publicWorldBefore, encodeStateRecords(world)).length > 0) ||
-        [...rewardBefore.values()].some(({ farm, before }) => planFarmMutation(farm, before).recordChanges.length > 0));
+        [...rewardBefore.values()].some(({ farm, before }) => farmMutationChanged(farm, before)));
     if (publicStateChanged)
         save();
     return out;
@@ -961,7 +1000,7 @@ function runFarm(farmId, action, body = {}, encArg, now, options = {}) {
 function runFarmWithRollback(farmId, action, body = {}, encArg, now, options = {}) {
     const execute = () => {
         try { return runFarm(farmId, action, body, encArg, now, options); }
-        catch (error) { restoreCommittedWorldInMemory(); throw error; }
+        catch (error) { restoreCommittedWorldInMemory(error); throw error; }
     };
     if (!activeHalloweenFarmRuntime || currentHalloweenFarmAction()) return execute();
     const isGuardBribe = action === "kitchen" && body?.op === "use" && body?.target === "guard-dog" && !!body?.by;
@@ -1359,7 +1398,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
                 }
                 catch (error) {
                     if (restoreOnFailure)
-                        restoreCommittedWorldInMemory();
+                        restoreCommittedWorldInMemory(error);
                     throw error;
                 }
             }

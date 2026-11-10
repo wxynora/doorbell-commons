@@ -1,4 +1,4 @@
-import { getPublicExpeditionWorld, playerFarms, save } from "../store.js";
+import { getPublicExpeditionWorld, readPublicExpeditionWorld, playerFarms, save } from "../store.js";
 import {
   advancePublicExpedition,
   publicExpeditionContent,
@@ -336,11 +336,11 @@ function projectHumanTogether(world, farm, now = Date.now(), publicFarms = []) {
  * view from clones.  This adapter never implements a parallel state machine.
  */
 export function readHumanTogether(farm, now = Date.now()) {
-  const world = getPublicExpeditionWorld();
-  if (world.storyId === TOGETHER_SEASON3_STORY_ID) {
+  if (readPublicExpeditionWorld().storyId === TOGETHER_SEASON3_STORY_ID) {
     const stored = readStoredTogetherSeason3(farm, now);
     return projectHumanTogether(stored.world, stored.farm, now, playerFarms());
   }
+  const world = getPublicExpeditionWorld();
   const farms = playerFarms();
   advancePublicExpedition(world, farms, now);
   save();

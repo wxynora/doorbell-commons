@@ -1,18 +1,15 @@
-import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { NPC_ID } from "../config.js";
 import { fishing, fishingBaits, glimmer } from "../content.js";
-import { advance, canStealNow, isUgcCrop, stealShieldRemain } from "../engine.js";
-import { ensureFishing } from "../fishing.js";
-import { normalizeGlimmerFarm } from "../glimmer.js";
+import { projectFarmGrowth, canStealNow, isUgcCrop, stealShieldRemain } from "../engine.js";
 import { publicExpeditionContent } from "../public-expedition.js";
-import { getFarm, getGlimmerWorld, getPublicExpeditionWorld } from "../store.js";
+import { readFarm, readGlimmerWorld, readPublicExpeditionWorld } from "../store.js";
 import { currentDayIndex } from "../time.js";
 import { allowsSocial, numberedPlayerFarms, reachable } from "./farm/social.js";
 
-function cleanCount(value) {
-  const number = Number(value);
-  return Number.isSafeInteger(number) && number >= 0 ? number : 0;
-}
+const cleanCount = value => {
+  const count = Math.floor(Number(value) || 0);
+  return Number.isSafeInteger(count) && count > 0 ? count : 0;
+};
 
 function stolenToday(thief, target, now) {
   const at = target.stealCooldowns?.[thief.id];
@@ -23,75 +20,42 @@ function wateredToday(visitor, target, now) {
   return target.waterVisits?.[visitor.id] === currentDayIndex(now);
 }
 
-function projectStealTargets(thief, now) {
-  const projectedThief = cloneFarmForMutation(thief);
-  if (
-    !reachable(projectedThief) ||
-    !allowsSocial(projectedThief, "steal") ||
-    !canStealNow(projectedThief, now)
-  ) {
-    return [];
-  }
-  const npc = getFarm(NPC_ID);
-  const candidates = [
-    ...(npc ? [{ number: 0, farm: npc }] : []),
-    ...numberedPlayerFarms(),
-  ];
-  return candidates.flatMap(({ number, farm: sourceFarm }) => {
-    const farm = cloneFarmForMutation(sourceFarm);
-    if (
-      farm.id === thief.id ||
-      !reachable(farm) ||
-      !allowsSocial(farm, "steal") ||
-      stolenToday(projectedThief, farm, now) ||
-      stealShieldRemain(farm, now)
-    ) {
-      return [];
-    }
-    advance(farm, now);
-    const ripePlotIds = farm.plots
-      .filter((plot) => plot.crop?.ripe && !isUgcCrop(plot.crop))
-      .map((plot) => plot.id);
-    return ripePlotIds.length === 0
-      ? []
-      : [
-          {
-            target: String(number),
-            farm_name: String(farm.name || farm.id),
-            ripe_plot_ids: ripePlotIds,
-          },
-        ];
-  });
-}
-
-function projectWater(visitor, now) {
+function projectNeighborActions(visitor, now) {
+  const canSteal = reachable(visitor) && allowsSocial(visitor,"steal") &&
+    canStealNow({stealQuota:visitor.stealQuota},now);
   const canWater = reachable(visitor) && allowsSocial(visitor, "water");
-  const targets = [];
-  const visitedTargets = [];
-  for (const { number, farm: sourceFarm } of numberedPlayerFarms()) {
+  const steal = { status:"available", targets:[] };
+  const water = { status:"available", targets:[], visited_targets:[] };
+  const npc = canSteal ? readFarm(NPC_ID) : undefined;
+  const farms = numberedPlayerFarms();
+  if (npc) farms.unshift({number:0,farm:npc});
+  for (const { number, farm: sourceFarm } of farms) {
     if (sourceFarm.id === visitor.id) continue;
     const entry = {
       target: String(number),
       farm_name: String(sourceFarm.name || sourceFarm.id),
     };
-    if (wateredToday(visitor, sourceFarm, now)) {
-      visitedTargets.push(entry);
-      continue;
+    const watered = number !== 0 && wateredToday(visitor,sourceFarm,now);
+    if (watered) water.visited_targets.push(entry);
+    if (!reachable(sourceFarm)) continue;
+    const wantWater = canWater && number !== 0 && !watered && allowsSocial(sourceFarm,"water");
+    const wantSteal = canSteal && allowsSocial(sourceFarm,"steal") &&
+      !stolenToday(visitor,sourceFarm,now) && !stealShieldRemain(sourceFarm,now);
+    if (!wantWater && !wantSteal) continue;
+    const {plots} = projectFarmGrowth(sourceFarm,now);
+    if (wantWater && plots.some(plot=>plot.crop && !plot.crop.ripe)) water.targets.push(entry);
+    if (wantSteal) {
+      const ripePlotIds = plots.filter(plot=>plot.crop?.ripe && !isUgcCrop(plot.crop)).map(plot=>plot.id);
+      if (ripePlotIds.length) steal.targets.push({...entry,ripe_plot_ids:ripePlotIds});
     }
-    if (!canWater || !reachable(sourceFarm) || !allowsSocial(sourceFarm, "water")) continue;
-    const farm = cloneFarmForMutation(sourceFarm);
-    advance(farm, now);
-    if (farm.plots.some((plot) => plot.crop && !plot.crop.ripe)) targets.push(entry);
   }
-  return {
-    status: "available",
-    targets,
-    visited_targets: visitedTargets,
-  };
+  return {steal,water};
 }
 
 function projectFishing(farm, now) {
-  const state = ensureFishing(cloneFarmForMutation(farm));
+  const state = farm.fishing ?? {};
+  const baitInventory = state.baitInventory && typeof state.baitInventory === "object"
+    ? state.baitInventory : fishing.initialBaitInventory;
   const usedToday =
     state.dailyCasts?.day === currentDayIndex(now) ? cleanCount(state.dailyCasts.count) : 0;
   const freeBait = cleanCount(state.freeBait);
@@ -101,7 +65,7 @@ function projectFishing(farm, now) {
     used_today: usedToday,
     remaining_today: Math.max(0, cleanCount(fishing.dailyCastLimit) - usedToday),
     available_baits: fishingBaits.flatMap((bait) => {
-      const quantity = cleanCount(state.baitInventory?.[bait.id]) + freeBait;
+      const quantity = cleanCount(baitInventory?.[bait.id]) + freeBait;
       return quantity > 0
         ? [{ bait_id: String(bait.id), name: String(bait.name), quantity }]
         : [];
@@ -111,14 +75,13 @@ function projectFishing(farm, now) {
 
 function projectActivities(farm, now) {
   const day = currentDayIndex(now);
-  const glimmerState = normalizeGlimmerFarm(cloneFarmForMutation(farm));
-  const glimmerWorld = structuredClone(getGlimmerWorld());
-  const glimmerDaily = glimmerState.daily?.day === day ? glimmerState.daily : null;
+  const glimmerWorld = readGlimmerWorld();
+  const glimmerDaily = farm.glimmer?.daily?.day === day ? farm.glimmer.daily : null;
   const joinedGlimmer =
     cleanCount(glimmerDaily?.explores) > 0 ||
     cleanCount(glimmerDaily?.captures) > 0 ||
     (glimmerWorld.coop?.contributors ?? []).some((entry) => entry?.farmId === farm.id);
-  const togetherWorld = structuredClone(getPublicExpeditionWorld());
+  const togetherWorld = readPublicExpeditionWorld();
   const activities = [
     {
       activity_id: "glimmer",
@@ -144,8 +107,7 @@ export function projectHumanActionListAuthority(farm, now = Date.now()) {
   return {
     data: {
       farm: { farm_doorplate: String(farm.id) },
-      steal: { status: "available", targets: projectStealTargets(farm, now) },
-      water: projectWater(farm, now),
+      ...projectNeighborActions(farm,now),
       fishing: projectFishing(farm, now),
       activities: projectActivities(farm, now),
     },

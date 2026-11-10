@@ -1,5 +1,5 @@
 import { measureFarmPhase } from "./server/farm-request-timing.js";
-import { withFarmMutationScope, currentFarmMutationScope, captureFarmMutation, captureComponentMutation, cloneFarmForMutation, snapshotFarmMutation, planFarmMutation } from "./farm-mutation-scope.js";
+import { withFarmMutationScope, currentFarmMutationScope, captureFarmMutation, captureComponentMutation, cloneFarmForMutation, snapshotFarmMutation, farmMutationChanged } from "./farm-mutation-scope.js";
 import { encodeStateRecords, stateRecordChanges } from "./farm-state-records.js";
 // 农场仓库：唯一 id、内存索引、JSON 存档（含 rngState）、健壮读档。
 import { createHash, randomInt } from "node:crypto";
@@ -188,15 +188,19 @@ export const getFarm = (id) => {
     return farm;
 };
 export function captureLiveFarmMutation(farm) {
-    if (farm && farms.get(farm.id) === farm) captureFarmMutation(farm);
+    if (farm && farms.get(farm.id) === farm) return captureFarmMutation(farm);
 }
+export const readFarm = id => farms.get(id);
 export const allFarms = () => [...farms.values()];
 /** 真实玩家农场（排除常驻 NPC 阿土）——排行榜等"只算玩家"的地方用。 */
 export const playerFarms = () => [...farms.values()].filter((f) => f.id !== NPC_ID);
 export const getGlimmerWorld = () => { captureComponentMutation("glimmer", glimmerWorld); return glimmerWorld; };
+export const readGlimmerWorld = () => glimmerWorld;
 export const getPublicExpeditionWorld = () => { captureComponentMutation("publicExpedition", publicExpeditionWorld); return publicExpeditionWorld; };
+export const readPublicExpeditionWorld = () => publicExpeditionWorld;
 export const getQixiLantern2026World = () => { captureComponentMutation("qixiLantern2026", qixiLantern2026World); return qixiLantern2026World; };
 export const getNatureWorld = () => { captureComponentMutation("nature", natureWorld); return natureWorld; };
+export const readNatureWorld = () => natureWorld;
 export const getMysteryMerchantWorld = () => { captureComponentMutation("mysteryMerchant", mysteryMerchantWorld); return mysteryMerchantWorld; };
 export function advanceStoredMysteryMerchantWorld({ now, catalog, shelfSize, drawInt }) {
     return withFarmMutationScope(() => {
@@ -569,8 +573,7 @@ function commitWorld(world, hints = null) {
         for (const [id, before] of scope.farms) {
             const farm = byId.get(id);
             if (!farm) throw new Error(`farm_mutation_target_missing:${id}`);
-            const plan = planFarmMutation(farm, before, hints?.receiptKeysByFarm?.[id]);
-            if (before === null || plan.recordChanges.length || plan.receiptKeys.length) farmIds.add(id);
+            if (farmMutationChanged(farm, before, hints?.receiptKeysByFarm?.[id])) farmIds.add(id);
         }
         for (const [key, before] of scope.components) {
             if (!Object.hasOwn(world, key)) throw new Error(`farm_component_target_missing:${key}`);
@@ -634,11 +637,20 @@ export function snapshotWorldForRollback() {
     return structuredClone(worldSnapshot());
 }
 /** Recover the latest durable checkpoint, including commits made during this request. */
-export function restoreCommittedWorldInMemory() {
+export function restoreCommittedWorldInMemory(error) {
+    const scope = currentFarmMutationScope();
+    if (error !== undefined && scope?.restoredAfterError === error) return;
     const committed = worldPersistenceAdapter
         ? worldPersistenceAdapter.loadLegacyWorld({ checkIntegrity: false })
         : JSON.parse(readFileSync(WORLD_FILE, "utf8"));
     restoreWorldSnapshotInMemory(committed);
+    if (scope) {
+        // The loaded live objects are new; old request preimages no longer
+        // describe their checkpoint. Only a successful reload marks recovery.
+        scope.farms.clear();
+        scope.components.clear();
+        scope.restoredAfterError = error;
+    }
 }
 export function restoreWorldSnapshotInMemory(snapshot) {
     if (snapshot?.format !== "aifarm-world" || snapshot?.version !== 1 || !Array.isArray(snapshot?.farms))
@@ -842,7 +854,7 @@ export function save(hints = null) {
     }
     catch (error) {
         if (worldPersistenceAdapter)
-            restoreWorldSnapshotInMemory(worldPersistenceAdapter.loadLegacyWorld({ checkIntegrity: false }));
+            restoreCommittedWorldInMemory(error);
         throw error;
     }
 }

@@ -104,7 +104,7 @@ import {
 } from "./domain/ranch/index.js";
 import { ensureKitchen, ensureRanch } from "./domain/ranch/state.js";
 import { pushRanchNotice, takeRanchNotices } from "./domain/ranch/notices.js";
-import { advanceFarmGrowth } from "./domain/field/progression.js";
+import { advanceFarmGrowth, advancePlotGrowth } from "./domain/field/progression.js";
 import { aiDisplay, humanDisplay } from "./domain/ranch/display.js";
 import { pushLedger } from "./domain/ranch/ledger.js";
 import {
@@ -221,6 +221,24 @@ export function advance(farm, now, onChanged) {
     const elapsed = advanceFarmGrowth(farm, now, onChanged);
     if (elapsed <= 0 && p3Changed) onChanged?.(farm.id);
     return elapsed;
+}
+
+// These read projections share the real growth rules without copying logs,
+// inventory, kitchen, action receipts, or other unrelated collections.
+export function projectFarmGrowth(farm, now, { includeRanch = false, onChanged } = {}) {
+    const projected = {
+        ...farm,
+        plots: structuredClone(farm.plots),
+        lingyeP3: farm.lingyeP3 && {...farm.lingyeP3, history: [], actionReceipts: {}},
+        ranch: includeRanch && farm.ranch ? {...farm.ranch, animals: structuredClone(farm.ranch.animals)} : undefined,
+        snowTournamentHarvest: includeRanch ? structuredClone(farm.snowTournamentHarvest) : undefined,
+    };
+    if (includeRanch) advance(projected, now, onChanged);
+    else {
+        if (projected.doorbellMcpMigration?.migrationId) advanceP3Farm(projected, now);
+        advancePlotGrowth(projected.plots, Math.floor((now - projected.lastTickAt) / TICK_MS));
+    }
+    return projected;
 }
 // —— 揭晓 roll（收获/偷菜共用）——
 function reveal(farm, plot, now) {

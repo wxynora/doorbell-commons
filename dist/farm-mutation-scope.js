@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { isDeepStrictEqual } from "node:util";
 import { LEGACY_FARM_RECEIPT_SCOPES, FarmWorldMigrationError } from "./farm-world-sqlite-migration.js";
 import { FarmWorldPersistenceError } from "./farm-world-sqlite-persistence.js";
-import { encodeStateRecords, farmRecordPath, stateRecordChanges } from "./farm-state-records.js";
+import { diffFarmStateRecords, encodeStateRecords, farmRecordPath, stateRecordChanges } from "./farm-state-records.js";
 
 const storage = new AsyncLocalStorage();
 const active = Symbol("activeFarmMutationScope");
@@ -99,7 +99,8 @@ export function cloneFarmForMutation(farm) {
 export function snapshotFarmMutation(farm, records) {
     if (records !== undefined && !(records instanceof Map)) throw new TypeError("farm_mutation_records_required");
     const parts = farmParts(farm, true);
-    return { records: records ?? encodeStateRecords(parts.state), receiptEntries: parts.receiptEntries };
+    return { records, state: records === undefined ? structuredClone(parts.state) : undefined,
+        receiptEntries: parts.receiptEntries };
 }
 
 export function captureFarmMutation(farm) {
@@ -141,11 +142,9 @@ function selectedReceipts(explicitReceiptKeys, current) {
     return selected;
 }
 
-export function planFarmMutation(farm, before, explicitReceiptKeys) {
-    const parts = farmParts(farm, false);
-    const beforeRecords = before?.records ?? new Map();
+function changedReceiptKeys(parts, before, explicitReceiptKeys) {
     const previous = before?.receiptEntries ?? new Map();
-    if (!(beforeRecords instanceof Map) || !(previous instanceof Map)) throw new TypeError("farm_mutation_snapshot_invalid");
+    if (!(previous instanceof Map)) throw new TypeError("farm_mutation_snapshot_invalid");
     for (const [scope, entries] of previous) {
         const current = parts.receiptEntries.get(scope);
         for (const key of entries.keys()) {
@@ -165,8 +164,29 @@ export function planFarmMutation(farm, before, explicitReceiptKeys) {
             }
         }
     }
+    return receiptKeys;
+}
+
+// Only the actual writer needs an encoded delta. The economy coordinator may
+// still change balance/counter fields after this dirty-farm selection.
+export function farmMutationChanged(farm, before, explicitReceiptKeys) {
+    if (!before) return true;
+    const parts = farmParts(farm, false);
+    if (changedReceiptKeys(parts,before,explicitReceiptKeys).length) return true;
+    if (before.state !== undefined) return !isDeepStrictEqual(before.state,parts.state);
+    return stateRecordChanges(before.records,encodeStateRecords(parts.state)).length > 0;
+}
+
+export function planFarmMutation(farm, before, explicitReceiptKeys) {
+    const parts = farmParts(farm, false);
+    const receiptKeys = changedReceiptKeys(parts,before,explicitReceiptKeys);
+    if (before?.state !== undefined) {
+        const recordChanges = diffFarmStateRecords(before.state,parts.state);
+        return {recordChanges, receiptKeys, messagesBefore:before.state.messages ?? []};
+    }
+    const beforeRecords = before?.records ?? new Map();
     const records = encodeStateRecords(parts.state);
-    return { recordChanges: stateRecordChanges(beforeRecords, records), beforeRecords, records, receiptKeys };
+    return {recordChanges:stateRecordChanges(beforeRecords,records), beforeRecords, records, receiptKeys};
 }
 
 // A direct field writer calls this only after its outer transaction commits
@@ -174,9 +194,13 @@ export function planFarmMutation(farm, before, explicitReceiptKeys) {
 export function acceptCommittedFarmRecords(farm, changes, receipts=[]) {
     const before=currentFarmMutationScope()?.farms.get(farm.id);
     if (!before) return;
-    for (const change of changes) {
-        if (change.after) before.records.set(change.path,change.after);
-        else before.records.delete(change.path);
+    if (changes.length) {
+        before.records ??= encodeStateRecords(before.state);
+        before.state = undefined;
+        for (const change of changes) {
+            if (change.after) before.records.set(change.path,change.after);
+            else before.records.delete(change.path);
+        }
     }
     for (const {scope,receiptKey} of receipts) {
         const descriptor=LEGACY_FARM_RECEIPT_SCOPES.find(item=>farmRecordPath(item.path)===scope);

@@ -1,8 +1,8 @@
 import { getCrop } from "../../content.js";
 import { NPC_ID } from "../../config.js";
-import { advance, canStealNow, isUgcCrop, refreshShop, stealShieldRemain } from "../../engine.js";
+import { advance, projectFarmGrowth, canStealNow, isUgcCrop, refreshShop, stealShieldRemain } from "../../engine.js";
 import { tendNpc } from "../../game.js";
-import { allFarms, getFarm, playerFarms } from "../../store.js";
+import { allFarms, readFarm, playerFarms } from "../../store.js";
 import { currentDayIndex } from "../../time.js";
 import { cloneFarmForMutation } from "../../farm-mutation-scope.js";
 
@@ -17,11 +17,11 @@ export const farmNumber = (farmId) => {
         return 0;
     return numberedPlayerFarms().find((entry) => entry.farm.id === farmId)?.number;
 };
-export const farmByNumber = (number) => number === 0 ? getFarm(NPC_ID) : numberedPlayerFarms().find((entry) => entry.number === number)?.farm;
+export const farmByNumber = (number) => number === 0 ? readFarm(NPC_ID) : numberedPlayerFarms().find((entry) => entry.number === number)?.farm;
 export const farmLabel = (farm) => `${farm.name}（${farm.aiName || "AI"}）`;
 export function resolveNumberedTarget(raw, me) {
     const text = String(raw ?? "").trim();
-    const direct = getFarm(text);
+    const direct = readFarm(text);
     if (!direct && !/^(0|[1-9]\d*)$/.test(text))
         return { error: "to 必须填写农场编号。先查看当前列表：doorbell({\"op\":\"farm.visit\",\"args\":{}})" };
     const number = direct ? farmNumber(direct.id) : Number(text);
@@ -43,8 +43,9 @@ export function visitListResult(me) {
 /** 打开自家农场时看到的全服实时成熟广播；固定编号与串门列表共用。 */
 export function ripeBroadcastText(now, changedFarmIds, ownFarmId) {
     const entries = numberedPlayerFarms().map(({ number, farm }) => {
-        const projected = farm.id === ownFarmId ? farm : cloneFarmForMutation(farm);
-        advance(projected, now, farm.id === ownFarmId && changedFarmIds ? (id) => changedFarmIds.add(id) : undefined);
+        const own = farm.id === ownFarmId;
+        const projected = own ? farm : projectFarmGrowth(farm, now);
+        if (own) advance(farm, now, changedFarmIds ? id => changedFarmIds.add(id) : undefined);
         return { number, label: farmLabel(projected), ripe: projected.plots.filter((plot) => plot.crop?.ripe).length };
     }).filter((entry) => entry.ripe > 0);
     if (!entries.length)
@@ -53,7 +54,7 @@ export function ripeBroadcastText(now, changedFarmIds, ownFarmId) {
 }
 export function stolenTodayText(thief, now) {
     const day = currentDayIndex(now);
-    const npc = getFarm(NPC_ID);
+    const npc = readFarm(NPC_ID);
     const entries = [
         ...(npc ? [{ number: 0, farm: npc }] : []),
         ...numberedPlayerFarms(),
@@ -67,7 +68,7 @@ export function stolenTodayText(thief, now) {
 }
 export function wanderResult(b, now, numbered = false) {
     const meId = String(b.by ?? "");
-    const me = meId ? getFarm(meId) : undefined;
+    const me = meId ? readFarm(meId) : undefined;
     if (me && !reachable(me))
         return { ok: false, text: `你设了「谢绝来访」（闭门状态），不能出门逛别家——想出门先让 ${me.humanName || "伴侣"} 帮你打开『访问』开关。`, farms: [] };
     const canSteal = canStealNow(me, now) && allowsSocial(me, "steal");
@@ -76,8 +77,8 @@ export function wanderResult(b, now, numbered = false) {
     for (const current of allFarms()) {
         if (current.id === meId || current.id === NPC_ID || !reachable(current))
             continue; // 阿土不进随机池(兜底)；谢绝来访的搜不到
-        const f = cloneFarmForMutation(current);
-        advance(f, now);
+        const f = projectFarmGrowth(current, now, { includeRanch: true });
+        f.shop = {...current.shop};
         refreshShop(f, now); // 让"药水套装"在串门发现里保持最新
         const ripe = (canSteal && allowsSocial(f, "steal") && !stealShieldRemain(f, now)) ? f.plots.filter((p) => p.crop?.ripe && !isUgcCrop(p.crop)).map((p) => p.id) : [];
         const growing = (canWater && allowsSocial(f, "water")) ? f.plots.filter((p) => p.crop && !p.crop.ripe).length : 0;
@@ -90,7 +91,7 @@ export function wanderResult(b, now, numbered = false) {
     }
     // 没有别的农场可逛 → 默认去常驻邻居杂货郎阿土那儿（地里随时有熟的可偷，偶尔有限定种子）
     if (!targets.length) {
-        const currentNpc = getFarm(NPC_ID);
+        const currentNpc = readFarm(NPC_ID);
         const npc = currentNpc ? cloneFarmForMutation(currentNpc) : undefined;
         if (npc && npc.id !== meId) {
             advance(npc, now);
