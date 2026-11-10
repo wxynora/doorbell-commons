@@ -93,6 +93,7 @@ import { createDoorbellScratchcardRuntime, handleDoorbellScratchcard } from "./s
 
 import { handleTogetherReward, handleTogetherRegistration } from "./together-reward.js";
 import { handleTournamentFurniture } from "./tournament-furniture.js";
+import { handleTournamentFinaleCompensation } from "./tournament-finale-compensation.js";
 import { handleTournamentHarvest } from "./tournament-harvest.js";
 import { handleTournamentRegistration } from "./tournament-registration.js";
 import { readBody as readTogetherBody, jsonOut as togetherJsonOut } from "../http.js";
@@ -141,6 +142,12 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             await handleTournamentRegistration(req, res, method, constableInterviewRuntime, {
                 authorize: authorizeTogetherReward, readBody: readTogetherBody, jsonOut: togetherJsonOut, error: internalServiceError,
             }, parts[4]);
+            return true;
+        }
+        if (parts.join("/") === "internal/doorbell/together/finale-compensation") {
+            await handleTournamentFinaleCompensation(req,res,method,{
+                authorize:authorizeTogetherReward,readBody:readTogetherBody,jsonOut:togetherJsonOut,error:internalServiceError,
+            });
             return true;
         }
         if (parts.join("/") === "internal/doorbell/together/furniture") {

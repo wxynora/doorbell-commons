@@ -1,6 +1,7 @@
 import { cloneFarmForMutation } from "../../farm-mutation-scope.js";
 export const CHAMPION_FURNITURE_ID="farm_decor:snow_king";
 export const CHAMPION_LEASE_MS=30*24*60*60*1000;
+export const FINALIST_LEASE_MS=15*24*60*60*1000;
 
 export function validateChampionGrant(input) {
   if(!input || typeof input!=="object" || Array.isArray(input) ||
@@ -34,6 +35,16 @@ export function currentChampionState(farm,state,now=Date.now()) {
   return {...state,owned,layout:currentChampionLayout(farm,state.layout,now)};
 }
 
+export function applySnowKingLease(working,farm,state,editionId,now,leaseMs) {
+  const current=currentChampionState(farm,state,now);
+  const expires_at=Math.max(now+leaseMs,championLease(farm)?.expires_at??0);
+  working.farmDecorations={...current,owned:{...current.owned,[CHAMPION_FURNITURE_ID]:1}};
+  if(working.farmDecorationLayouts) working.farmDecorationLayouts=working.farmDecorationLayouts.map(slot=>
+    ({...slot,layout:currentChampionLayout(farm,slot.layout,now)}));
+  working.snowTournamentFurniture={...working.snowTournamentFurniture,lease:{edition_id:editionId,granted_at:now,expires_at}};
+  return expires_at;
+}
+
 export function stageChampionFurniture(farm,input,now,state) {
   validateChampionGrant(input);
   if(!Number.isSafeInteger(now) || now<0) throw new Error("invalid_champion_grant_time");
@@ -43,13 +54,9 @@ export function stageChampionFurniture(farm,input,now,state) {
     if(saved.reference!==reference) throw new Error("champion_furniture_conflict");
     return {working:null,receipt:structuredClone(saved.receipt)};
   }
-  const working=cloneFarmForMutation(farm),current=currentChampionState(farm,state,now);
-  const expires_at=Math.max(now+CHAMPION_LEASE_MS,championLease(farm)?.expires_at??0);
+  const working=cloneFarmForMutation(farm);
+  const expires_at=applySnowKingLease(working,farm,state,input.edition_id,now,CHAMPION_LEASE_MS);
   const receipt={ok:true,...input,quantity:1,granted_at:now,expires_at};
-  working.farmDecorations={...current,owned:{...current.owned,[CHAMPION_FURNITURE_ID]:1}};
-  if(working.farmDecorationLayouts) working.farmDecorationLayouts=working.farmDecorationLayouts.map(slot=>
-    ({...slot,layout:currentChampionLayout(farm,slot.layout,now)}));
-  working.snowTournamentFurniture={lease:{edition_id:input.edition_id,granted_at:now,expires_at},
-    receipts:{...previous,[input.grant_id]:{reference,receipt}}};
+  working.snowTournamentFurniture.receipts={...previous,[input.grant_id]:{reference,receipt}};
   return {working,receipt};
 }
