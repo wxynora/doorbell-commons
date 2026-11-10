@@ -1,3 +1,5 @@
+import { createMomentsPromotionService } from "../../domain/moments/promotion.js";
+import { handleMomentsPromotion } from "../moments-promotion.js";
 import { createMomentsProgressionService } from "../../domain/moments/progression.js";
 import { handleMomentsProgression } from "../moments-progression.js";
 import { handleMomentsRaffle } from "../moments-raffle.js";
@@ -98,6 +100,7 @@ import { requireDoorbellService as authorizeTogetherReward } from "./contract.js
 
 export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExecutor, careerBenefitsForFarm, constableInterviewRuntime, gachaRuntime, halloweenRuntime, momentsDatabase) {
     const halloweenHumanHandler = createDoorbellHalloweenHumanHandler(halloweenRuntime);
+    const momentsPromotion = createMomentsPromotionService(constableInterviewRuntime);
     const momentsProgression=createMomentsProgressionService({database:momentsDatabase,economyRules:constableInterviewRuntime.economyRules});
     const scratchcards = constableInterviewRuntime.database
         ? createDoorbellScratchcardRuntime(constableInterviewRuntime.database, constableInterviewRuntime.economyRules)
@@ -106,6 +109,10 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
         if (parts.length === 5 && parts[0] === "internal" && parts[1] === "doorbell" &&
             parts[2] === "human" && parts[3] === "scratchcard" && (parts[4] === "read" || parts[4] === "buy")) {
             await handleDoorbellScratchcard(req, res, method, scratchcards, parts[4]);
+            return true;
+        }
+        if (parts.join("/") === "internal/doorbell/moments/promotion") {
+            await handleMomentsPromotion(req, res, method, momentsPromotion);
             return true;
         }
         if(parts.join("/") === "internal/doorbell/moments/progression") {
