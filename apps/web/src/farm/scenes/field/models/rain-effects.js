@@ -24,10 +24,13 @@ export function createRainEffects(parent,world){
     // Hidden rain has no impacts to place; sample once when rain becomes active.
     if(!root.visible)return;
     world.updateMatrixWorld(true);
-    const surfaces=[world.getObjectByName('ground'),world.getObjectByName('creek'),world.getObjectByName('cottage'),world.getObjectByName('market-stall'),...world.children.filter(o=>o.userData.decorationId)].filter(Boolean);
+    const roots=[world.getObjectByName('ground'),world.getObjectByName('creek'),world.getObjectByName('cottage'),world.getObjectByName('market-stall'),...world.children.filter(o=>o.userData.decorationId)].filter(Boolean);
+    const surfaces=[];
+    // Glow sprites face the camera; they are not physical surfaces for rain.
+    for(const root of roots)root.traverse(object=>{if(object.isMesh)surfaces.push(object);});
     for(const drop of drops){
       ray.set(new T.Vector3(drop.x,16,drop.z),new T.Vector3(0,-1,0));
-      const hit=ray.intersectObjects(surfaces,true).find(h=>visible(h.object));
+      const hit=ray.intersectObjects(surfaces,false).find(h=>visible(h.object));
       drop.y=hit?hit.point.y:-.08;drop.water=hit?.object.name==='creek';
       normal.set(0,1,0);
       if(hit?.face){normal.copy(hit.face.normal).transformDirection(hit.object.matrixWorld);if(normal.y<0)normal.negate();}
