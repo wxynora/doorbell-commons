@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 
-export type HomeRecordKind = "post" | "receipt" | "fact" | "audience" | "like" | "comment" | "gift" | "option" | "read_cursor" | "notification_read" | "notification_reported" | "activity_status" | "raffle" | "raffle_prize" | "raffle_audience" | "raffle_sticker" | "sticker_attachment" | "progression" | "progression_event" | "progression_notice";
+export type HomeRecordKind = "post" | "receipt" | "fact" | "audience" | "like" | "comment" | "gift" | "option" | "read_cursor" | "notification_read" | "notification_reported" | "activity_status" | "raffle" | "raffle_prize" | "raffle_audience" | "raffle_sticker" | "sticker_attachment" | "progression" | "progression_event" | "progression_notice" | "poll_option" | "poll_vote" | "promotion" | "promotion_seen" | "promotion_notice";
 export type SqlValue = string | number | null;
 export type HomeRecord = { record_id: string; home_id: string };
 export type EnsureMomentsHomeTable = (homeId: string) => string;
@@ -37,6 +37,14 @@ export class HomeMomentRecords {
       total.count+=row.count;total.quantity+=row.quantity;
     }
     return total;
+  }
+
+  countByPosition(kind: HomeRecordKind, momentId: string, homeId: string): Map<number, number> {
+    const table = this.tables(homeId)[0];
+    if (!table) return new Map();
+    const rows = this.database.prepare(`SELECT position, count(*) AS votes FROM ${this.quote(table.table_name)}
+      WHERE record_type=? AND moment_id=? GROUP BY position`).all(kind, momentId) as { position: number; votes: number }[];
+    return new Map(rows.map(row => [row.position, row.votes]));
   }
 
   insert(homeId: string, kind: HomeRecordKind, fields: Record<string,SqlValue>, id: string=randomUUID()): string {

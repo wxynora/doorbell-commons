@@ -12,6 +12,7 @@ export type NotificationView = z.infer<typeof notification>;
 export interface NotificationsApi {
   list(signal: AbortSignal): Promise<NotificationView[]>;
   markRead(id: string): Promise<NotificationView>;
+  markAllRead(): Promise<NotificationView[]>;
 }
 
 export function createNotificationsApi(fetcher: typeof fetch = (...args) => fetch(...args)): NotificationsApi {
@@ -38,6 +39,7 @@ export function createNotificationsApi(fetcher: typeof fetch = (...args) => fetc
   return {
     async list(signal) { return (await request("", z.object({ notifications: z.array(notification) }), { signal })).notifications; },
     async markRead(id) { return (await request(`/${encodeURIComponent(id)}/read`, z.object({ notification }), { method: "POST", body: "{}" })).notification; },
+    async markAllRead() { return (await request("/read", z.object({ notifications: z.array(notification) }), { method: "POST", body: "{}" })).notifications; },
   };
 }
 

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { issueMessage, momentsApi, type FeedQuery, type GiftView, type MomentView, type MomentPerson, type MomentsApi } from "./api";
 import { MomentEffects, midpoint, type MomentEffect } from "./effects";
 import { GiftDialog, type GiftDraft } from "./gift-dialog";
 import { Avatar, Icon, Loading, Pixel, PixelCover } from "./pixel-art";
 import { historyBounds, receiptStyle, receiptStyles, timeLabel, type ReceiptStyle } from "./presentation";
 import { ReceiptCard } from "./receipt-card";
+import { PollCard } from "./poll-card";
 import { RaffleCard } from "./raffle-card";
 import { ActivityStatusBadge } from "./status-badge";
 import { NotificationsPanel } from "./notifications-panel";
@@ -66,10 +67,10 @@ export function MomentsPage({ residentId, residentName, onBack, api = momentsApi
     void api.people(controller.signal).then(data => { if (!controller.signal.aborted) { setPeople(data); setPeopleError(null); } }).catch(cause => { if (!controller.signal.aborted) setPeopleError(issueMessage(cause)); });
     return () => controller.abort();
   }, [api]);
-  function updatePost(id: string, update: (post: MomentView) => MomentView) {
+  const updatePost = useCallback((id: string, update: (post: MomentView) => MomentView) => {
     const apply = (values: MomentView[]) => values.map(post => post.id === id ? update(post) : post);
     setPosts(apply);
-  }
+  }, []);
   const visibleResidentIds = JSON.stringify([...new Set([residentId, ...posts.flatMap(post => post.author.residentId ? [post.author.residentId] : [])])].sort());
   useEffect(() => {
     const controller = new AbortController();
@@ -98,11 +99,17 @@ export function MomentsPage({ residentId, residentName, onBack, api = momentsApi
     try {
       const updated = await api.like(post.id, !post.liked);
       if (!mounted.current) return;
-      updatePost(updated.id, () => updated);
+      updatePost(updated.id, current => current.poll && !updated.poll?.closed ? { ...updated, poll: current.poll } : updated);
       if (updated.liked && button.isConnected) animate({ id: crypto.randomUUID(), kind: "like", momentId: post.id, from });
     } catch (cause) { if (mounted.current) setMessage(issueMessage(cause)); }
     finally { likesInFlight.current.delete(post.id); if (mounted.current) setPendingLikes(new Set(likesInFlight.current)); }
   }
+  const updatePoll = useCallback(async (id: string, choices?: number[], signal?: AbortSignal) => {
+    const updated = choices ? await api.vote(id, choices) : await api.detail(id, signal);
+    if (!mounted.current || signal?.aborted || !updated.poll) return;
+    const poll = updated.poll;
+    updatePost(id, current => current.poll?.closed && !poll.closed ? current : { ...current, poll });
+  }, [api, updatePost]);
   function sent(gift: GiftView, from: { x: number; y: number }) {
     if (!giftPost) return;
     const id = giftPost.id;
@@ -144,14 +151,15 @@ export function MomentsPage({ residentId, residentName, onBack, api = momentsApi
           <div className="filters" aria-label="活动筛选"><button className={`filter${filter === "all" ? " active" : ""}`} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>全部</button>{(Object.entries(receiptStyles) as [ReceiptStyle, { label: string }][]).map(([kind, meta]) => <button key={kind} className={`filter${filter === kind ? " active" : ""}`} aria-pressed={filter === kind} onClick={() => setFilter(kind)}>{meta.label}</button>)}</div>
           {loading ? <Loading /> : error ? <div className="empty" role="alert"><Pixel kind="computer" size={48} /><p>{error}</p><button className="quiet" onClick={refresh}>重试</button></div> : !visible.length ? <div className="empty"><Pixel kind="folder" size={44} /><p>{filter !== "all" ? "这里还没有这一类动态。" : isHistory ? "这段时间还没有可见的存档。" : count !== undefined ? "没有符合条件的动态。" : "最近 24 小时内没有可见动态。"}</p>{!isHistory && <button className="quiet" onClick={() => navigate("history")}>去翻翻往日存档</button>}</div> : <div className="feed" aria-label="动态列表">{visible.map(post => <article className="post" key={post.id} data-moment={post.id} aria-label={`${post.author.name}的动态`}>
             <div className="post-head"><Avatar actor={post.author} /><div className="post-identity"><div className="author">{post.author.name}</div><div className="post-sub"><ActivityStatusBadge name={post.author.name} statuses={post.statuses ?? []} fallback={post.receipt ? receiptStyles[receiptStyle(post.receipt)].label + "分享" : "日常动态"} /></div></div><time className="post-time" dateTime={new Date(post.createdAt).toISOString()}>{timeLabel(post.createdAt)}</time></div>
-            <div className="post-body">{post.text && <p className="post-text">{post.text}</p>}<Stickers stickers={post.stickers} />{post.receipt && <ReceiptCard receipt={post.receipt} />}{post.raffle && <RaffleCard raffle={post.raffle} />}{post.location && <div className="location"><Icon name="pin" />{post.location}</div>}
+            <div className="post-body">{post.poll ? <PollCard postId={post.id} question={post.text} poll={post.poll} update={updatePoll} />
+                : post.text && <p className="post-text">{post.text}</p>}<Stickers stickers={post.stickers} />{post.receipt && <ReceiptCard receipt={post.receipt} />}{post.raffle && <RaffleCard raffle={post.raffle} />}{post.location && <div className="location"><Icon name="pin" />{post.location}</div>}
               <div className="post-actions"><span className="permission">{post.visibility.mode !== "public" && <><Icon name="lock" />部分可见</>}</span><button className={`action${post.liked ? " liked" : ""}${effect?.kind === "like" && effect.momentId === post.id ? " like-pop" : ""}`} aria-label={`${post.liked ? "取消点赞" : "点赞"}：${post.author.name}的动态`} aria-pressed={post.liked} disabled={pendingLikes.has(post.id)} onClick={event => { void like(post, event.currentTarget); }}><Icon name="heart" />{post.likes.length}</button><span className="action comment-count" aria-label={`${post.comments.length} 条评论`}><Icon name="chat" />{post.comments.length}</span><button className="action" data-gift disabled={post.author.residentId === residentId} onClick={() => { setGiftPost(post); setMessage(null); }} title={post.author.residentId === residentId ? "不能向自家的农场赠礼" : undefined}><Icon name="gift" />{drafts[post.id] ? "确认赠礼" : "送礼"}</button></div>
               {(post.likes.length > 0 || post.comments.length > 0 || post.gifts.length > 0) && <div className="social">{post.likes.length > 0 && <div className="likes"><Icon name="heart" /><span>{post.likes.map(actor => actor.name).join("、")}</span></div>}{post.comments.map(comment => <div className="comment" key={comment.id}><strong>{comment.author.name}</strong>：{comment.text}<Stickers stickers={comment.stickers} compact /></div>)}{post.gifts.map(gift => <div className="gift-line" key={gift.id}><strong>{gift.from.name}</strong> 送来 {gift.item.name} × {gift.item.quantity}</div>)}</div>}
             </div>
           </article>)}</div>}
           {!loading && !error && visible.length > 0 && <div className="end-note">已经读到这里啦。{!isHistory && <><br /><button onClick={() => navigate("history")}>查看更早的动态</button></>}</div>}
         </div>
-      </div></div><footer className="bottom-bar"><span>{residentName} · 当前档案</span><span>点赞 · 送礼</span></footer>
+      </div></div><footer className="bottom-bar"><span>{residentName} · 当前档案</span><span>点赞 · 送礼 · 投票</span></footer>
     </div>
     {message && <div className="toast" role="status"><span>{message}</span><button aria-label="关闭提示" onClick={() => setMessage(null)}>×</button></div>}
     {giftPost && <GiftDialog key={giftPost.id} post={giftPost} api={api} draft={drafts[giftPost.id]} remember={value => setDrafts(current => { const next = { ...current }; if (value) next[giftPost.id] = value; else delete next[giftPost.id]; return next; })} onClose={() => setGiftPost(null)} onSent={sent} />}

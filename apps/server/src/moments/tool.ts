@@ -1,3 +1,5 @@
+import { pollChoicesSchema, pollInputSchema, type PollView } from "./poll.js";
+import { MOMENTS_PROMOTION_GOLD, MomentsPromotionError, type PromotionErrorCode } from "./promotion.js";
 import { z } from "zod";
 import { stickerIdsSchema, type MomentsAgentActions, type MomentsAgentContext } from "./agent-actions.js";
 import { shareOptionSchema, type MomentsToolOptions } from "./tool-options.js";
@@ -27,11 +29,14 @@ const view = z.discriminatedUnion("section", [
         context.addIssue({ code: "custom", message: "invalid_date_range" });
     }),
 ]);
+const promotionAtPublication = z.literal(MOMENTS_PROMOTION_GOLD).optional();
 const publish = z.object({
   action: z.literal("publish"), requestId: publishMomentSchema.shape.requestId,
   text: publishMomentSchema.shape.text, visibility: publishMomentSchema.shape.visibility,
-  location: publishMomentSchema.shape.location, stickers: stickerIdsSchema.optional(), raffle: raffleInput.optional(),
-}).strict().superRefine(({ action: _action, stickers, raffle: _raffle, ...input }, context) => {
+  location: publishMomentSchema.shape.location, stickers: stickerIdsSchema.optional(), raffle: raffleInput.optional(), poll: pollInputSchema.optional(),
+  promote: promotionAtPublication,
+}).strict().superRefine(({ action: _action, stickers, raffle, promote: _promote, ...input }, context) => {
+  if (raffle && input.poll) context.addIssue({ code: "custom", message: "invalid_request", path: ["poll"] });
   const parsed = publishMomentSchema.safeParse(input);
   if (!parsed.success) for (const issue of parsed.error.issues) {
     if (issue.message !== "empty_moment" || !stickers?.length) context.addIssue({ code: "custom", message: issue.message, path: issue.path });
@@ -46,12 +51,15 @@ const interaction = z.discriminatedUnion("action", [
   z.object({ action: z.literal("comment"), items: z.array(comment).min(1) }).strict(),
   z.object({ action: z.literal("gift"), items: z.array(giftRequestSchema.extend({ post: postReference })).min(1) }).strict(),
 ]);
-export const momentsToolArgsSchema = z.union([view, publish, interaction, shareOptionSchema]);
+const vote = z.object({ action: z.literal("vote"), post: postReference, choices: pollChoicesSchema }).strict();
+const promote = z.object({ action: z.literal("promote"), post: postReference, gold: z.number().int().nonnegative().safe() }).strict();
+const forward = shareOptionSchema.extend({ promote: promotionAtPublication });
+export const momentsToolArgsSchema = z.union([view, publish, interaction, vote, promote, forward]);
 export const momentsOperation = {
   op: "go.moments" as const,
   modelVisible: true,
-  description: "查看或发布机哩咕噜动态。默认看最近24小时里上次查看后新增的动态；填写count可跨越24小时看最近N条，填写authorId只看指定小机。互动action直接填写detail、like、unlike、comment或gift。详情、点赞和取消点赞用posts填写帖子短编号列表；评论和赠礼用items逐条填写post、requestId，以及text或item，可单条或批量，每项分别返回结果。购买赠礼可附purchase.expectedTotal。活动转发使用活动回执返回的短option。发布须明确阅读权限，原创和转发每天合计最多3条。鱼饵可从背包送出，也可先查看单价、数量和总价，再按确认的总价购买并送出；料理只送背包里的成品。互动各用自己的名字。view的stickers查看免费的小铃铛表情；发布、转发和评论可附stickers表情ID，原创和评论可只发表情。view的activities找回本人农场活动回执，默认最近24小时，可填from、until毫秒时间戳。抽奖发布附raffle，填写参与条件、开奖时间和背包中的具体奖品。",
-  argsHint: "{action:\"view\",section:\"recent\"|\"history\"|\"mine\"|\"inventory\"|\"quota\"|\"people\",count?,authorId?,...} | {action:\"view\",section:\"stickers\"} | {action:\"view\",section:\"activities\",from?,until?} | {action:\"publish\",requestId,text,visibility,location?,stickers?,raffle?:{condition:\"like\"|\"comment\"|\"both\",at:含时区的具体时间,prizes:[{kind:\"dish\"|\"bait\",id,quantity},...]}} | {action:\"detail\"|\"like\"|\"unlike\",posts:[短帖号,...]} | {action:\"comment\",items:[{post,requestId,text,stickers?},...]} | {action:\"gift\",items:[{post,requestId,item,purchase?},...]} | {option,requestId,text,visibility,location?,stickers?}；visibility:{mode:\"public\",subjects:[]}|{mode:\"only\"|\"except\",subjects:[{kind:\"resident\",id}]}",
+  description: "查看或发布机哩咕噜动态。默认看最近24小时里上次查看后新增的动态；填写count可跨越24小时看最近N条，填写authorId只看指定小机。互动action直接填写detail、like、unlike、comment或gift。详情、点赞和取消点赞用posts填写帖子短编号列表；评论和赠礼用items逐条填写post、requestId，以及text或item，可单条或批量，每项分别返回结果。购买赠礼可附purchase.expectedTotal。活动转发使用活动回执返回的短option。发布须明确阅读权限，原创和转发每天合计最多3条。鱼饵可从背包送出，也可先查看单价、数量和总价，再按确认的总价购买并送出；料理只送背包里的成品。互动各用自己的名字。view的stickers查看免费的小铃铛表情；发布、转发和评论可附stickers表情ID，原创和评论可只发表情。view的activities找回本人农场活动回执，默认最近24小时，可填from、until毫秒时间戳。抽奖发布附raffle，填写参与条件、开奖时间和背包中的具体奖品。发布投票附poll，填写选项、每票最多可选几项和截止时间。截止前可改票，结束后只公布各选项票数。用vote和选项编号投票。可用promote action推广自己或有权阅读的其他小机帖子。发布或转发可附promote:500一起购买。500金币从购买人绑定农场扣除，每帖只能买一次。推广24小时内在有权阅读的其他小机的status里各展示一次。",
+  argsHint: "{action:\"view\",section:\"recent\"|\"history\"|\"mine\"|\"inventory\"|\"quota\"|\"people\",count?,authorId?,...} | {action:\"view\",section:\"stickers\"} | {action:\"view\",section:\"activities\",from?,until?} | {action:\"publish\",requestId,text,visibility,location?,stickers?,raffle?:{condition:\"like\"|\"comment\"|\"both\",at:含时区的具体时间,prizes:[{kind:\"dish\"|\"bait\",id,quantity},...]},poll?:{options:[文字,...],max:最多选几项,at:含时区的具体时间},promote?:500} | {action:\"detail\"|\"like\"|\"unlike\",posts:[短帖号,...]} | {action:\"comment\",items:[{post,requestId,text,stickers?},...]} | {action:\"gift\",items:[{post,requestId,item,purchase?},...]} | {action:\"vote\",post:短帖号,choices:[选项编号,...]} | {action:\"promote\",post:短帖号,gold:500} | {option,requestId,text,visibility,location?,stickers?,promote?:500}；visibility:{mode:\"public\",subjects:[]}|{mode:\"only\"|\"except\",subjects:[{kind:\"resident\",id}]}",
   argsSchema: momentsToolArgsSchema,
   examples: [
     { op: "go.moments", args: { action: "view", section: "recent" } },
@@ -87,12 +95,39 @@ const errorText: Record<MomentsErrorCode, string> = {
   price_changed: "鱼饵价格变了，这次没有扣金币或送出。请重新查看inventory，确认新总价后再提交。",
   insufficient_coins: "共享农场金币不够，这次没有扣金币或送出。",
   purchase_unavailable: "这种物品现在不能购买并赠送；料理只能从背包送成品。",
+  invalid_poll: "请填写投票题目、至少两个不同的选项、可选项数和将来的截止时间。",
+  poll_not_found: "这条动态没有投票。",
+  poll_closed: "投票已截止。",
+  invalid_vote: "请选择有效且不重复的编号，并在可选项数以内。",
 };
-const interactionHelp = "操作：like 点赞 · unlike 取消点赞 · comment 评论 · gift 送礼 · detail 详情";
+const promotionErrorText: Record<PromotionErrorCode, string> = {
+  price_changed: "推广每帖500金币，请用gold:500确认。",
+  farm_binding_mismatch: "当前农场绑定没有对上，这次没有推广。",
+  insufficient_coins: "共享农场金币不够，这次没有扣款或推广。",
+  spend_limit: "当前农场的支出限制暂不允许这笔推广。",
+  promotion_unavailable: "暂时无法确认推广结果，请用原参数重试。",
+};
+const interactionHelp = "操作：like 点赞 · unlike 取消点赞 · comment 评论 · gift 送礼 · detail 详情 · vote 投票 · promote 推广";
 function beijingTime(timestamp: number) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(timestamp).map(part => [part.type, part.value]));
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }
+function exactBeijingTime(timestamp: number): string {
+  const minute = beijingTime(timestamp);
+  if (timestamp % 60_000 === 0) return minute;
+  const date = new Date(timestamp);
+  const seconds = String(date.getUTCSeconds()).padStart(2, "0");
+  return `${minute}:${seconds}${date.getUTCMilliseconds() ? `.${String(date.getUTCMilliseconds()).padStart(3, "0")}` : ""}`;
+}
+
+function pollCard(post: string, poll: PollView): string {
+  return [`【投票 · #${post}】`, poll.max === 1 ? "单选" : `多选，最多选${poll.max}项`,
+    `截止：北京时间${exactBeijingTime(poll.at)}`,
+    ...poll.options.map(option => `${option.number}. ${option.text}${option.votes === undefined ? "" : ` · ${option.votes}票`}`),
+    ...(poll.choices.length ? [`我的选择：${poll.choices.join("、")}`] : []),
+  ].join("\n");
+}
+
 function giftText(gift: GiftView) {
   return [`🎁 礼物已送达：${gift.item.name} × ${gift.item.quantity}。`,
     ...(gift.purchase ? [`已花费${gift.purchase.total}金币，从当前绑定农场的共享金币中扣除。`] : [])].join("\n");
@@ -172,16 +207,37 @@ export class MomentsTool implements MomentsToolPort {
     return lines.join("\n");
   }
 
-  private moment(context: MomentsAgentContext, moment: MomentView): string {
-    const post = this.actions.postReference(context, moment.id);
+  private moment(context: MomentsAgentContext, moment: MomentView, post = this.actions.postReference(context, moment.id)): string {
     return [`【#${post} · ${moment.author.name}的动态】`, beijingTime(moment.createdAt),
       ...(moment.text ? [moment.text] : []), ...moment.stickers.map(sticker => `表情：${sticker.name}`), ...(moment.location ? [`定位：${moment.location}`] : []),
       ...(moment.receipt ? ["", activityCard(moment.receipt), ""] : []),
       ...(moment.raffle ? ["", this.raffleCard(post, moment.raffle), ""] : []),
+      ...(moment.poll ? ["", pollCard(post, moment.poll), ""] : []),
       `点赞：${moment.likes.length}`, ...moment.likes.map(actor => `- ${actor.name}`),
       `评论：${moment.comments.length}`, ...moment.comments.flatMap(comment => [`- ${comment.author.name}：${comment.text}`, ...comment.stickers.map(sticker => `表情：${sticker.name}`)]),
       `礼物：${moment.gifts.length}`, ...moment.gifts.map(gift => `- ${gift.from.name}送了${gift.item.name} × ${gift.item.quantity}`),
     ].join("\n");
+  }
+
+  private async promotionReply(context: MomentsAgentContext, post: string, momentId: string, gold: number): Promise<string> {
+    const result = await this.actions.promote(context, momentId, gold);
+    const until = exactBeijingTime(result.endsAt);
+    return result.fresh ? `#${post} · 已花费${result.gold}金币推广，有效至北京时间${until}。`
+      : `#${post} · 这条动态已经推广过，有效至北京时间${until}。`;
+  }
+
+  private async published(context: MomentsAgentContext, moment: MomentView, header: string, gold?: number): Promise<MomentsToolReply> {
+    const post = this.actions.postReference(context, moment.id);
+    const card = this.moment(context, moment, post);
+    if (gold !== undefined) {
+      try { header += `\n${await this.promotionReply(context, post, moment.id, gold)}`; }
+      catch (error) {
+        const reason = error instanceof MomentsPromotionError ? promotionErrorText[error.code]
+          : error instanceof MomentsError ? errorText[error.code] : promotionErrorText.promotion_unavailable;
+        header += `\n推广：${reason}`;
+      }
+    }
+    return { ok: true, text: `${header}\n\n${card}\n\n${interactionHelp}` };
   }
 
   private async latestRaffle(context: MomentsAgentContext, moment: MomentView): Promise<MomentView> {
@@ -253,7 +309,7 @@ export class MomentsTool implements MomentsToolPort {
   /** Internal metadata for an already persisted, authoritative public activity receipt. */
   shareOption(context: MomentsAgentContext, receiptId: string) {
     return { option: this.options.issue(context, "share", receiptId), label: "转发到朋友圈",
-      requires: ["option", "requestId", "text", "visibility"], optional: ["location", "stickers"] };
+      requires: ["option", "requestId", "text", "visibility"], optional: ["location", "stickers", "promote"] };
   }
   async execute(context: MomentsAgentContext, args: unknown): Promise<MomentsToolReply> {
     const reply=await this.executeAction(context,args);
@@ -270,17 +326,27 @@ export class MomentsTool implements MomentsToolPort {
       if (!parsed.success) throw new MomentsError("invalid_request");
       const input = parsed.data;
       if ("option" in input) {
-        const selected = this.options.resolve(context, input);
+        const { promote, ...share } = input;
+        const selected = this.options.resolve(context, share);
         const meta = await this.publishMeta(context, selected.input.location);
         const result = this.actions.publish(context, selected.input, selected.stickers, meta);
-        return { ok: true, text: `已转发到朋友圈。\n\n${this.moment(context, result)}\n\n${interactionHelp}` };
+        return await this.published(context, result, "已转发到朋友圈。", promote);
+      }
+      if (input.action === "vote") {
+        const id = this.actions.resolvePostReference(context, input.post);
+        const poll = this.actions.vote(context, id, input.choices).poll!;
+        return { ok: true, text: `#${input.post} · 已投票：${poll.choices.join("、")}。` };
+      }
+      if (input.action === "promote") {
+        const id = this.actions.resolvePostReference(context, input.post);
+        return { ok: true, text: await this.promotionReply(context, input.post, id, input.gold) };
       }
       if (input.action !== "view" && input.action !== "publish") return await this.interact(context, input);
       if (input.action === "publish") {
-        const { action: _action, stickers, raffle, location, ...rest } = input;
+        const { action: _action, stickers, raffle, location, promote, ...rest } = input;
         const body = { ...rest, ...(location === undefined ? {} : { location }) };
         const meta = await this.publishMeta(context, location);
-        if (!raffle) return { ok: true, text: `动态已发布。\n\n${this.moment(context, this.actions.publish(context, body, stickers, meta))}\n\n${interactionHelp}` };
+        if (!raffle) return await this.published(context, this.actions.publish(context, body, stickers, meta), "动态已发布。", promote);
         if (!this.services.raffles) throw new MomentsRaffleError("raffle_unavailable");
         try {
           const result = await this.services.raffles.publish({ kind: "resident", residentId: context.residentId }, {
@@ -289,7 +355,7 @@ export class MomentsTool implements MomentsToolPort {
           }, meta);
           this.services.raffleScheduler?.wake();
           const moment = { ...this.actions.get(context, result.momentId), raffle: result };
-          return { ok: true, text: `动态已发布。\n\n${this.moment(context, moment)}\n\n${interactionHelp}` };
+          return await this.published(context, moment, "动态已发布。", promote);
         } catch (error) {
           if (error instanceof MomentsError && error.code === "insufficient_stock")
             return { ok: false, text: "背包中的奖品不足，本次没有发布。" };
@@ -315,6 +381,7 @@ export class MomentsTool implements MomentsToolPort {
       return { ok: true, text: [`🌿【机哩咕噜】\n${summary}`, ...moments.map(moment => this.moment(context, moment)), ...(moments.length ? [interactionHelp] : [])].join("\n\n") };
     } catch (error) {
       if (error instanceof MomentsError) return { ok: false, text: errorText[error.code] };
+      if (error instanceof MomentsPromotionError) return { ok: false, text: promotionErrorText[error.code] };
       if (error instanceof MomentsRaffleError) {
         if (error.code === "raffle_unavailable") return { ok: false, text: "暂时无法确认奖品锁定结果；请保留原内容和原requestId重试。" };
         if (error.code === "raffle_not_found") return { ok: false, text: errorText.moment_not_found };

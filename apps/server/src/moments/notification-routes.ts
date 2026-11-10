@@ -15,6 +15,11 @@ export function registerMomentsNotificationRoutes(app: FastifyInstance, options:
     if (Object.keys(request.query ?? {}).length) throw new MomentsError("invalid_request");
     return { notifications: options.notifications.list(actor) };
   }));
+  app.post("/api/moments/notifications/read", options.handle((actor, request) => {
+    if (Object.keys(request.query ?? {}).length || !z.object({}).strict().safeParse(request.body).success)
+      throw new MomentsError("invalid_request");
+    return { notifications: options.notifications.markAllRead(actor) };
+  }));
   app.post("/api/moments/notifications/:notificationId/read", options.handle((actor, request) => {
     if (Object.keys(request.query ?? {}).length || !z.object({}).strict().safeParse(request.body).success)
       throw new MomentsError("invalid_request");

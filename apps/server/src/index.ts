@@ -1,3 +1,4 @@
+import { MomentsPromotionClient } from "./moments/promotion-client.js";
 import { MomentsProgressionClient } from "./moments/progression-client.js";
 import { MomentsProgressionService } from "./moments/progression-service.js";
 import { GameActivitySource } from "./moments/game-activity-source.js";
@@ -346,7 +347,10 @@ const bellService = new BellService({
   onError: reportBellError,
   beforeReplay: residentId=>securityPatrolDeliveryService?.sync(residentId)??Promise.resolve(),
 });
-const momentsActions = new MomentsAgentActions({ store: momentsStore, gifts: momentsGifts });
+const momentsActions = new MomentsAgentActions({ store: momentsStore, gifts: momentsGifts,
+  promotionFarm: new MomentsPromotionClient({ apiBaseUrl: serverConfig.farmApiBaseUrl,
+    serviceToken: serverConfig.farmServiceToken, requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs }),
+});
 const momentsOptions = new MomentsToolOptions(momentsStore, momentsActions);
 const gameActivity = new GameActivitySource(momentsStore, momentsOptions, reportBellError);
 const loungeRuntime = launchLounge(process.env.DOORBELL_LOUNGE_CONFIG, {
@@ -643,6 +647,7 @@ const mcpRuntime = new DoorbellMcpRuntime({
   mainActivity,
   farmMomentActivities,
   statusNotifications: database.createMomentsStatusNotifications(momentsStore),
+  momentsPromotions: momentsStore.promotions,
   ...(snowTournament.tools ? { snowTools: snowTournament.tools } : {}),
   dailyMaterials,
   ...(loungeRuntime ? { loungeTools: loungeRuntime.tools } : {}),

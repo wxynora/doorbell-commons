@@ -1,3 +1,4 @@
+import { MomentsPromotionError, type MomentsPromotionFarm } from "./promotion.js";
 import { z } from "zod";
 import { commentSchema, feedQuerySchema, giftRequestSchema, publishMomentSchema, type MomentsStore } from "./store.js";
 import type { MomentsGiftService } from "./gift-service.js";
@@ -53,7 +54,7 @@ function parse<T>(schema: z.ZodType<T>, input: unknown): T {
 /** Domain adapter only. Tool descriptions and public registration live elsewhere. */
 export class MomentsAgentActions {
   private readonly now: () => number;
-  constructor(private readonly options: { store: MomentsStore; gifts?: MomentsGiftService | undefined; now?: () => number }) {
+  constructor(private readonly options: { store: MomentsStore; gifts?: MomentsGiftService | undefined; promotionFarm?: MomentsPromotionFarm; now?: () => number }) {
     this.now = options.now ?? Date.now;
   }
   private actor(context: MomentsAgentContext): MomentActor {
@@ -69,7 +70,7 @@ export class MomentsAgentActions {
   readFeed(context: MomentsAgentContext, input: unknown) {
     return this.options.store.readFeed(this.actor(context), parse(feedQuerySchema,input), this.now());
   }
-  get(context: MomentsAgentContext, momentId: string) { return this.options.store.get(this.actor(context), momentId); }
+  get(context: MomentsAgentContext, momentId: string) { return this.options.store.get(this.actor(context), momentId, this.now()); }
   postReference(context: MomentsAgentContext, momentId: string) { return this.options.store.postReference(this.actor(context), momentId); }
   resolvePostReference(context: MomentsAgentContext, reference: string) { return this.options.store.resolvePostReference(this.actor(context), reference); }
   time() { return this.now(); }
@@ -77,10 +78,11 @@ export class MomentsAgentActions {
   publish(context: MomentsAgentContext, input: unknown, stickers: readonly string[] = [], meta?: MomentPublishMeta) {
     // The only receipt input is an existing opaque ID; ownership is checked by Store.
     // Only trusted activity adapters may call Store.recordReceipt.
-    const { receiptId, location, ...body } = parse(publishInputSchema, input);
+    const { receiptId, location, poll, ...body } = parse(publishInputSchema, input);
     return this.options.store.publish(this.actor(context), {
       ...body,
       ...(receiptId === undefined ? {} : { receiptId }),
+      ...(poll === undefined ? {} : { poll }),
       ...(location === undefined ? {} : { location }),
     }, this.now(), stickers, meta);
   }
@@ -89,6 +91,14 @@ export class MomentsAgentActions {
   }
   setLike(context: MomentsAgentContext, momentId: string, liked: boolean) {
     return this.options.store.setLike(this.actor(context), momentId, liked, this.now());
+  }
+  vote(context: MomentsAgentContext, momentId: string, choices: number[]) {
+    return this.options.store.vote(this.actor(context), momentId, choices, this.now());
+  }
+  promote(context: MomentsAgentContext, momentId: string, gold: number) {
+    const farm = this.options.promotionFarm;
+    if (!farm) throw new MomentsPromotionError("promotion_unavailable");
+    return this.options.store.promotions.purchase(context.residentId, momentId, gold, farm, this.now);
   }
   inventory(context: MomentsAgentContext) { return this.gifts().inventory(this.actor(context)); }
   sendGift(context: MomentsAgentContext, momentId: string, input: unknown) {

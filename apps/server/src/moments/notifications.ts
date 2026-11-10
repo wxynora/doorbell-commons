@@ -82,6 +82,23 @@ export class MomentsNotifications {
     return this.project(actor, this.moments.notificationIdentity(actor));
   }
 
+  markAllRead(actor: MomentActor): MomentNotification[] {
+    return this.database.transaction(() => {
+      const identity = this.moments.notificationIdentity(actor);
+      const notifications = this.project(actor, identity);
+      const unread = notifications.filter(notification => !notification.read);
+      if (!unread.length) return notifications;
+      this.moments.notificationIdentity(actor, true);
+      for (const notification of unread) {
+        this.records.insert(identity.homeId, "notification_read", {
+          actor_key: identity.actorKey, notification_source_id: notification.id,
+        });
+        notification.read = true;
+      }
+      return notifications;
+    }).immediate();
+  }
+
   markRead(actor: MomentActor, sourceId: string): MomentNotification {
     if (typeof sourceId !== "string" || !sourceId) throw new MomentsError("invalid_request");
     return this.database.transaction(() => {

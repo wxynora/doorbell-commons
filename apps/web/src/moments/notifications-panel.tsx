@@ -14,6 +14,7 @@ export function NotificationsPanel({ onClose, api = notificationsApi }: Notifica
   const [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<string | null>(null);
+  const [markingAll, setMarkingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -24,7 +25,7 @@ export function NotificationsPanel({ onClose, api = notificationsApi }: Notifica
     return () => controller.abort();
   }, [api, reload]);
   async function markRead(id: string) {
-    if (pending !== null) return;
+    if (pending !== null || markingAll) return;
     setPending(id); setError(null);
     try {
       const updated = await api.markRead(id);
@@ -32,9 +33,19 @@ export function NotificationsPanel({ onClose, api = notificationsApi }: Notifica
     } catch (cause) { setError(issueMessage(cause)); }
     finally { setPending(null); }
   }
+  async function markAllRead() {
+    if (loading || pending !== null || markingAll) return;
+    setMarkingAll(true); setError(null);
+    try { setItems(await api.markAllRead()); }
+    catch (cause) { setError(issueMessage(cause)); }
+    finally { setMarkingAll(false); }
+  }
   return <aside className="ly-notifications" aria-label="机哩咕噜通知" onKeyDown={event => { if (event.key === "Escape") onClose(); }}>
     <div className="ly-notifications-title"><strong>▤ 机哩咕噜通知</strong><button type="button" onClick={onClose} aria-label="关闭通知">×</button></div>
-    <div className="ly-notifications-toolbar"><span>收到的互动</span><button type="button" disabled={loading || pending !== null} onClick={() => setReload(value => value + 1)}>刷新</button></div>
+    <div className="ly-notifications-toolbar"><span>收到的互动</span><div className="ly-notifications-actions">
+      <button type="button" disabled={loading || markingAll || pending !== null || !items.some(item => !item.read)} onClick={() => { void markAllRead(); }}>{markingAll ? "保存中" : "全部已读"}</button>
+      <button type="button" disabled={loading || markingAll || pending !== null} onClick={() => setReload(value => value + 1)}>刷新</button>
+    </div></div>
     {error && <p className="ly-notifications-error" role="alert">{error}</p>}
     {loading ? <p className="ly-notifications-empty" role="status">正在读取通知…</p> : error ? null : items.length === 0 ? <p className="ly-notifications-empty">还没有收到互动。</p> :
       <ul className="ly-notifications-list">{items.map(item => <li key={item.id} className={item.read ? "" : "unread"}>
@@ -45,7 +56,7 @@ export function NotificationsPanel({ onClose, api = notificationsApi }: Notifica
           {item.moment.stickers.length > 0 && <div className="ly-notifications-post"><Stickers stickers={item.moment.stickers} compact /></div>}
           <time dateTime={new Date(item.createdAt).toISOString()}>{timeLabel(item.createdAt)}</time>
         </div>
-        {item.read ? <span className="ly-notifications-read">已读</span> : <button type="button" className="ly-notifications-mark" disabled={pending !== null} onClick={() => { void markRead(item.id); }} aria-label={`标记${item.from.name}的${item.kind === "like" ? "点赞" : item.kind === "comment" ? "评论" : "礼物"}为已读`}>{pending === item.id ? "保存中" : "标为已读"}</button>}
+        {item.read ? <span className="ly-notifications-read">已读</span> : <button type="button" className="ly-notifications-mark" disabled={pending !== null || markingAll} onClick={() => { void markRead(item.id); }} aria-label={`标记${item.from.name}的${item.kind === "like" ? "点赞" : item.kind === "comment" ? "评论" : "礼物"}为已读`}>{pending === item.id ? "保存中" : "标为已读"}</button>}
       </li>)}</ul>}
     <div className="ly-notifications-footer">礼物 · 评论 · 点赞</div>
   </aside>;

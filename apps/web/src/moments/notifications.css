@@ -3,6 +3,7 @@
 .ly-moments .ly-notifications-title button, .ly-moments .ly-notifications-toolbar button, .ly-moments .ly-notifications-mark { border: 1px solid #7694a3; background: #fffdf0; color: #365566; cursor: pointer; }
 .ly-moments .ly-notifications-title button { width: 22px; height: 21px; padding: 0; font-size: 16px; line-height: 18px; }
 .ly-moments .ly-notifications-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 7px 9px; border-bottom: 1px solid #d6d2be; color: #697674; font-size: 12px; }
+.ly-moments .ly-notifications-actions { display: flex; gap: 6px; }
 .ly-moments .ly-notifications-toolbar button, .ly-moments .ly-notifications-mark { padding: 3px 6px; font-size: 11px; white-space: nowrap; }
 .ly-moments .ly-notifications button:disabled { opacity: .5; cursor: default; }
 .ly-moments .ly-notifications-list { list-style: none; max-height: min(60vh, 450px); overflow-y: auto; margin: 0; padding: 0; }

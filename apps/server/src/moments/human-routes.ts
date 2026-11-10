@@ -1,3 +1,4 @@
+import { pollChoicesSchema } from "./poll.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { readHumanSessionToken, serializeClearedHumanSessionCookie } from "../session-cookie.js";
@@ -54,9 +55,9 @@ export function registerMomentsHumanRoutes(app: FastifyInstance, options: {
       }
       catch (cause) {
         if (cause instanceof MomentsError) {
-          const status = cause.code === "moment_not_found" ? 404 : cause.code === "actor_unavailable" ? 401
+          const status = ["moment_not_found", "poll_not_found"].includes(cause.code) ? 404 : cause.code === "actor_unavailable" ? 401
             : cause.code === "resident_only" ? 403 : cause.code === "gift_unavailable" ? 503
-            : ["farm_binding_mismatch","same_farm","request_conflict","insufficient_stock","item_conflict","item_unavailable","price_changed","insufficient_coins","purchase_unavailable"].includes(cause.code) ? 409 : 400;
+            : ["poll_closed","farm_binding_mismatch","same_farm","request_conflict","insufficient_stock","item_conflict","item_unavailable","price_changed","insufficient_coins","purchase_unavailable"].includes(cause.code) ? 409 : 400;
           return error(reply,status,cause.code);
         }
         const name = cause instanceof Error ? cause.name : "UnknownError";
@@ -93,13 +94,21 @@ export function registerMomentsHumanRoutes(app: FastifyInstance, options: {
   }));
   app.get("/api/moments/:momentId",handle((actor,request) => {
     if (Object.keys(request.query??{}).length) throw new MomentsError("invalid_request");
-    return withStatuses(actor, [options.store.get(actor,(request.params as { momentId: string }).momentId)], now())[0];
+    const at = now();
+    return withStatuses(actor, [options.store.get(actor,(request.params as { momentId: string }).momentId,at)], at)[0];
   }));
   app.put("/api/moments/:momentId/like",handle((actor,request) => {
     const parsed = z.object({ liked: z.boolean() }).strict().safeParse(request.body);
     if (!parsed.success || Object.keys(request.query??{}).length) throw new MomentsError("invalid_request");
     const at = now();
     return withStatuses(actor, [options.store.setLike(actor,(request.params as { momentId: string }).momentId,parsed.data.liked,at)], at)[0];
+  }));
+  app.put("/api/moments/:momentId/vote", handle((actor, request) => {
+    if (Object.keys(request.query ?? {}).length) throw new MomentsError("invalid_request");
+    const parsed = z.object({ choices: pollChoicesSchema }).strict().safeParse(request.body);
+    if (!parsed.success) throw new MomentsError("invalid_vote");
+    const at = now();
+    return withStatuses(actor, [options.store.vote(actor, (request.params as { momentId: string }).momentId, parsed.data.choices, at)], at)[0];
   }));
   const gifts=options.gifts;
   if(gifts){

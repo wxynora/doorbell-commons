@@ -28,6 +28,12 @@ const raffle: z.ZodType<NonNullable<MomentView["raffle"]>> = z.object({
     action: z.enum(["award", "return"]).nullable(), settledAt: z.number().int().nonnegative().safe().nullable(),
   }).strict()),
 }).strict();
+const poll: z.ZodType<NonNullable<MomentView["poll"]>> = z.object({
+  at: z.number().int(), max: z.number().int().positive(), closed: z.boolean(),
+  choices: z.array(z.number().int().positive()),
+  options: z.array(z.object({ number: z.number().int().positive(), text: z.string(), votes: z.number().int().nonnegative().optional() })
+    .transform(({ votes, ...option }) => ({ ...option, ...(votes === undefined ? {} : { votes }) }))),
+}).refine(value => value.options.every(option => (option.votes !== undefined) === value.closed));
 const moment = z.object({
   id: z.string(), author: actor, text: z.string(), createdAt: z.number(), location: z.string().nullable(),
   stickers: z.array(stickerSchema),
@@ -38,7 +44,8 @@ const moment = z.object({
   liked: z.boolean(), likes: z.array(actor), comments: z.array(z.object({ id: z.string(), author: actor, text: z.string(), stickers: z.array(stickerSchema), createdAt: z.number() })), gifts: z.array(gift),
   statuses: z.array(z.object({ key: z.enum(activityStatusKeys), occurredAt: z.number() })).optional(),
   raffle: raffle.optional(),
-}).transform(({ statuses, raffle, ...value }) => ({ ...value, ...(statuses === undefined ? {} : { statuses }), ...(raffle === undefined ? {} : { raffle }) }));
+  poll: poll.optional(),
+}).transform(({ statuses, raffle, poll, ...value }) => ({ ...value, ...(statuses === undefined ? {} : { statuses }), ...(raffle === undefined ? {} : { raffle }), ...(poll === undefined ? {} : { poll }) }));
 const giftCounts = z.object({ times: z.number(), quantity: z.number() });
 const annual = z.object({
   year: z.number(), homeId: z.string(), from: z.number(), until: z.number(),
@@ -62,6 +69,7 @@ export function issueMessage(error: unknown): string {
     item_conflict: "这份料理的状态发生了变化，请重新查看背包。", farm_binding_mismatch: "农场绑定发生了变化，请返回社区重新打开农场。",
     invalid_request: "查询条件或礼物数量不正确，请检查后重试。", request_conflict: "这次赠礼内容与原请求不一致，请查看原赠礼结果。",
     price_changed: "鱼饵价格已变化，请重新选择并确认总价。", insufficient_coins: "金币余额不足，这次没有扣款。", purchase_unavailable: "这种鱼饵暂时不能购买，请重新选择。",
+    poll_closed: "投票已截止。", poll_not_found: "这条动态没有投票。", invalid_vote: "请检查所选编号和可选项数。",
     gift_unavailable: "赠礼暂时没有完成确认，请稍后重试。", unexpected_response: "机哩咕噜返回的数据未能读取，请重试。",
   };
   return messages[error.code] ?? (error.status === 404 ? "机哩咕噜服务还未开放。" : "机哩咕噜暂时无法连接，请稍后重试。");
@@ -76,6 +84,8 @@ export interface MomentsApi {
   list(query: FeedQuery, signal: AbortSignal): Promise<MomentView[]>;
   people(signal: AbortSignal): Promise<MomentPerson[]>;
   like(id: string, liked: boolean): Promise<MomentView>;
+  detail(id: string, signal?: AbortSignal): Promise<MomentView>;
+  vote(id: string, choices: number[]): Promise<MomentView>;
   inventory(signal: AbortSignal): Promise<GiftInventory>;
   send(id: string, requestId: string, item: GiftItem, purchase?: GiftPurchase): Promise<GiftView>;
   annual(year: number, signal: AbortSignal): Promise<AnnualMomentsSummary>;
@@ -107,6 +117,8 @@ export function createMomentsApi(fetcher: typeof fetch = (...args) => fetch(...a
     },
     async people(signal) { return (await request("/people", z.object({ people: z.array(person) }), { signal })).people; },
     like: (id, liked) => request(`/${encodeURIComponent(id)}/like`, moment, { method: "PUT", body: JSON.stringify({ liked }) }),
+    detail: (id, signal) => request(`/${encodeURIComponent(id)}`, moment, signal ? { signal } : {}),
+    vote: (id, choices) => request(`/${encodeURIComponent(id)}/vote`, moment, { method: "PUT", body: JSON.stringify({ choices }) }),
     inventory: signal => request("/gift-inventory", inventory, { signal }),
     send: (id, requestId, selected, purchase) => request(`/${encodeURIComponent(id)}/gifts`, gift, { method: "POST", body: JSON.stringify({ requestId, item: selected, ...(purchase === undefined ? {} : { purchase }) }) }),
     annual: (year, signal) => request(`/annual-summary?year=${encodeURIComponent(year)}`, annual, { signal }),

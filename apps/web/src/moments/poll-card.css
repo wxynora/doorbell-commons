@@ -1,0 +1,17 @@
+.ly-moments .ly-ballot { border: 1px solid #9f91b1; background: #fffaf4; color: #463955; }
+.ly-moments .ly-ballot-bar, .ly-moments .ly-ballot-foot {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px 10px;
+  padding: 5px 9px; font-size: 12px;
+}
+.ly-moments .ly-ballot-bar { background: #e8dfef; border-bottom: 1px solid #c5b8d2; font-weight: 600; }
+.ly-moments .ly-ballot fieldset { display: grid; gap: 1px; margin: 0; padding: 5px 8px 6px; border: 0; min-width: 0; }
+.ly-moments .ly-ballot legend { padding: 7px 2px 0; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.ly-moments .ly-ballot-row { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; align-items: center; gap: 7px; padding: 4px 2px; overflow-wrap: anywhere; }
+.ly-moments label.ly-ballot-row { cursor: pointer; }
+.ly-moments .ly-ballot-row + .ly-ballot-row { border-top: 1px dotted #ded3e5; }
+.ly-moments .ly-ballot-number { min-width: 1.45em; padding: 0 2px; border: 1px solid #d7cbe1; background: #f1e8f4; text-align: center; font-variant-numeric: tabular-nums; font-size: 11px; }
+.ly-moments .ly-ballot-row input { accent-color: #785583; margin: 0 2px; }
+.ly-moments .ly-ballot-total { font-variant-numeric: tabular-nums; font-size: 12px; }
+.ly-moments .ly-ballot-foot { min-height: 28px; border-top: 1px solid #ded3e5; }
+.ly-moments .ly-ballot-foot button { font-size: 12px; padding: 2px 7px; }
+.ly-moments .ly-ballot-error { margin: 0; padding: 5px 9px; color: #a64032; font-size: 12px; }

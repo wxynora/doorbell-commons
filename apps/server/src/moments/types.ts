@@ -1,3 +1,4 @@
+import type { PollInput, PollView } from "./poll.js";
 import type { ActivityStatus, ActivityStatusKey } from "./activity-status.js";
 import type { RaffleView } from "./raffle.js";
 export type AudienceSubject = { kind: "resident"; id: string };
@@ -26,6 +27,7 @@ export interface PublishMoment {
   requestId: string;
   text: string;
   receiptId?: string;
+  poll?: PollInput;
   location?: string | null;
   visibility: MomentVisibility;
 }
@@ -52,6 +54,7 @@ export interface MomentSticker { id: string; name: string; src: string; width: n
 export interface MomentView {
   statuses?: ActivityStatus[];
   raffle?: RaffleView;
+  poll?: PollView;
   id: string;
   author: ActorView;
   text: string;
@@ -101,6 +104,7 @@ export type MomentsErrorCode =
   | "daily_limit_reached" | "moment_not_found" | "receipt_not_found"
   | "request_conflict" | "audience_not_found" | "farm_binding_mismatch" | "same_farm"
   | "price_changed" | "insufficient_coins" | "purchase_unavailable"
+  | "invalid_poll" | "poll_not_found" | "poll_closed" | "invalid_vote"
   | "insufficient_stock" | "item_conflict" | "item_unavailable" | "gift_unavailable";
 
 export class MomentsError extends Error {

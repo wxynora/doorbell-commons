@@ -1,3 +1,4 @@
+import type { MomentsPromotions } from "./moments/promotion.js";
 import type { MomentsToolPort } from "./moments/tool.js";
 import { renderMomentsStatusCounts, type MomentsStatusNotifications } from "./moments/status-notifications.js";
 import type { MainActivitySource } from "./moments/main-activity-source.js";
@@ -369,6 +370,7 @@ function protocolVersionError(
 export interface DoorbellMcpRuntimeOptions {
   momentsTools?: MomentsToolPort;
   statusNotifications?: Pick<MomentsStatusNotifications, "report" | "dailySummary">;
+  momentsPromotions?: Pick<MomentsPromotions, "report" | "reportSponsored">;
   momentsProgression?: {sync(residentId:string):Promise<void>;takeNotices(residentId:string):string[]};
   mainActivity?: Pick<MainActivitySource, "dailyRead">;
   snowTools?: SnowTournamentToolPort;
@@ -492,6 +494,7 @@ export class DoorbellMcpRuntime {
   readonly #faultReports: FaultReports | undefined;
   readonly #momentsTools: MomentsToolPort | undefined;
   readonly #statusNotifications: DoorbellMcpRuntimeOptions["statusNotifications"];
+  readonly #momentsPromotions: DoorbellMcpRuntimeOptions["momentsPromotions"];
   readonly #momentsProgression: DoorbellMcpRuntimeOptions["momentsProgression"];
   readonly #mainActivity: DoorbellMcpRuntimeOptions["mainActivity"];
   readonly #database: CommunityDatabase;
@@ -527,6 +530,7 @@ export class DoorbellMcpRuntime {
   constructor(options: DoorbellMcpRuntimeOptions) {
     this.#momentsTools = options.momentsTools;
     this.#statusNotifications = options.statusNotifications;
+    this.#momentsPromotions = options.momentsPromotions;
     this.#momentsProgression = options.momentsProgression;
     this.#mainActivity = options.mainActivity;
     this.#faultReports = options.faultReports;
@@ -1040,10 +1044,7 @@ export class DoorbellMcpRuntime {
         detail,
       });
       recordResidentFarmAction(this.#database.residentSocialStore, context.residentId, op, result.ok, this.#now());
-      let text =
-        op === "farm.status" && result.ok
-          ? this.#decorateActivityStatus(result.text, context)
-          : result.text;
+      let text = result.text;
       const halloweenCandyEat = op === "farm.together.choose" &&
         isHalloweenCandyEatOption(businessArgs.option);
       if (shouldAppendStatus && op !== "farm.status" && !halloweenCandyEat) {
@@ -1060,7 +1061,10 @@ export class DoorbellMcpRuntime {
         }
       }
       if(result.ok)text=[text,...(this.#momentsProgression?.takeNotices(context.residentId)??[])].join("\n\n");
-      return farmToolResult(text, result.ok, result.farm);
+      const reply = farmToolResult(text, result.ok, result.farm);
+      const status = reply.content[0];
+      if (op === "farm.status" && result.ok && status) status.text = this.#decorateFarmStatus(status.text, context);
+      return reply;
     } catch (error) {
       const unconfirmedMessage = op === "farm.decorate"
         ? "装修请求的保存结果尚未确认。请先空参数调用 farm.decorate，核对最近保存的草稿编号和当前布局；有草稿编号时原样查询，不要重发另一笔装修。"
@@ -1123,32 +1127,24 @@ export class DoorbellMcpRuntime {
   }
 
   #decorateFarmStatus(text: string, context: DoorbellFarmContext): string {
-    const published = this.#appendDailyPublicationNotice(text);
-    return this.#decorateActivityStatus(published, context);
+    const { residentId } = context;
+    const now = this.#now();
+    const together = this.#togetherActivity?.decorateFarmStatus?.(residentId, text) ?? text;
+    const status = this.#snowTools?.decorateFarmStatus?.(residentId, together) ?? together;
+    const daily = this.#statusSection(() => publishedDailyNotice(this.#database, now));
+    const sponsored = this.#statusSection(() => this.#momentsPromotions?.reportSponsored(residentId));
+    const summary = this.#statusSection(() => this.#statusNotifications?.dailySummary(residentId, now));
+    const notice = this.#statusSection(() => this.#statusNotifications?.report(residentId, renderMomentsStatusCounts));
+    const promotion = this.#statusSection(() => this.#momentsPromotions?.report(residentId, now));
+    const moments = [sponsored, summary, notice, promotion].filter(Boolean).join("\n");
+    return [daily, moments, status].filter(Boolean).join("\n\n");
   }
 
-  #decorateActivityStatus(text: string, context: DoorbellFarmContext): string {
-    const together = this.#togetherActivity?.decorateFarmStatus?.(context.residentId, text) ?? text;
-    const status = this.#snowTools?.decorateFarmStatus?.(context.residentId, together) ?? together;
-    try {
-      const summary = this.#statusNotifications?.dailySummary(context.residentId, this.#now());
-      const notice = this.#statusNotifications?.report(context.residentId, renderMomentsStatusCounts);
-      return [status, summary, notice].filter(Boolean).join("\n");
-    } catch (error) {
+  #statusSection(read: () => string | undefined): string | undefined {
+    try { return read(); }
+    catch (error) {
       try { this.#onNotificationDeliveryError(error); } catch { /* Preserve the Farm status. */ }
-      return status;
-    }
-  }
-
-  #appendDailyPublicationNotice(text: string): string {
-    try {
-      const notice = publishedDailyNotice(this.#database, this.#now());
-      // Leading position: the notice is the hook to read today's issue,
-      // so it comes before the farm status body, not buried after it.
-      return notice ? `${notice}\n\n${text}` : text;
-    } catch (error) {
-      try { this.#onNotificationDeliveryError(error); } catch { /* Preserve the Farm result. */ }
-      return text;
+      return undefined;
     }
   }
 
@@ -1168,7 +1164,9 @@ export class DoorbellMcpRuntime {
         action: "status",
         params: {},
       });
-      return status.ok ? [`${text}\n\n【农场近况】\n${this.#decorateFarmStatus(status.text, context)}`,...(this.#momentsProgression?.takeNotices(context.residentId)??[])].join("\n\n") : text;
+      if (!status.ok) return text;
+      const notices = this.#momentsProgression?.takeNotices(context.residentId) ?? [];
+      return [`${text}\n\n【农场近况】\n${this.#decorateFarmStatus(status.text, context)}`, ...notices].join("\n\n");
     } catch {
       return text;
     }

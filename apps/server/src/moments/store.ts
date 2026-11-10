@@ -1,3 +1,5 @@
+import { MomentsPromotions } from "./promotion.js";
+import { MomentsPolls, pollDefinition, pollInputSchema, type PollPost } from "./poll.js";
 import { MomentsProgressionStore } from "./progression-store.js";
 import { activityStatusKeys, canonicalStatusKeys, collectDailyActivityStatuses, receiptStatusKeys, saveActivityStatuses } from "./activity-status.js";
 import { randomInt, randomUUID } from "node:crypto";
@@ -18,12 +20,12 @@ const identifier = z.string().min(1);
 const timestamp = z.number().int().nonnegative().safe();
 const subjectSchema = z.object({ kind: z.literal("resident"), id: identifier }).strict();
 const publishMomentBase = z.object({
-  requestId: identifier, text: z.string(), receiptId: identifier.optional(),
+  requestId: identifier, text: z.string(), receiptId: identifier.optional(), poll: pollInputSchema.optional(),
   location: z.string().nullable().optional(),
   visibility: z.object({ mode: z.enum(["public", "only", "except"]), subjects: z.array(subjectSchema) }).strict(),
 }).strict();
 export const publishMomentSchema = publishMomentBase.superRefine((value, context) => {
-  if (!value.text.trim() && !value.receiptId) context.addIssue({ code: "custom", message: "empty_moment" });
+  if (!value.text.trim() && !value.receiptId && !value.poll) context.addIssue({ code: "custom", message: "empty_moment" });
   if (value.visibility.mode === "public" && value.visibility.subjects.length)
     context.addIssue({ code: "custom", message: "public_audience_must_be_empty" });
 });
@@ -67,7 +69,7 @@ function canonicalSubjects(subjects: AudienceSubject[]): AudienceSubject[] {
     .sort((a, b) => `${a.kind}:${a.id}`.localeCompare(`${b.kind}:${b.id}`));
 }
 
-type PostRow = HomeRecord & { moment_id: string; short_ref: string | null; author_id: string; request_id: string;
+type PostRow = HomeRecord & PollPost & { moment_id: string; short_ref: string | null; author_id: string; request_id: string;
   text: string; receipt_id: string | null; location: string | null; location_supplied: number;
   visibility: MomentVisibility["mode"]; created_at: number };
 type ReceiptRow = HomeRecord & { receipt_id: string; resident_id: string; source: string; source_id: string;
@@ -91,6 +93,8 @@ export class MomentsStore {
   setRaffleBarrier(barrier:{freezeDue(now:number,momentId?:string):string[];wake():void;snapshotForReadablePost(momentId:string):RaffleView|undefined}) { this.raffleBarrier=barrier; }
   private readonly records: HomeMomentRecords;
   readonly progression: MomentsProgressionStore;
+  readonly promotions: MomentsPromotions;
+  private readonly polls: MomentsPolls;
   private progressionSync: ((residentId:string)=>Promise<void>) | undefined;
   setProgressionSync(sync:(residentId:string)=>Promise<void>) { this.progressionSync=sync; }
   async syncProgression(residentId:string) { await this.progressionSync?.(residentId); }
@@ -98,8 +102,10 @@ export class MomentsStore {
   takeProgressionNotices(residentId:string,now:number):string[] { return this.progression.takeNotices(this.progressionHome(residentId),now); }
   private readonly stickerAttachments: MomentsStickerAttachments;
   constructor(private readonly database: Database.Database, private readonly ensureHomeTable: EnsureMomentsHomeTable,
-    findSticker:(id:string)=>StickerAsset|undefined=findMomentSticker) {
+    private readonly findSticker:(id:string)=>StickerAsset|undefined=findMomentSticker) {
     this.records=new HomeMomentRecords(database,ensureHomeTable);
+    this.polls=new MomentsPolls(this.records);
+    this.promotions=new MomentsPromotions(database,this.records,this);
     this.progression=new MomentsProgressionStore(database,ensureHomeTable);
     this.stickerAttachments=new MomentsStickerAttachments(database,ensureHomeTable,this,findSticker);
   }
@@ -191,19 +197,19 @@ export class MomentsStore {
     this.checkToolOptionTarget(actor, row.option_action, row.option_target);
     return { option: row.record_id, action: row.option_action, targetId: row.option_target };
   }
-  private subjects(id:string):AudienceSubject[] {
-    return this.records.all<{subject_kind:"resident";subject_id:string}>("audience","moment_id=?",[id])
+  private subjects(id:string,homeId?:string):AudienceSubject[] {
+    return this.records.all<{subject_kind:"resident";subject_id:string}>("audience","moment_id=?",[id],homeId)
       .map(s=>({kind:s.subject_kind,id:s.subject_id})).sort((a,b)=>compare(a.id,b.id));
   }
-  private readable(actor:MomentActor,row:Pick<PostRow,"moment_id"|"author_id"|"visibility">):boolean {
+  private readable(actor:MomentActor,row:Pick<PostRow,"moment_id"|"author_id"|"visibility"> & {home_id?:string}):boolean {
     // A human follows only the active profile's resident audience.
     if(row.author_id===actor.residentId||row.visibility==="public")return true;
-    const included=this.subjects(row.moment_id).some(s=>s.id===actor.residentId);
+    const included=this.subjects(row.moment_id,row.home_id).some(s=>s.id===actor.residentId);
     return row.visibility==="only"?included:!included;
   }
-  private accessible(actor:MomentActor,id:string):PostRow {
+  private accessible(actor:MomentActor,id:string,homeId?:string):PostRow {
     this.currentActor(actor);
-    const row=this.records.all<PostRow>("post","moment_id=?",[id])[0];
+    const row=this.records.all<PostRow>("post","moment_id=?",[id],homeId)[0];
     if(!row||!this.readable(actor,row))throw new MomentsError("moment_not_found");return row;
   }
   private actorView(key:string):ActorView {
@@ -211,14 +217,24 @@ export class MomentsStore {
       FROM lingye_moments_actors a LEFT JOIN residents r ON r.resident_id=a.resident_id WHERE actor_key=?`).get(key) as StoredActor;
     return row.kind==="resident"?{kind:row.kind,name:loungeDisplayName(row.name),residentId:row.resident_id!}:{kind:row.kind,name:row.name};
   }
-  private receipt(id:string):ReceiptRow|undefined {
-    return this.records.all<ReceiptRow>("receipt","receipt_id=?",[id])[0];
+  private receipt(id:string,homeId?:string):ReceiptRow|undefined {
+    return this.records.all<ReceiptRow>("receipt","receipt_id=?",[id],homeId)[0];
+  }
+  promotionSource(actor: MomentActor, id: string, homeId?: string) {
+    const post = this.accessible(actor, id, homeId);
+    const receipt = !post.text.trim() && post.receipt_id ? this.receipt(post.receipt_id, post.home_id) : undefined;
+    const text = post.text.trim() || receipt?.title ||
+      this.records.all<{ item_id: string; position: number }>(
+        "sticker_attachment", "moment_id=? AND comment_id IS NULL", [id], post.home_id,
+      ).sort((a, b) => a.position - b.position).flatMap(row => this.findSticker(row.item_id)?.name ?? []).join("、");
+    return { homeId: post.home_id, authorId: post.author_id,
+      authorName: this.actorView(`resident:${post.author_id}`).name, reference: post.short_ref, text };
   }
   private receiptFacts(id:string):ActivityReceipt["facts"] {
     return this.records.all<{position:number;label:string;value:string}>("fact","receipt_id=?",[id])
       .sort((a,b)=>a.position-b.position).map(({label,value})=>({label,value}));
   }
-  private view(actor:MomentActor,row:PostRow):MomentView {
+  private view(actor:MomentActor,row:PostRow,now:number):MomentView {
     const receipt=row.receipt_id?this.receipt(row.receipt_id):undefined;
     const likes=this.records.all<LikeRow>("like","moment_id=?",[row.moment_id])
       .sort((a,b)=>a.created_at-b.created_at||compare(a.actor_key,b.actor_key));
@@ -228,8 +244,9 @@ export class MomentsStore {
       .sort((a,b)=>a.delivered_at!-b.delivered_at!||compare(a.gift_id,b.gift_id));
     const stickers=this.stickerAttachments.projectForReadablePost(row.moment_id,comments.map(comment=>comment.comment_id));
     const raffle=this.raffleBarrier?.snapshotForReadablePost(row.moment_id);
+    const poll=this.polls.view(row,actorKey(actor),now);
     return {id:row.moment_id,author:this.actorView(`resident:${row.author_id}`),text:row.text,createdAt:row.created_at,location:row.location,
-      ...(raffle?{raffle}:{}),
+      ...(raffle?{raffle}:{}),...(poll?{poll}:{}),
       receipt:receipt?{source:receipt.source,kind:receipt.kind,title:receipt.title,summary:receipt.summary,
         occurredAt:receipt.occurred_at,facts:this.receiptFacts(receipt.receipt_id),statusKeys:receiptStatusKeys(this.records,receipt.receipt_id)}:null,
       visibility:{mode:row.visibility,...(actor.kind==="resident"&&actor.residentId===row.author_id?{subjects:this.subjects(row.moment_id)}:{})},
@@ -347,16 +364,19 @@ export class MomentsStore {
   publish(actor:MomentActor,input:PublishMoment,now:number,stickers:readonly string[]=[],pubmeta:MomentPublishMeta={}):MomentView {
     this.residentOnly(actor);parse(timestamp,now);
     const parsed=parse(stickers.length?publishMomentWithStickerSchema:publishMomentSchema,input);
+    const poll=parsed.poll ? pollDefinition(parsed.poll,parsed.text) : undefined;
+    if(poll && parsed.receiptId)throw new MomentsError("invalid_poll");
     parsed.visibility.subjects=canonicalSubjects(parsed.visibility.subjects);
     return this.stickerAttachments.withStickers(actor,{kind:"post",requestId:parsed.requestId,ids:stickers},attach=>{
       const homeId=this.homeId(actor.residentId);
       const previous=this.records.all<PostRow>("post","author_id=? AND request_id=?",[actor.residentId,parsed.requestId],homeId)[0];
       if(previous){
-        if(previous.text!==parsed.text||previous.receipt_id!==(parsed.receiptId??null)
+        if(!this.polls.matches(previous,poll)||previous.text!==parsed.text||previous.receipt_id!==(parsed.receiptId??null)
           ||previous.location_supplied!==(parsed.location===undefined?0:1)||(parsed.location!==undefined&&previous.location!==parsed.location)||previous.visibility!==parsed.visibility.mode
           ||JSON.stringify(canonicalSubjects(this.subjects(previous.moment_id)))!==JSON.stringify(parsed.visibility.subjects))throw new MomentsError("request_conflict");
-        attach({momentId:previous.moment_id});return this.view(actor,previous);
+        attach({momentId:previous.moment_id});return this.view(actor,previous,now);
       }
+      if(poll && poll.at<=now)throw new MomentsError("invalid_poll");
       if(this.quota(actor,now).used>=3)throw new MomentsError("daily_limit_reached");
       const receipt=parsed.receiptId?this.receipt(parsed.receiptId):undefined;
       if(parsed.receiptId&&(!receipt||receipt.resident_id!==actor.residentId))throw new MomentsError("receipt_not_found");
@@ -367,11 +387,12 @@ export class MomentsStore {
       const current=this.saveActor(actor),id=randomUUID();
       this.records.insert(homeId,"post",{moment_id:id,author_id:actor.residentId,actor_key:current.actor_key,request_id:parsed.requestId,
         text:parsed.text,receipt_id:parsed.receiptId??null,location:parsed.location===undefined?(pubmeta.defaultLocation??null):parsed.location,location_supplied:parsed.location===undefined?0:1,
-        visibility:parsed.visibility.mode,created_at:now},id);
+        visibility:parsed.visibility.mode,created_at:now,poll_ends_at:poll?.at??null,poll_max_choices:poll?.max??null},id);
+      if(poll)this.polls.addOptions(homeId,id,poll);
       parsed.visibility.subjects.forEach(subject=>this.records.insert(homeId,"audience",{moment_id:id,subject_kind:subject.kind,subject_id:subject.id}));
       attach({momentId:id});
       this.progression.change(homeId,now,"publish",id,"",{posts:1});
-      return this.view(actor,this.accessible(actor,id));
+      return this.view(actor,this.accessible(actor,id),now);
     });
   }
   list(actor:MomentActor,input:FeedQuery,now:number):MomentView[] {
@@ -385,7 +406,7 @@ export class MomentsStore {
     if(query.until!==undefined){clauses.push("created_at<?");parameters.push(query.until);}
     const rows=this.records.all<PostRow>("post",clauses.join(" AND "),parameters).filter(row=>this.readable(actor,row))
       .sort((a,b)=>b.created_at-a.created_at||compare(b.moment_id,a.moment_id));
-    return (query.count === undefined ? rows : rows.slice(0,query.count)).map(row=>this.view(actor,row));
+    return (query.count === undefined ? rows : rows.slice(0,query.count)).map(row=>this.view(actor,row,now));
   }
   readFeed(actor: MomentActor, input: FeedQuery, now: number): MomentView[] {
     this.currentActor(actor); parse(timestamp,now); const query=parse(feedQuerySchema,input);
@@ -408,7 +429,15 @@ export class MomentsStore {
       return moments;
     }).immediate();
   }
-  get(actor:MomentActor,id:string):MomentView {return this.view(actor,this.accessible(actor,id));}
+  get(actor:MomentActor,id:string,now:number=Date.now()):MomentView {return this.view(actor,this.accessible(actor,id),now);}
+  vote(actor: MomentActor, id: string, choices: unknown, now: number): MomentView {
+    parse(timestamp, now);
+    return this.database.transaction(() => {
+      const post = this.accessible(actor, id);
+      this.polls.vote(post, this.saveActor(actor).actor_key, choices, now);
+      return this.view(actor, post, now);
+    }).immediate();
+  }
   setLike(actor:MomentActor,id:string,liked:boolean,now:number):MomentView {
     parse(z.boolean(),liked);parse(timestamp,now);
     let frozen=false;
@@ -426,7 +455,7 @@ export class MomentsStore {
         this.progression.change(homeId,now,delta>0?"like":"unlike",id,row.author_id,{likes:delta});
         this.progression.change(row.home_id,now,delta>0?"receive_like":"receive_unlike",id,actor.residentId,{received_likes:delta});
       }
-      return this.view(actor,row);
+      return this.view(actor,row,now);
     }).immediate();
     if(frozen)this.raffleBarrier?.wake();
     return result;
@@ -449,7 +478,7 @@ export class MomentsStore {
         if(external)this.progression.change(homeId,now,"comment",id,row.author_id,{comments:first?1:0});
       }
       attach({momentId:id,commentId});
-      return this.view(actor,row);
+      return this.view(actor,row,now);
     });
     if(frozen)this.raffleBarrier?.wake();
     return result;

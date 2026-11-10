@@ -20,7 +20,7 @@ import { tournamentEngine } from "../together/tournament/engine-adapter.js";
 import { validateSnowMatchRuntime } from "../together/tournament/match-host.js";
 import { readRoundRecovery } from "../together/tournament/relational-match-view.js";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 63;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 64;
 const DAILY_POLL_SCHEMA_SQL = `
   CREATE TABLE lingye_daily_polls (
     issue_date TEXT PRIMARY KEY,
@@ -3241,14 +3241,7 @@ UPDATE lingye_daily_column_images SET attempt_count=1, attempted_at=generated_at
   })();
 
   if (databaseSchemaVersion < 61) database.transaction(() => {
-    const homes = database.prepare("SELECT home_id,table_name FROM lingye_moments_homes").all() as {home_id:string;table_name:string}[];
-    for (const {home_id,table_name} of homes) {
-      if (!/^lingye_moments_home_[a-f0-9]{32}$/.test(table_name)) throw new Error("Invalid moments home table");
-      const columns = (database.prepare(`PRAGMA table_info("${table_name}")`).all() as {name:string}[]).map(row=>`"${row.name}"`).join(",");
-      database.prepare("DELETE FROM lingye_moments_homes WHERE home_id=?").run(home_id);
-      const next = ensureMomentsHomeTable(database,home_id);
-      database.exec(`INSERT INTO "${next}" (${columns}) SELECT ${columns} FROM "${table_name}"; DROP TABLE "${table_name}";`);
-    }
+    rebuildMomentsHomeTables(database);
     database.pragma('user_version = 61');
   })();
 
@@ -3271,6 +3264,30 @@ CREATE TABLE lingye_daily_farm_question_citations (
     database.pragma('user_version = 63');
   })();
 
+  if (databaseSchemaVersion < 64) database.transaction(() => {
+    if (databaseSchemaVersion >= 61) rebuildMomentsHomeTables(database);
+    database.exec(`
+      CREATE TABLE lingye_moments_promotion_index (
+        moment_id TEXT PRIMARY KEY,
+        home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+        ends_at INTEGER NOT NULL
+      );
+      CREATE INDEX lingye_moments_promotion_expiry ON lingye_moments_promotion_index(ends_at, moment_id);
+    `);
+    database.pragma('user_version = 64');
+  })();
+
+}
+
+function rebuildMomentsHomeTables(database: Database.Database): void {
+  const homes = database.prepare("SELECT home_id,table_name FROM lingye_moments_homes").all() as {home_id:string;table_name:string}[];
+  for (const {home_id,table_name} of homes) {
+    if (!/^lingye_moments_home_[a-f0-9]{32}$/.test(table_name)) throw new Error("Invalid moments home table");
+    const columns = (database.prepare(`PRAGMA table_info("${table_name}")`).all() as {name:string}[]).map(row=>`"${row.name}"`).join(",");
+    database.prepare("DELETE FROM lingye_moments_homes WHERE home_id=?").run(home_id);
+    const next = ensureMomentsHomeTable(database,home_id);
+    database.exec(`INSERT INTO "${next}" (${columns}) SELECT ${columns} FROM "${table_name}"; DROP TABLE "${table_name}";`);
+  }
 }
 
 /** Shared identity/catalogue only. Content lives in one SQL table per home. */
@@ -3301,7 +3318,7 @@ export function ensureMomentsHomeTable(database: Database.Database, homeId: stri
       CREATE TABLE "${table}" (
         record_id TEXT PRIMARY KEY,
         home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
-        record_type TEXT NOT NULL CHECK(record_type IN ('post','receipt','fact','audience','like','comment','gift','option','read_cursor','notification_read','notification_reported','activity_status','raffle','raffle_prize','raffle_audience','raffle_sticker','sticker_attachment','progression','progression_event','progression_notice')),
+        record_type TEXT NOT NULL CHECK(record_type IN ('post','receipt','fact','audience','like','comment','gift','option','read_cursor','notification_read','notification_reported','activity_status','raffle','raffle_prize','raffle_audience','raffle_sticker','sticker_attachment','progression','progression_event','progression_notice','poll_option','poll_vote','promotion','promotion_seen','promotion_notice')),
         actor_key TEXT REFERENCES lingye_moments_actors(actor_key) ON DELETE CASCADE,
         target_home_id TEXT REFERENCES homes(home_id) ON DELETE CASCADE,
         moment_id TEXT, short_ref TEXT, author_id TEXT REFERENCES residents(resident_id) ON DELETE CASCADE,
@@ -3326,9 +3343,18 @@ export function ensureMomentsHomeTable(database: Database.Database, homeId: stri
         item_kind TEXT CHECK(item_kind IN ('dish','bait')), item_id TEXT,
         item_quantity INTEGER CHECK(item_quantity>0), item_name TEXT, delivered_at INTEGER,
         purchase_total INTEGER CHECK(purchase_total>=0),
+        poll_ends_at INTEGER, poll_max_choices INTEGER,
         progression_seq INTEGER, progression_ack INTEGER, progression_silver INTEGER,
         progression_posts INTEGER, progression_comments INTEGER, progression_likes INTEGER,
         progression_received_likes INTEGER, progression_gifts INTEGER, progression_received_gifts INTEGER,
+        CHECK((poll_ends_at IS NULL AND poll_max_choices IS NULL)
+          OR (record_type='post' AND poll_ends_at IS NOT NULL AND poll_max_choices IS NOT NULL AND poll_max_choices>=1)),
+        CHECK(record_type!='poll_option' OR (moment_id IS NOT NULL AND position IS NOT NULL AND position>=1 AND text IS NOT NULL)),
+        CHECK(record_type!='poll_vote' OR (moment_id IS NOT NULL AND position IS NOT NULL AND position>=1 AND actor_key IS NOT NULL)),
+        CHECK(record_type!='promotion' OR (moment_id IS NOT NULL AND source_id IS NOT NULL AND delivered_at IS NOT NULL AND purchase_total IS NOT NULL)),
+        CHECK(record_type!='promotion_seen' OR (moment_id IS NOT NULL AND created_at IS NOT NULL)),
+        CHECK(record_type!='promotion_notice' OR (moment_id IS NOT NULL AND sender_resident_id IS NOT NULL
+          AND short_ref IS NOT NULL AND purchase_total IS NOT NULL AND created_at IS NOT NULL)),
         CHECK(record_type!='sticker_attachment' OR (moment_id IS NOT NULL AND item_id IS NOT NULL AND position IS NOT NULL AND position>=0)),
         CHECK(record_type!='raffle_sticker' OR (raffle_id IS NOT NULL AND item_id IS NOT NULL AND position IS NOT NULL AND position>=0)),
         CHECK(record_type NOT IN ('notification_read','notification_reported') OR (actor_key IS NOT NULL AND notification_source_id IS NOT NULL)),
@@ -3356,6 +3382,9 @@ export function ensureMomentsHomeTable(database: Database.Database, homeId: stri
       CREATE UNIQUE INDEX "${table}_activity_status" ON "${table}"(receipt_id,kind) WHERE record_type='activity_status';
       CREATE UNIQUE INDEX "${table}_read_cursor" ON "${table}"(actor_key,read_author_id) WHERE record_type='read_cursor';
       CREATE UNIQUE INDEX "${table}_option" ON "${table}"(resident_id,option_action,option_target) WHERE record_type='option';
+      CREATE UNIQUE INDEX "${table}_poll_option" ON "${table}"(moment_id,position) WHERE record_type='poll_option';
+      CREATE UNIQUE INDEX "${table}_poll_vote" ON "${table}"(moment_id,actor_key,position) WHERE record_type='poll_vote';
+      CREATE UNIQUE INDEX "${table}_promotion" ON "${table}"(record_type,moment_id) WHERE record_type IN ('promotion','promotion_seen','promotion_notice');
       CREATE UNIQUE INDEX "${table}_audience" ON "${table}"(moment_id,subject_kind,subject_id) WHERE record_type='audience';
     `);
     return table;
