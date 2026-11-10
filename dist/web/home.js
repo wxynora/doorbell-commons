@@ -3,6 +3,7 @@ import { cropById, getCrop, landTierByLevel, totalCropCount, titles as titleDefs
 import { BASE, HUMAN_HARVEST_DAILY_CAP } from "../config.js";
 import { currentSeason, activeFestivals } from "../time.js";
 import { playerFarms } from "../store.js";
+import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { checkTitles, equippedTitle } from "../titles.js";
 import { qixi2026ShopRows, qixi2026TaskView } from "../qixi-2026.js";
 import { midAutumnSeedShopRows } from "../domain/field/mid-autumn-shop.js";
@@ -55,13 +56,11 @@ export function uiHome(f, now, key, flash) {
       <div class="line" style="align-items:flex-start;gap:10px"><div><h2 style="margin:0;color:#855b65;font-family:var(--serif)">🎋 七夕限定任务</h2><p class="small" style="margin:4px 0 0;color:#786875">完成一项，解锁对应限定种子。</p></div><span class="tag" style="border-color:#d3a382;background:#f7e2dc;color:#8b5f70">${qixiView.tasks.length} 项进行中</span></div>
       <div style="display:grid;gap:8px;margin-top:12px">${qixiView.tasks.map((task) => `<div style="padding:10px 12px;border:1px solid #e1c5a1;border-radius:13px;background:#fffaf0"><div class="line small"><b>${esc(task.label)}</b><span style="color:#85747c">${esc(task.progressText)}</span></div><div class="pminibar" style="margin-top:7px;background:#eadfd7">${barFill(task.target ? task.progress / task.target * 100 : 0, "#ba788d")}</div><div class="small" style="margin-top:5px;color:#85747c">解锁：${esc(task.cropName)}</div></div>`).join("")}</div>
     </section>` : "";
-    for (const farm of farms)
-        advance(farm, now); // 广播读取此刻真实成熟状态，不写历史
-    const ripeFarms = farms.map((farm, index) => ({
-        farm,
-        number: index + 1,
-        ripe: farm.plots.filter((p) => p.crop?.ripe).length,
-    })).filter((entry) => entry.ripe > 0);
+    const ripeFarms = farms.map((farm, index) => {
+        const projected = farm.id === f.id ? f : cloneFarmForMutation(farm);
+        if (projected !== f) advance(projected, now);
+        return { farm, number: index + 1, ripe: projected.plots.filter((p) => p.crop?.ripe).length };
+    }).filter((entry) => entry.ripe > 0);
     const ripeBroadcast = `<div class="card"><h3>📣 此刻谁家菜熟了　<span class="muted small" style="font-weight:400">打开就是当前状态</span></h3>
     ${ripeFarms.length
         ? ripeFarms.map((entry) => `<div class="line small"><span><b>${entry.number}. ${esc(farmLabel(entry.farm))}</b></span><span class="ready">${entry.ripe} 块待收</span></div>`).join("")
