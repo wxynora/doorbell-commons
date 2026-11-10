@@ -100,7 +100,7 @@ export class SnowTournamentStore {
   }
 
   /** Normal running ticks change only the clock, automated seats and battle entities. */
-  saveBattleTick(editionId:string,matchId:string,state:Record<string,any>,previous:PublicRuntime):void {
+  saveBattleTick(editionId:string,matchId:string,state:Record<string,any>,previous:PublicRuntime,saveCommandHistory:boolean):void {
     this.db.transaction(()=>{
       this.db.prepare("UPDATE snow_tournament_runtime_details SET last_seen_at=? WHERE edition_id=? AND match_id=?")
         .run(state.lastSeenAt,editionId,matchId);
@@ -111,7 +111,7 @@ export class SnowTournamentStore {
         const insert=this.db.prepare("INSERT INTO snow_tournament_active_participants(edition_id,match_id,kind,position,resident_id) VALUES(?,?,'npc',?,?)");
         state.active.npc.forEach((id:string,position:number)=>insert.run(editionId,matchId,position,id));
       }
-      saveBattleRows(this.db,editionId,matchId,state.active.battle);
+      saveBattleRows(this.db,editionId,matchId,state.active.battle,saveCommandHistory);
     })();
     if(publicRuntimeChanged(previous,publicRuntimeFromState(state)))this.changed();
   }

@@ -37,12 +37,12 @@ const receiptFields:FieldMapping=[["requestId","request_id"],["ok","ok"],["error
 const key=(...parts:string[])=>parts.map(part=>part.length+":"+part).join("");
 const receiptKind=(matchId:string)=>"battle-receipt:"+matchId;
 const extraKind=(matchId:string)=>"battle-extra:"+matchId;
-const battleTables=["snow_tournament_battle_state","snow_tournament_battle_participant_sides","snow_tournament_battle_participants",
+const battleStateTables=["snow_tournament_battle_state","snow_tournament_battle_participant_sides","snow_tournament_battle_participants",
   "snow_tournament_battle_assignment_sides","snow_tournament_battle_assignment_members","snow_tournament_battle_assignments",
   "snow_tournament_battle_units","snow_tournament_battle_unit_blocking","snow_tournament_battle_effects","snow_tournament_battle_cooldowns",
   "snow_tournament_battle_waves","snow_tournament_battle_wave_ticks","snow_tournament_battle_wave_releases","snow_tournament_battle_wave_units",
-  "snow_tournament_visual_frames","snow_tournament_visual_events","snow_tournament_visual_targets",
-  "snow_tournament_battle_receipts","snow_tournament_battle_receipt_history","snow_tournament_battle_receipt_index"];
+  "snow_tournament_visual_frames","snow_tournament_visual_events","snow_tournament_visual_targets"];
+const battleTables=[...battleStateTables,"snow_tournament_battle_receipts","snow_tournament_battle_receipt_history","snow_tournament_battle_receipt_index"];
 const getRows=(db:Database.Database,table:string,editionId:string,matchId:string,order:string)=>
   db.prepare(`SELECT * FROM "${table}" WHERE edition_id=? AND match_id=? ORDER BY ${order}`).all(editionId,matchId) as DomainObject[];
 const extras=(value:DomainObject,fields:FieldMapping)=>{
@@ -55,9 +55,9 @@ function putExtras(target:DomainObject,extra:unknown) {
 }
 
 /** A tick persists only changed entity rows inside the caller's transaction. */
-export function saveBattleRows(db:Database.Database,editionId:string,matchId:string,battle:DomainObject):Map<string,string> {
+export function saveBattleRows(db:Database.Database,editionId:string,matchId:string,battle:DomainObject,saveCommandHistory=true):Map<string,string> {
   const scope={edition_id:editionId,match_id:matchId};
-  const tableNames=battleTables;
+  const tableNames=saveCommandHistory?battleTables:battleStateTables;
   const rows:Record<string,DomainObject[]>=Object.fromEntries(tableNames.map(name=>[name,[]]));
   const put=(name:string,value:DomainObject)=>rows[name]!.push({...scope,...value});
   const desiredExtras=new Map<string,unknown>();
@@ -110,24 +110,29 @@ export function saveBattleRows(db:Database.Database,editionId:string,matchId:str
       (event.targets??[]).forEach((target:DomainObject,index:number)=>{put("snow_tournament_visual_targets",{event_position:position,position:index,...packRow(target,targetFields)});rememberExtra(key("target",String(position),String(index)),target,targetFields);});
     });
   }
-  const receiptValues=new Map<string,DomainObject>(),byRequest=new Map<string,string[]>();
-  (battle.commandLog??[]).forEach((receipt:DomainObject,position:number)=>{
-    const id=key("log",String(battle.battleId),String(position));receiptValues.set(id,receipt);
-    const request=String(receipt.requestId??"");const list=byRequest.get(request)??[];list.push(id);byRequest.set(request,list);
-    put("snow_tournament_battle_receipt_history",{position,receipt_id:id});
-  });
   const processedIds=new Map<string,string>();
-  for(const [request,receipt] of Object.entries(battle.processedCommands??{}) as [string,DomainObject][]) {
-    const prior=(byRequest.get(request)??[]).find(id=>isDeepStrictEqual(receiptValues.get(id),receipt));
-    const id=prior??key("processed",String(battle.battleId),request);
-    if(!prior)receiptValues.set(id,receipt);processedIds.set(request,id);
-    put("snow_tournament_battle_receipt_index",{request_id:request,receipt_id:id});
-  }
-  const current=db.prepare("SELECT receipt_id FROM snow_tournament_battle_receipts WHERE edition_id=? AND match_id=?").all(editionId,matchId) as {receipt_id:string}[];
-  const existing=new Set(current.map(row=>row.receipt_id));
-  for(const [id,receipt] of receiptValues) {
-    put("snow_tournament_battle_receipts",{receipt_id:id,...packRow(receipt,receiptFields)});
-    if(!existing.has(id))writeReceiptValue(db,editionId,receiptKind(matchId),id,receipt);
+  const obsoleteReceiptIds:string[]=[];
+  // Clock-only ticks do not create or remove any command receipts.
+  if(saveCommandHistory) {
+    const receiptValues=new Map<string,DomainObject>(),byRequest=new Map<string,string[]>();
+    (battle.commandLog??[]).forEach((receipt:DomainObject,position:number)=>{
+      const id=key("log",String(battle.battleId),String(position));receiptValues.set(id,receipt);
+      const request=String(receipt.requestId??"");const list=byRequest.get(request)??[];list.push(id);byRequest.set(request,list);
+      put("snow_tournament_battle_receipt_history",{position,receipt_id:id});
+    });
+    for(const [request,receipt] of Object.entries(battle.processedCommands??{}) as [string,DomainObject][]) {
+      const prior=(byRequest.get(request)??[]).find(id=>isDeepStrictEqual(receiptValues.get(id),receipt));
+      const id=prior??key("processed",String(battle.battleId),request);
+      if(!prior)receiptValues.set(id,receipt);processedIds.set(request,id);
+      put("snow_tournament_battle_receipt_index",{request_id:request,receipt_id:id});
+    }
+    const current=db.prepare("SELECT receipt_id FROM snow_tournament_battle_receipts WHERE edition_id=? AND match_id=?").all(editionId,matchId) as {receipt_id:string}[];
+    const existing=new Set(current.map(row=>row.receipt_id));
+    for(const [id,receipt] of receiptValues) {
+      put("snow_tournament_battle_receipts",{receipt_id:id,...packRow(receipt,receiptFields)});
+      if(!existing.has(id))writeReceiptValue(db,editionId,receiptKind(matchId),id,receipt);
+    }
+    for(const {receipt_id:id} of current)if(!receiptValues.has(id))obsoleteReceiptIds.push(id);
   }
   const keys:Record<string,string[]>={
     snow_tournament_battle_state:["edition_id","match_id"],
@@ -147,7 +152,7 @@ export function saveBattleRows(db:Database.Database,editionId:string,matchId:str
   for(const [id,value] of desiredExtras)if(!isDeepStrictEqual(previousExtras.get(id),value))writeReceiptValue(db,editionId,extraKind(matchId),id,value);
   const remove=db.prepare("DELETE FROM snow_tournament_receipt_values WHERE edition_id=? AND receipt_kind=? AND receipt_id=?");
   for(const id of previousExtras.keys())if(!desiredExtras.has(id))remove.run(editionId,extraKind(matchId),id);
-  for(const {receipt_id:id} of current)if(!receiptValues.has(id))remove.run(editionId,receiptKind(matchId),id);
+  for(const id of obsoleteReceiptIds)remove.run(editionId,receiptKind(matchId),id);
   return processedIds;
 }
 

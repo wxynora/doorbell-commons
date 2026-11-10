@@ -49,6 +49,7 @@ type Match = { id: string; stage: "round_robin" | "semifinal" | "final";
   scheduledAt: string | null; status: string;replays?:{gameIndex:number;voidedBattleId:string;replayBattleId:string;randomSeed:number;reason:"invalid_save";at:string}[] };
 type Edition = { id: string; rulesVersion: string; phase: string; registrationOpenAt:string; teams: Team[]; matches: Match[]; battleStarted?:boolean;
   standings: {teamId: string; rank: number}[]; roundRecovery?:Record<string,RoundRecovery> };
+type MatchContext = {edition:Edition;match:Match;teams:[Team,Team]};
 type Line = { member: string; skills: string[] };
 type Lineup = { entries: Line[]; confirmed: boolean; revision?:number };
 type Chat = {
@@ -121,7 +122,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
   private read(ref: MatchRef) {
     return this.store.readMatchRuntime(ref.editionId, ref.matchId) as Runtime | null;
   }
-  private match(ref: MatchRef,full=false) {
+  private match(ref: MatchRef,full=false):MatchContext {
     const edition = (full ? this.store.read(ref.editionId) : this.store.readMatchEdition(ref.editionId,ref.matchId)) as Edition | null;
     const match = edition?.matches.find(m => m.id === ref.matchId);
     const teams = [match?.teamAId, match?.teamBId].map(id => edition?.teams.find(t => t.id === id));
@@ -216,6 +217,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
     let savedAfter:Runtime|null|undefined;
     let committedFrame:SnowBattleFrame|undefined;
     let signalChanges:SignalChanges|undefined;
+    let tickSignals:(()=>SnowPlayerSignal[])|undefined;
     const next = this.store.transaction(() => {
       const advance=()=>{
       if (this.recovery.expire(input.editionId,input.now)) return null;
@@ -270,11 +272,13 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       }
       delete state.suspendedUntil;
       const saved = state;
+      let npcCommandIssued=false;
       const finish = (at: number | null,ordinaryTick=false) => {
         saved.lastSeenAt = Math.max(saved.lastSeenAt,input.now);
         if(ordinaryTick && previousTick){
-          this.store.saveBattleTick(input.editionId,input.matchId,saved,previousTick);
+          this.store.saveBattleTick(input.editionId,input.matchId,saved,previousTick,npcCommandIssued);
           committedFrame={battle:saved.active!.battle,nextTickAt:saved.active!.nextTickAt};
+          tickSignals=()=>this.signalsFor(input,input.now,saved,{edition,match,teams});
         }
         else this.store.saveMatchRuntime(input.editionId, input.matchId, saved);
         savedAfter=saved;
@@ -317,6 +321,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
           if (team?.ineligibleMemberIds?.includes(member) && !round.npc.includes(member)) round.npc.push(member);
           if (!round.npc.includes(member)) continue;
           for (const [index, action] of this.engine.npc(battle, side).entries()) {
+            npcCommandIssued=true;
             this.engine.command(battle, { ...action, side, member, battleId: battle.battleId, roundId: battle.roundId,
               requestId: JSON.stringify(["npc", side, battle.tick, index]) });
           }
@@ -336,7 +341,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       return finish(null);
       };
       const result=advance();
-      signalChanges=this.signals?.sync(input);
+      signalChanges=this.signals?.sync(input,tickSignals?.());
       return result;
     });
     if (signalChanges) this.signals?.publish(signalChanges);
@@ -591,13 +596,16 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
     return this.frameForProjection(ref)?.battle ?? null;
   }
   playerState(ref:MatchRef,actor:string,now=this.now()) {
-    const {edition,match,teams}=this.match(ref);
-    const team=teams.find(team=>team.members.some(member=>member.id===actor) && !team.ineligibleMemberIds?.includes(actor));
-    if (!team) throw new Error("snow_team_member_required");
-    const state=this.read(ref),round=state?.active,slot=team.id===teams[0].id?"0":"1";
-    const side=roles.find(role=>round?.members[role]===actor)??null;
+    const context=this.match(ref),state=this.read(ref),{edition,match}=context;
     const current=state?.owner===this.owner && (state.suspendedUntil??0)<=now && this.recovery.pending(ref)===undefined &&
       ["round_robin","knockout"].includes(edition.phase) && ["scheduled","in_progress"].includes(match.status);
+    return this.projectPlayerState(context,state,actor,now,current);
+  }
+  private projectPlayerState({edition,match,teams}:MatchContext,state:Runtime|null,actor:string,now:number,current:boolean) {
+    const team=teams.find(team=>team.members.some(member=>member.id===actor) && !team.ineligibleMemberIds?.includes(actor));
+    if (!team) throw new Error("snow_team_member_required");
+    const round=state?.active,matchAt=state?.matchAt??Infinity,slot=team.id===teams[0].id?"0":"1";
+    const side=roles.find(role=>round?.members[role]===actor)??null;
     const ownLineup=state?.lineups[slot];
     const chat=state && current ? this.discussion(state,team,slot,now) : null;
     const isPlayer=side!==null && !round?.npc.includes(actor);
@@ -618,8 +626,8 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
         !state?.attackers && now<Date.parse(match.scheduledAt!)-10*minute &&
         (edition.standings.length?edition.standings.map(row=>row.teamId):[...teams].sort((a,b)=>(a.drawOrder??Infinity)-(b.drawOrder??Infinity)).map(t=>t.id))
           .find(id=>teams.some(t=>t.id===id))===team.id,
-      canLineup:!!current && team.captainId===actor && !ownLineup?.confirmed && now>=state.matchAt-discussionLead && now<state.matchAt,
-      canConfirmLineup:!!current && team.captainId===actor && !!ownLineup && !ownLineup.confirmed && now>=state.matchAt-lineupConfirmationLead && now<state.matchAt,
+      canLineup:current && team.captainId===actor && !ownLineup?.confirmed && now>=matchAt-discussionLead && now<matchAt,
+      canConfirmLineup:current && team.captainId===actor && !!ownLineup && !ownLineup.confirmed && now>=matchAt-lineupConfirmationLead && now<matchAt,
       lineupPhase:state && now<state.matchAt ? now>=state.matchAt-lineupConfirmationLead?"confirmation":"discussion":"locked",
       canReady:!!current && isPlayer && !!round && !round.ready.includes(actor) && round.nextTickAt===null && now<round.prepareUntil,
       canCommand:!!current && isPlayer && !!round?.battle.runtime?.started && round.battle.status==="running",
@@ -631,13 +639,18 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
   playerSignals(ref:MatchRef,now=this.now()):SnowPlayerSignal[] {
     const state=this.read(ref);
     if (!state || state.owner!==this.owner || (state.suspendedUntil??0)>now || this.recovery.pending(ref)!==undefined) return [];
-    const {edition,match,teams}=this.match(ref);
+    return this.signalsFor(ref,now,state,this.match(ref));
+  }
+  private signalsFor(ref:MatchRef,now:number,state:Runtime,context:MatchContext):SnowPlayerSignal[] {
+    const {edition,match,teams}=context;
     if (!["round_robin","knockout"].includes(edition.phase) || !["scheduled","in_progress"].includes(match.status)) return [];
     const result:SnowPlayerSignal[]=[];
+    const host=this;
     const put=(residentId:string,kind:SnowPlayerSignal["kind"],identity:unknown)=>{
-      const {pregameWindowAt,...facts}=this.playerState(ref,residentId,now);
+      const {pregameWindowAt}=state;
       if (pregameWindowAt!==undefined && (kind==="chat" || kind==="lineup")) identity=[pregameWindowAt,identity];
-      result.push({key:JSON.stringify([ref.editionId,ref.matchId,residentId,kind,identity]),...ref,residentId,kind,facts});
+      result.push({key:JSON.stringify([ref.editionId,ref.matchId,residentId,kind,identity]),...ref,residentId,kind,
+        get facts() {const {pregameWindowAt:_,...facts}=host.projectPlayerState(context,state,residentId,now,true);return facts;}});
     };
     for (const team of teams) {
       const slot=team.id===teams[0].id?"0":"1",chat=this.discussion(state,team,slot,now);

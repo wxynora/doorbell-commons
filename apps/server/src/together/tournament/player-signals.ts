@@ -8,7 +8,7 @@ type Row={wake_id:string;signal_key:string;edition_id:string;match_id:string;res
   status:BellWakeSourceRecord["status"];created_at:number;context_count:number;ended_at:number|null;block_reason:string|null;error_code:string|null};
 export type SignalChanges={notify:string[];cancelled:{residentId:string;wakeId:string}[]};
 export interface SnowSignalSink {
-  sync(ref:Ref):SignalChanges;
+  sync(ref:Ref,signals?:SnowPlayerSignal[]):SignalChanges;
   publish(changes:SignalChanges):void;
 }
 
@@ -27,9 +27,9 @@ export class SnowTournamentPlayerSignals implements SnowSignalSink {
     if (!this.options.eligible(row.resident_id)) return undefined;
     return this.options.read({editionId:row.edition_id,matchId:row.match_id},this.now()).find(signal=>signal.key===row.signal_key);
   }
-  sync(ref:Ref):SignalChanges {
+  sync(ref:Ref,signals?:SnowPlayerSignal[]):SignalChanges {
     return this.db.transaction(()=>{
-      const current=this.options.read(ref,this.now()).filter(signal=>this.options.eligible(signal.residentId));
+      const current=(signals??this.options.read(ref,this.now())).filter(signal=>this.options.eligible(signal.residentId));
       const keys=new Set(current.map(signal=>signal.key));
       const pending=this.db.prepare("SELECT * FROM snow_tournament_player_wakes WHERE edition_id=? AND match_id=? AND status='pending'")
         .all(ref.editionId,ref.matchId) as Row[];
