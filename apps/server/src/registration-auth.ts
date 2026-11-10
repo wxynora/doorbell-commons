@@ -993,6 +993,11 @@ export class RegistrationAuthService {
     });
   }
 
+  async getCurrentFarmScene(token: string) {
+    const { client, binding } = await this.#currentDecorationBinding(token);
+    return client.readScene(binding);
+  }
+
   async getCurrentFarmDecorations(token: string) {
     const { client, binding } = await this.#currentDecorationBinding(token);
     return client.read(binding);

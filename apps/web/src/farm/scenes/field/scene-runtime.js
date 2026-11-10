@@ -165,16 +165,18 @@ export function createFieldRuntime(host, options) {
     world.decorations.splice(0,world.decorations.length,...next);
     world.houseBlockedRects=houseExtensionRects(housePosition,data.house?.classic_level??data.house?.level??1);
     const nextPlacementKey=JSON.stringify([data.grid,housePosition,world.houseBlockedRects,fieldLayout]);
-    if(!placement||placementKey!==nextPlacementKey){
+    if(placementKey!==nextPlacementKey){
       const oldGrid=world.root.getObjectByName("placement-grid");
       if(oldGrid)disposeDecoration(oldGrid);
-      placement=createPlacement(world,data.grid);placementKey=nextPlacementKey;
+      placement=data.grid ? createPlacement(world,data.grid) : null;
+      placementKey=nextPlacementKey;
     }
     if(surfacesChanged)environment.refreshRainSurfaces();
     refreshSnowman();
     modelOutline?.refresh();
   }
   function setDecorations(value) {
+    if (value === data || value === pendingData) return;
     value=withoutExpiredLeaseData(value);
     if(editing){pendingData=value;return;}
     data=value;committed=structuredClone(value.layout);applyLayout(committed);
@@ -187,6 +189,10 @@ export function createFieldRuntime(host, options) {
     if(nextSeason)updateDecorationSeason(world.decorations,season);
     refreshSnowman();
     modelOutline?.refresh();
+  }
+  function requestEdit(start) {
+    if (!options.onRequestEdit || editing) start();
+    else options.onRequestEdit(() => { if (!disposed && active && !editing && placement) start(); });
   }
   function begin(object,adding=false) {
     if(saving)return;
@@ -336,13 +342,19 @@ export function createFieldRuntime(host, options) {
     if(saving||importing){down=null;return;}
     if(currentPlacement()?.active){move(e);down=null;return;}
     if(!down||moved){down=null;return;}down=null;pointerRay(e);
-    const hit=ray.intersectObject(world.root,true).find(h=>h.object.isMesh&&(h.object.userData.nativeTree===undefined||world.nativeTrees[h.object.userData.nativeTree].visible)&&(!h.object.userData.stall||placement?.stall.visible));
+    const hit=ray.intersectObject(world.root,true).find(h=>h.object.isMesh&&(h.object.userData.nativeTree===undefined||world.nativeTrees[h.object.userData.nativeTree].visible)&&(!h.object.userData.stall||world.root.getObjectByName("market-stall").visible));
     if(hit?.object.userData.winterSnowman&&!editing)emit(SNOWMAN_MESSAGE);
-    else if(hit?.object.userData.nativeTree!==undefined&&!editing)startNativeTreeMove(hit.object.userData.nativeTree);
+    else if(hit?.object.userData.nativeTree!==undefined&&!editing)requestEdit(()=>startNativeTreeMove(hit.object.userData.nativeTree));
     else if(hit?.object.userData.house&&!editing)options.onSelectHouse?.();
-    else if(hit?.object.userData.wateringCan&&placement)begin(world.wateringCan);
-    else if(hit?.object.userData.decoration&&placement)begin(hit.object.userData.decoration);
-    else if(hit?.object.userData.stall&&placement)begin(placement.stall);
+    else if(hit?.object.userData.wateringCan)requestEdit(()=>{if(placement)begin(world.wateringCan);});
+    else if(hit?.object.userData.decoration){
+      const id=hit.object.userData.decoration.userData.instanceId;
+      requestEdit(()=>{
+        const object=world.decorations.find(item=>item.userData.instanceId===id);
+        if(placement&&object)begin(object);
+      });
+    }
+    else if(hit?.object.userData.stall)requestEdit(()=>{if(placement?.stall.visible)begin(placement.stall);});
     else if(hit?.object.userData.plot&&!editing)options.onSelectPlot(hit.object.userData.plot.id);
     else if(hit?.object===world.water)world.waterMaterial.uniforms.ripple.value.set(hit.point.x,hit.point.z,time);
   });

@@ -44,6 +44,7 @@ export function createFieldRuntime(host: HTMLElement, options: {
   houseStyle?: "classic"|"pumpkin"|"stump"|"mushroom"|"rose_cottage"|"witch_pumpkin";
   classicHouseLevel?: 1|2|3;
   onSelectHouse?(): void;
+  onRequestEdit?(start: () => void): void;
   environment: SceneEnvironment;
   onSelectPlot(id: number): void;
   onEditState(state: SceneEditState): void;

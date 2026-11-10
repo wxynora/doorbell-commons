@@ -20,7 +20,7 @@ export interface SceneDecorationData {
   catalog: readonly { item_id: string; model_id: string; name: string; cells: readonly number[]; layer: string; purchase_mode: string; price_farm_coins: number; sale_description?: string|undefined }[];
   inventory: readonly { item_id: string; owned_quantity: number; placed_quantity: number; available_quantity: number | null; unlocked: boolean; expires_at?:string|undefined }[];
   layout: SceneDecorationLayout;
-  grid: { cell_size: number; z_origin: number; land_cells: readonly (readonly number[])[]; river_cells: readonly (readonly number[])[] };
+  grid?: { cell_size: number; z_origin: number; land_cells: readonly (readonly number[])[]; river_cells: readonly (readonly number[])[] };
   environment?: { status: string; season: {id:string;name:string} | null; weather: {condition:string} | null; night: number; disaster: {type:string;phase:string} | null; flood?: SceneFlood | undefined };
 }
 export interface SceneEnvironment {

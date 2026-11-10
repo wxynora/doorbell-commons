@@ -8,7 +8,7 @@ import type {
 } from "../../auth/auth-client";
 import type { BoundBulletinRead } from "../../auth/bulletin-client";
 import type { BoundFarmCatalogRead } from "../../auth/farm-catalog-client";
-import type { BoundFarmDecorationsRead } from "../../auth/farm-decoration-client";
+import type { BoundFarmDecorationsRead, BoundFarmSceneRead } from "../../auth/farm-decoration-client";
 import type {
   CreateFarmHarvestRequestInput,
   createBoundFarmHarvestRequest,
@@ -73,6 +73,7 @@ export interface FarmReadResources {
   bulletin: FarmReadResourceState<BoundBulletinRead>;
   farmCatalog: FarmReadResourceState<BoundFarmCatalogRead>;
   farmDecorations: FarmReadResourceState<BoundFarmDecorationsRead>;
+  farmScene: FarmReadResourceState<BoundFarmSceneRead>;
   kitchen: FarmReadResourceState<BoundKitchenRead>;
   ranch: FarmReadResourceState<BoundRanchRead>;
 }
@@ -309,6 +310,7 @@ export function createInitialFarmReadResources(): FarmReadResources {
     bulletin: { stage: "idle" },
     farmCatalog: { stage: "idle" },
     farmDecorations: { stage: "idle" },
+    farmScene: { stage: "idle" },
     kitchen: { stage: "idle" },
     ranch: { stage: "idle" },
   };
@@ -336,6 +338,7 @@ export const FARM_READ_RESOURCE_LABELS: Readonly<Record<keyof FarmReadResources,
   bulletin: "叮咚播报",
   farmCatalog: "农场目录",
   farmDecorations: "农场装饰",
+  farmScene: "农场布置",
   kitchen: "料理数据",
   ranch: "牧场数据",
 };

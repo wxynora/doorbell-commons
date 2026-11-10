@@ -1,5 +1,5 @@
 import {
-  boundFarmDecorationsReadSuccessSchema, boundFarmDecorationLayoutSaveSuccessSchema,
+  boundFarmSceneReadSuccessSchema, boundFarmDecorationsReadSuccessSchema, boundFarmDecorationLayoutSaveSuccessSchema,
   boundFarmDecorationLayoutSaveRequestSchema, boundFarmDecorationLayoutSaveErrorSchema,
   type BoundFarmDecorationLayoutSaveRequest, type BoundFarmDecorationLayoutSaveError,
 } from "@doorbell/protocol";
@@ -14,6 +14,9 @@ export class FarmDecorationClient {
   constructor(private readonly options: {
     apiBaseUrl: string; requestTimeoutMs: number; serviceToken: string; fetchImplementation?: typeof fetch;
   }) {}
+  readScene(input: Binding) {
+    return this.request("scene", input, {}, boundFarmSceneReadSuccessSchema);
+  }
   read(input: Binding) {
     return this.request("read", input, {}, boundFarmDecorationsReadSuccessSchema);
   }

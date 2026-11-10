@@ -51,6 +51,8 @@ export function FieldScene({
   onClosePlot,
   requestControls,
   decorationData,
+  sceneData = decorationData,
+  onLoadEditor,
   placementRequest,
   layoutPreviewRequest,
   onSaveLayout,
@@ -71,6 +73,8 @@ export function FieldScene({
   onClosePlot: () => void;
   requestControls?: ReactNode;
   decorationData?: SceneDecorationData | undefined;
+  sceneData?: SceneDecorationData | undefined;
+  onLoadEditor?: (() => Promise<SceneDecorationData | undefined>) | undefined;
   placementRequest?: { decorationId: string; requestKey: string } | null | undefined;
   onSaveLayout?: ((layout: SceneDecorationLayout,saveSlot?:FarmLayoutSlot,name?:string) => Promise<void>) | undefined;
   onLoadLayout?: ((slot:FarmLayoutSlot) => Promise<void>) | undefined;
@@ -101,28 +105,53 @@ export function FieldScene({
   const [houseMenu,setHouseMenu]=useState(false),[canopyEditor,setCanopyEditor]=useState(false),[boundaryEditor,setBoundaryEditor]=useState(false);
   const [canopyChoice,setCanopyChoice]=useState<"plain"|"floral">("plain");
   const [requestedHouseItem,setRequestedHouseItem]=useState<string|null>(null);
-  const [houseLevel,setHouseLevel]=useState(decorationData?.house?.level??1);
+  const [houseLevel,setHouseLevel]=useState(sceneData?.house?.level??1);
   const [edit, setEdit] = useState<SceneEditState>({editing:false,valid:false,title:"",canAdd:false,canRemove:false,message:"",boundaryItemId:null});
   const [fieldSize,setFieldSize]=useState({rows:"6",columns:"6"});
   const fieldDraftValid=useRef(true);
   useEffect(()=>{if(edit.fieldMoving)setFieldSize({rows:String(edit.fieldRows??1),columns:String(edit.fieldColumns??6)});},[edit.fieldMoving,edit.fieldRows,edit.fieldColumns,edit.fieldGroup,edit.fieldGroups?.length]);
   const [renderPlots, setRenderPlots] = useState(plots);
-  const callbacks = useRef({onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot});
-  callbacks.current={onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,onOpenHouse,onClosePlot};
+  const editorPending = useRef(false);
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  async function withEditor(start: (instance: SceneRuntime) => void, loaded?: SceneDecorationData) {
+    const instance = runtime.current;
+    if (!instance || editorPending.current) return;
+    editorPending.current = true;
+    try {
+      const data = loaded ?? (onLoadEditor ? await onLoadEditor() : decorationData);
+      if (runtime.current !== instance || !activeRef.current || !data?.grid) return;
+      instance.setDecorations(data);
+      start(instance);
+    } finally {
+      editorPending.current = false;
+    }
+  }
+  function openHouse() {
+    setRequestedHouseItem(null);
+    onClosePlot();
+    void withEditor(() => {
+      setHouseMenu(true);
+      onOpenHouse?.();
+    });
+  }
+  const callbacks = useRef({onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,openHouse,withEditor});
+  callbacks.current={onSelectPlot,onSaveLayout,onFinishEditing,onEditingChange,openHouse,withEditor};
   const currentActive=useRef(active);currentActive.current=active;
-  const currentData=useRef(decorationData);currentData.current=decorationData;
+  const currentData=useRef(sceneData);currentData.current=sceneData;
   const plotKey=JSON.stringify(renderPlots.map(plot=>plot.plot_id));
-  const nature=decorationData?.environment;
+  const nature=sceneData?.environment;
   const environment={season:nature?.season?.id??"summer",weather:nature?.weather?.condition??null,night:nature?.night??0,disaster:nature?.disaster??null,flood:nature?.flood};
   const currentEnvironment=useRef(environment);currentEnvironment.current=environment;
   useEffect(()=>{if(!edit.editing)setRenderPlots(plots);},[plots,edit.editing]);
-  useEffect(()=>{if(!edit.editing)setHouseLevel(decorationData?.house?.level??1);},[decorationData?.house?.level,edit.editing]);
+  useEffect(()=>{if(!edit.editing)setHouseLevel(sceneData?.house?.level??1);},[sceneData?.house?.level,edit.editing]);
   useEffect(()=>{
     if(!host.current)return;
     try {
       const instance=createFieldRuntime(host.current,{
         active:currentActive.current,plots:renderPlots,environment:currentEnvironment.current,houseLevel,houseStyle:currentData.current?.layout.house?.style??"classic",classicHouseLevel:currentData.current?.house?.classic_level??Math.min(houseLevel,3) as 1|2|3,
-        onSelectHouse:()=>{if(currentData.current){setHouseMenu(true);setRequestedHouseItem(null);callbacks.current.onClosePlot();callbacks.current.onOpenHouse?.();}},
+        onSelectHouse:()=>{if(currentData.current)callbacks.current.openHouse();},
+        onRequestEdit:start=>void callbacks.current.withEditor(start),
         onSelectPlot:id=>callbacks.current.onSelectPlot(id),
         onEditState:state=>{setEdit(state);setSnowmanNotice(!state.editing&&state.message===SNOWMAN_MESSAGE);callbacks.current.onEditingChange?.(state.editing);},
         onSaveLayout:async layout=>{
@@ -146,16 +175,20 @@ export function FieldScene({
   useEffect(()=>{runtime.current?.setActive(active);},[active,plotKey,houseLevel]);
   useEffect(()=>{runtime.current?.setModelOutline(modelOutline);},[modelOutline,plotKey,houseLevel]);
   useEffect(()=>{runtime.current?.setEnvironment(environment);},[environment.season,environment.weather,environment.night,environment.disaster?.type,environment.disaster?.phase,JSON.stringify(environment.flood),plotKey,houseLevel]);
-  useEffect(()=>{if(decorationData)runtime.current?.setDecorations(decorationData);},[decorationData,plotKey,houseLevel]);
+  const displayData = houseMenu && decorationData ? decorationData : sceneData;
+  useEffect(()=>{if(displayData)runtime.current?.setDecorations(displayData);},[displayData,plotKey,houseLevel]);
   useEffect(()=>{runtime.current?.selectPlot(selectedPlot?.plot_id??null);},[selectedPlot?.plot_id,plotKey,houseLevel]);
-  useEffect(()=>{if(placementRequest)runtime.current?.startPlacement(placementRequest.decorationId);},[placementRequest?.requestKey]);
+  useEffect(()=>{
+    if(placementRequest) void callbacks.current.withEditor(instance=>instance.startPlacement(placementRequest.decorationId), decorationData);
+  },[placementRequest?.requestKey]);
   useEffect(()=>{
     if(!layoutPreviewRequest)return;
-    try {
-      if(!runtime.current)throw new Error("场景尚未就绪，请稍后再试。");
-      setShareSkipped(runtime.current.previewLayout(layoutPreviewRequest.layout));
-      setFailure(null);
-    } catch(error) {setFailure(error instanceof Error?error.message:"布局预览未完成，请重试。");}
+    void callbacks.current.withEditor(instance => {
+      try {
+        setShareSkipped(instance.previewLayout(layoutPreviewRequest.layout));
+        setFailure(null);
+      } catch(error) {setFailure(error instanceof Error?error.message:"布局预览未完成，请重试。");}
+    });
   },[layoutPreviewRequest?.requestKey]);
   useEffect(()=>{if(!edit.editing)setRoofPalette(false);},[edit.editing]);
   useEffect(()=>{if(edit.editing){setHouseMenu(false);}else{setCanopyEditor(false);setBoundaryEditor(false);}},[edit.editing]);
@@ -212,7 +245,7 @@ export function FieldScene({
       </h2>
 
       <div className="farm-field-canvas" ref={host} inert={slotsOpen} />
-      {!edit.editing && decorationData ? <button className="farm-house-accessible" type="button" onClick={()=>{setHouseMenu(true);setRequestedHouseItem(null);onClosePlot();onOpenHouse?.();}}>编辑房屋</button> : null}
+      {!edit.editing && sceneData ? <button className="farm-house-accessible" type="button" onClick={openHouse}>编辑房屋</button> : null}
       {!edit.editing&&houseMenu&&decorationData ? <section className="farm-field-editor farm-house-menu" aria-label="房屋编辑">
         <strong>{houseLevel}级房屋</strong>
         {onSaveLayout&&onLoadLayout&&decorationData.saved_layouts?<button type="button" onClick={openSlots}>我的布局 · {decorationData.saved_layouts.length}/3</button>:null}
@@ -246,7 +279,7 @@ export function FieldScene({
           })}
         </div>
         {requestedHouseItem ? <p role="status">{purchaseBusy?"正在发送购买请求…":housePurchaseFeedback?.stage==="success"?"已喊 TA 来买，实际购买后房屋才会更新。":housePurchaseFeedback?.message??""}</p> : null}
-        {onOpenHouse?<button type="button" disabled={purchaseBusy} onClick={onOpenHouse}>刷新购买结果</button>:null}
+        {onOpenHouse?<button type="button" disabled={purchaseBusy} onClick={openHouse}>刷新购买结果</button>:null}
       </section> : null}
       {!edit.editing&&!houseMenu ? requestControls : null}
       {failure ? <p className="farm-scene__notice" role="alert">{failure}</p> : null}

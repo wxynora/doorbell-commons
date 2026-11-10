@@ -1,4 +1,5 @@
 import {
+  boundFarmSceneReadSuccessSchema,
   boundFarmDecorationsReadSuccessSchema,
   boundFarmDecorationLayoutSaveRequestSchema,
   boundFarmDecorationLayoutSaveSuccessSchema,
@@ -6,6 +7,7 @@ import {
 } from "@doorbell/protocol";
 import type { ApiResult, ClientIssueCode, FrontendFetcher } from "./auth-client";
 
+export type BoundFarmSceneRead = ReturnType<typeof boundFarmSceneReadSuccessSchema.parse>;
 export type BoundFarmDecorationsRead = ReturnType<
   typeof boundFarmDecorationsReadSuccessSchema.parse
 >;
@@ -42,12 +44,22 @@ function issueFrom(payload: unknown): FarmDecorationIssue {
     : { code: "unexpected_response", serverMessage: null };
 }
 
-export async function getBoundFarmDecorations(
-  options: ReadOptions = {},
-): Promise<ApiResult<BoundFarmDecorationsRead, FarmDecorationIssue>> {
+export function getBoundFarmDecorations(options: ReadOptions = {}) {
+  return readDecorations("/api/farm/decorations", boundFarmDecorationsReadSuccessSchema, options);
+}
+
+export function getBoundFarmScene(options: ReadOptions = {}) {
+  return readDecorations("/api/farm/decorations/scene", boundFarmSceneReadSuccessSchema, options);
+}
+
+async function readDecorations<T>(
+  url: string,
+  schema: {safeParse(payload: unknown): {success: true; data: T} | {success: false}},
+  options: ReadOptions,
+): Promise<ApiResult<T, FarmDecorationIssue>> {
   let response: Response;
   try {
-    response = await (options.fetcher ?? fetch)("/api/farm/decorations", {
+    response = await (options.fetcher ?? fetch)(url, {
       method: "GET",
       credentials: "same-origin",
       ...(options.signal ? { signal: options.signal } : {}),
@@ -57,7 +69,7 @@ export async function getBoundFarmDecorations(
   }
   const payload = await payloadOf(response);
   if (!response.ok) return { ok: false, issue: issueFrom(payload) };
-  const parsed = boundFarmDecorationsReadSuccessSchema.safeParse(payload);
+  const parsed = schema.safeParse(payload);
   return parsed.success
     ? { ok: true, data: parsed.data }
     : { ok: false, issue: issueFrom(undefined) };

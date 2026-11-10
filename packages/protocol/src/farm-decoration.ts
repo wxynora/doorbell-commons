@@ -48,6 +48,9 @@ export const farmDecorationsDataSchema = z.object({
     flood: z.object({ plot_ids: z.array(z.number().int()), fish: z.array(z.object({ id: z.string(), fish_id: z.string(), size: z.number() }).strict()) }).strict().optional(),
   }).strict(),
 }).strict();
+export const boundFarmSceneReadSuccessSchema = z.object({
+  data: farmDecorationsDataSchema.pick({ house: true, catalog: true, inventory: true, layout: true, environment: true }),
+}).strict();
 const resourceMetadata = { revision: z.string().min(1), server_time: z.iso.datetime() };
 export const boundFarmDecorationsReadSuccessSchema = z.object({ data: farmDecorationsDataSchema, ...resourceMetadata }).strict();
 const saveMetadata={idempotency_key:z.uuid(),expected_revision:z.string().min(1)};

@@ -6,12 +6,17 @@ import { OneBotUnavailableError } from "./qq-group-membership.js";
 import { readHumanSessionToken, serializeClearedHumanSessionCookie } from "./session-cookie.js";
 
 export function registerFarmDecorationRoutes(app: FastifyInstance, options: {
-  registrationAuth: Pick<RegistrationAuthService, "getCurrentFarmDecorations" | "saveCurrentFarmDecorationLayout">;
+  registrationAuth: Pick<RegistrationAuthService, "getCurrentFarmDecorations" | "getCurrentFarmScene" | "saveCurrentFarmDecorationLayout">;
   secureCookies: boolean;
 }) {
-  for (const save of [false, true]) app.route({
-    method: save ? "POST" : "GET", url: save ? "/api/farm/decorations/layout" : "/api/farm/decorations",
+  for (const [method, url] of [
+    ["GET", "/api/farm/decorations"],
+    ["GET", "/api/farm/decorations/scene"],
+    ["POST", "/api/farm/decorations/layout"],
+  ] as const) app.route({
+    method, url,
     async handler(request, reply) {
+      const save = method === "POST";
       reply.header("cache-control", "no-store");
       const invalid = () => reply.code(400).send({ error: { code: "invalid_request", message: "装饰请求格式不正确。" } });
       if (request.query && Object.keys(request.query).length) return invalid();
@@ -22,7 +27,9 @@ export function registerFarmDecorationRoutes(app: FastifyInstance, options: {
         if (!token) throw new AuthenticationRequiredError();
         return save && parsed?.success
           ? await options.registrationAuth.saveCurrentFarmDecorationLayout(token, parsed.data)
-          : await options.registrationAuth.getCurrentFarmDecorations(token);
+          : url === "/api/farm/decorations/scene"
+            ? await options.registrationAuth.getCurrentFarmScene(token)
+            : await options.registrationAuth.getCurrentFarmDecorations(token);
       } catch (error) {
         if (error instanceof AuthenticationRequiredError) {
           reply.header("set-cookie", serializeClearedHumanSessionCookie(options.secureCookies));

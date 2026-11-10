@@ -29,6 +29,7 @@ import {
   type FarmLayoutSlot,
   farmDecorationIssueMessage,
   getBoundFarmDecorations,
+  getBoundFarmScene,
   saveBoundFarmDecorationLayout,
 } from "../../auth/farm-decoration-client";
 import { createBoundFarmPlantRequest } from "../../auth/farm-plant-request-client";
@@ -140,6 +141,8 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
   const requestedResourcesRef = useRef<Set<keyof FarmReadResources>>(new Set());
   const bulletinAckKeysRef = useRef<Map<string, string>>(new Map());
   const farmCatalogRef = useRef<BoundFarmCatalogRead | null>(null);
+  const visibleRefreshRef = useRef<(() => void) | null>(null);
+  const decorationReadRef = useRef<Promise<BoundFarmDecorationsRead | undefined> | null>(null);
   const farmDecorationsRef = useRef<BoundFarmDecorationsRead | null>(null);
   const decorationSaveAttemptRef = useRef<{
     expectedRevision: string;
@@ -162,6 +165,34 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
   } | null>(null);
   const cookingShopOpenInFlightRef = useRef(false);
 
+  const readDecorationEditor = useCallback(() => {
+    if (previewData) return Promise.resolve(undefined);
+    if (decorationReadRef.current) return decorationReadRef.current;
+    requestedResourcesRef.current.add("farmDecorations");
+    const controller = new AbortController();
+    resourceControllersRef.current.farmDecorations = controller;
+    const pending = getBoundFarmDecorations({ signal: controller.signal }).then((result) => {
+      if (controller.signal.aborted) return undefined;
+      if (result.ok) {
+        farmDecorationsRef.current = result.data;
+        setResources((current) => ({ ...current, farmDecorations: { stage: "ready", data: result.data } }));
+        return result.data;
+      }
+      requestedResourcesRef.current.delete("farmDecorations");
+      setResources((current) => ({
+        ...current,
+        farmDecorations: { stage: "error", message: farmDecorationIssueMessage(result.issue) },
+      }));
+      return undefined;
+    }).finally(() => {
+      if (decorationReadRef.current === pending) decorationReadRef.current = null;
+    });
+    decorationReadRef.current = pending;
+    return pending;
+  }, [previewData]);
+
+  const loadDecorationEditor = useCallback(async () => (await readDecorationEditor())?.data, [readDecorationEditor]);
+
   const requireResource = useCallback(
     function readResource(
       resource: keyof FarmReadResources,
@@ -170,6 +201,10 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
       preserveReadyOnError = false,
     ) {
       if (previewData || (!force && requestedResourcesRef.current.has(resource))) {
+        return;
+      }
+      if (resource === "farmDecorations") {
+        void readDecorationEditor();
         return;
       }
       requestedResourcesRef.current.add(resource);
@@ -201,15 +236,14 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
         return;
       }
 
-      if (resource === "farmDecorations") {
-        void getBoundFarmDecorations({ signal: controller.signal }).then((result) => {
+      if (resource === "farmScene") {
+        void getBoundFarmScene({ signal: controller.signal }).then((result) => {
           if (controller.signal.aborted) return;
           if (!result.ok && preserveReadyOnError) return;
           if (!result.ok) requestedResourcesRef.current.delete(resource);
-          if (result.ok) farmDecorationsRef.current = result.data;
           setResources((current) => ({
             ...current,
-            farmDecorations: result.ok
+            farmScene: result.ok
               ? { stage: "ready", data: result.data }
               : { stage: "error", message: farmDecorationIssueMessage(result.issue) },
           }));
@@ -276,7 +310,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
         }));
       });
     },
-    [previewData],
+    [previewData, readDecorationEditor],
   );
 
   const refreshRanchReturn = useCallback(() => requireResource("ranch", true), [requireResource]);
@@ -300,6 +334,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
       }
       decorationSaveAttemptRef.current = null;
       resourceControllersRef.current.farmDecorations?.abort();
+      resourceControllersRef.current.farmScene?.abort();
       const next: BoundFarmDecorationsRead = {
         ...current,
         data: result.data.data.resource,
@@ -310,6 +345,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
       setResources((resources) => ({
         ...resources,
         farmDecorations: { stage: "ready", data: next },
+        farmScene: { stage: "ready", data: { data: next.data } },
       }));
     },
     [requireResource],
@@ -346,14 +382,6 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
     [previewData],
   );
 
-  const refreshRequestedResources = useCallback(() => {
-    const requestedResources = [...requestedResourcesRef.current];
-    if (requestedResources.includes("farmCatalog")) {
-      setSettingsInitializationKey((current) => current + 1);
-    }
-    for (const resource of requestedResources) requireResource(resource, true);
-  }, [requireResource]);
-
   const refreshResourceInBackground = useCallback(
     (resource: keyof FarmReadResources) => {
       if (!requestedResourcesRef.current.has(resource)) return;
@@ -368,11 +396,12 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
 
   const refreshFieldScene = useCallback(() => {
     void refreshField();
-    refreshResourceInBackground("farmDecorations");
+    refreshResourceInBackground("farmScene");
   }, [refreshField, refreshResourceInBackground]);
 
   const refreshVisibleScene = useCallback((field:boolean, targets: readonly (keyof FarmReadResources)[]) => {
     if (field) void refreshField();
+    if (targets.includes("farmCatalog")) setSettingsInitializationKey((current) => current + 1);
     for (const resource of targets) requireResource(resource,true,false,true);
   },[refreshField,requireResource]);
 
@@ -1014,9 +1043,9 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
       setState({ stage: "ready", data: previewData });
       return;
     }
-    refreshRequestedResources();
+    requireResource("farmScene", true);
     void refreshField({ showLoading: true });
-  }, [previewData, refreshField, refreshRequestedResources]);
+  }, [previewData, refreshField, requireResource]);
 
   const submitHarvestAssist = useCallback(
     async (retryAttempt?: FarmHarvestAttempt) => {
@@ -1202,7 +1231,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
             aria-label="重新读取农场数据"
             className="farm-game__round-button"
             disabled={state.stage === "loading"}
-            onClick={reload}
+            onClick={() => visibleRefreshRef.current ? visibleRefreshRef.current() : reload()}
             type="button"
           >
             <RefreshIcon />
@@ -1276,6 +1305,8 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
             onRequireResource={requestVisibleResource}
             onRefreshField={refreshFieldScene}
             onRefreshVisible={refreshVisibleScene}
+            visibleRefreshRef={visibleRefreshRef}
+            onLoadDecorationEditor={loadDecorationEditor}
             onRetryHarvestAssist={() => {
               if (harvestAction.stage === "error" && harvestAction.attempt) {
                 void submitHarvestAssist(harvestAction.attempt);

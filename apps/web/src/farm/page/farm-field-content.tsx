@@ -2,7 +2,7 @@ import type { SceneDecorationLayout } from "../scenes/field/scene-types";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRanchReturnRefresh } from "./use-ranch-return-refresh";
 import type { BoundFarmField } from "../../auth/auth-client";
-import type { FarmDecorationLayout, FarmLayoutSlot } from "../../auth/farm-decoration-client";
+import type { BoundFarmDecorationsRead, FarmDecorationLayout, FarmLayoutSlot } from "../../auth/farm-decoration-client";
 import type { BoundBulletinRead, BulletinAcknowledgementScope } from "../../auth/bulletin-client";
 import {
   type CreateFarmPurchaseRequestInput,
@@ -238,6 +238,8 @@ export function FarmFieldContent({
   onReloadRanch,
   onRefreshField,
   onRefreshVisible,
+  visibleRefreshRef,
+  onLoadDecorationEditor,
   onRequireResource,
   onRetryHarvestAssist,
   onRetryHarvestRequest,
@@ -291,6 +293,8 @@ export function FarmFieldContent({
   onReloadAfterLandUpgradeError?: () => void;
   onReloadRanch?: (() => void) | undefined;
   onRefreshField?: (() => void) | undefined;
+  visibleRefreshRef?: { current: (() => void) | null };
+  onLoadDecorationEditor?: () => Promise<BoundFarmDecorationsRead["data"] | undefined>;
   onRefreshVisible?: (field: boolean, resources: readonly (keyof FarmReadResources)[]) => void;
   onRequireResource?: (resource: keyof FarmReadResources, force?: boolean) => void;
   onRetryHarvestAssist?: () => void;
@@ -305,6 +309,7 @@ export function FarmFieldContent({
 }) {
   const field = data.data;
   const farmCatalog = resources.farmCatalog.stage === "ready" ? resources.farmCatalog.data : null;
+  const farmScene = resources.farmScene?.stage === "ready" ? resources.farmScene.data.data : undefined;
   const farmDecorations =
     resources.farmDecorations?.stage === "ready" ? resources.farmDecorations.data : null;
   const [placementRequest, setPlacementRequest] = useState<
@@ -440,20 +445,30 @@ export function FarmFieldContent({
     : activeSceneUiState.selectedTool
       ? getToolReadResource(activeScene, activeSceneUiState.selectedTool.id)
       : getSceneReadResource(activeScene);
-  useEffect(() => {
-    const resumed = active && !wasActive.current;
-    wasActive.current = active;
-    if (!resumed || preview || !onRefreshVisible) return;
+  const refreshVisible = useCallback(() => {
+    if (preview || !onRefreshVisible) return;
     const targets = new Set<keyof FarmReadResources>();
     const sceneResource = getSceneReadResource(activeScene);
     if (sceneResource) targets.add(sceneResource);
     if (activeResourceKey) targets.add(activeResourceKey);
-    if (activeScene === "field" && !decorationEditing) targets.add("farmDecorations");
+    if (activeScene === "field" && !decorationEditing) targets.add("farmScene");
+    if (activeScene === "field" && activeSceneUiState.selectedTool?.id === "backpack")
+      targets.add("farmDecorations");
     if (activeScene === "ranch" && activeSceneUiState.selectedTool?.id === "dispatch")
       targets.add("farmCatalog");
     if (decorationEditing) targets.delete("farmDecorations");
     onRefreshVisible(activeScene === "field",[...targets]);
-  },[active,activeScene,activeResourceKey,activeSceneUiState.selectedTool?.id,decorationEditing,onRefreshVisible,preview]);
+  }, [activeScene, activeResourceKey, activeSceneUiState.selectedTool?.id, decorationEditing, onRefreshVisible, preview]);
+  useEffect(() => {
+    if (!visibleRefreshRef) return;
+    visibleRefreshRef.current = refreshVisible;
+    return () => { visibleRefreshRef.current = null; };
+  }, [visibleRefreshRef, refreshVisible]);
+  useEffect(() => {
+    const resumed = active && !wasActive.current;
+    wasActive.current = active;
+    if (resumed) refreshVisible();
+  }, [active, refreshVisible]);
   const activeResourceState = activeResourceKey ? resources[activeResourceKey] : null;
   const displayedBulletin = resources.bulletin.stage === "ready" ? resources.bulletin.data : null;
   const [viewedBulletinKeys, setViewedBulletinKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -619,7 +634,6 @@ export function FarmFieldContent({
     if (preview || compensationBulletinRequestedRef.current) return;
     compensationBulletinRequestedRef.current = true;
     onRequireResource?.("bulletin");
-    onRequireResource?.("farmDecorations");
   }, [onRequireResource, preview]);
 
   useEffect(() => {
@@ -1018,17 +1032,21 @@ export function FarmFieldContent({
             <Suspense
               fallback={<FarmLazyLoading label={`正在打开${scene.label}`} mode="surface" />}
             >
-              {scene.id === "field" ? (
+              {scene.id === "field" ? (!preview && onLoadDecorationEditor && !farmScene ? (
+                resources.farmScene?.stage === "error" ? null : <FarmLazyLoading label="正在读取农场布置" mode="surface" />
+              ) : (
                 <FieldScene
                   active={active && activeScene === "field"}
+                  sceneData={farmScene ?? farmDecorations?.data}
                   decorationData={farmDecorations?.data}
+                  onLoadEditor={onLoadDecorationEditor}
                   placementRequest={placementRequest}
                   layoutPreviewRequest={layoutPreviewRequest}
                   onSaveLayout={onSaveDecorationLayout}
                   onLoadLayout={onLoadDecorationLayout}
                   onRenameLayout={onRenameDecorationLayout}
                   housePurchaseFeedback={getFarmCheckoutFeedback("field")}
-                  onOpenHouse={()=>{onRequireResource?.("farmCatalog",true);onRequireResource?.("farmDecorations",true);}}
+                  onOpenHouse={() => onRequireResource?.("farmCatalog", true)}
                   onRequestHousePurchase={!preview&&onFarmPurchaseRequest&&farmCatalog?.data.shop.status==="available" ? itemId=>{
                     void submitFarmPurchaseRequest("field",[{kind:"decoration",itemId,quantity:1}]);
                   }:undefined}
@@ -1047,7 +1065,7 @@ export function FarmFieldContent({
                   plots={field.plots}
                   selectedPlot={selectedPlot}
                 />
-              ) : null}
+              )) : null}
               {scene.id === "ranch" ? (
                 <RanchScene
                   active={active && activeScene === "ranch"}
@@ -1476,6 +1494,12 @@ export function FarmFieldContent({
         />
       ) : null}
       <div className="farm-game__bottom" hidden={decorationEditing}>
+        {activeScene === "field" && resources.farmScene?.stage === "error" ? (
+          <div className="farm-tool-notice" role="alert">
+            <span>{resources.farmScene.message}</span>
+            <button aria-label="重新读取农场布置" type="button" onClick={() => onRequireResource?.("farmScene", true)}>↻</button>
+          </div>
+        ) : null}
         {activeScene === "field" && resources.farmDecorations?.stage === "error" ? (
           <div className="farm-tool-notice" role="alert">
             <span>{resources.farmDecorations.message}</span>
