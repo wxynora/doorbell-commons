@@ -3,21 +3,24 @@ import type Database from "better-sqlite3";
 import type { BellWakeSource, BellWakeSourceRecord, BellWakeSourceTransition } from "../../bell-service.js";
 import { planSnowTournamentGrants } from "./settlement.js";
 import type { SnowTournamentStore } from "./store.js";
+import type { FinaleEdition, SnowFinaleCompensation } from "./finale-compensation.js";
 
 type Edition=Omit<Parameters<typeof planSnowTournamentGrants>[0],"teams"> & {
   teams:(Parameters<typeof planSnowTournamentGrants>[0]["teams"][number] & {drawOrder:number|null})[];
 };
-export type SnowResultFacts={editionId:string;residentId:string;outcome:"champion"|"completed"|"cancelled";gold:number;silver:number;refundGold:number};
+export type SnowResultFacts={editionId:string;residentId:string;outcome:"champion"|"completed"|"cancelled";gold:number;silver:number;refundGold:number;finaleSeeds?:boolean;finaleStatue?:boolean};
 
-/** Reviewed cash-only copy; amounts come from confirmed personal settlement facts. */
+/** Reviewed copy; every stated award comes from confirmed settlement facts. */
 export function renderSnowResult(facts:SnowResultFacts):string {
+  const suffix=(facts.finaleSeeds?"\n随机 SP 种子 ×3 已放进你的农场背包。":"")+
+    (facts.finaleStatue?"\n雪王雕像已放进农场装修库存，可使用 15 天。":"");
   switch(facts.outcome) {
     case "champion":
-      return `🏆 恭喜夺得本届雪堡锦标赛冠军！本届奖金共${facts.gold}金币＋${facts.silver}银币，已存入你的账户。辛苦啦，和队友一起庆祝吧！`;
+      return `🏆 恭喜夺得本届雪堡锦标赛冠军！本届奖金共${facts.gold}金币＋${facts.silver}银币，已存入你的账户。辛苦啦，和队友一起庆祝吧！`+suffix;
     case "completed":
-      return `❄️ 本届雪堡锦标赛结束啦，谢谢你和队友一起上场！本届奖金共${facts.gold}金币＋${facts.silver}银币，已存入你的账户。下次再来拆雪堡！`;
+      return `❄️ 本届雪堡锦标赛结束啦，谢谢你和队友一起上场！本届奖金共${facts.gold}金币＋${facts.silver}银币，已存入你的账户。下次再来拆雪堡！`+suffix;
     case "cancelled":
-      return `本届雪堡锦标赛因技术故障结束，抱歉让大家没能打完。报名费${facts.refundGold}金币已退回，已获得的${facts.gold}金币＋${facts.silver}银币保留在你的账户。`;
+      return `本届雪堡锦标赛因技术故障结束，抱歉让大家没能打完。报名费${facts.refundGold}金币已退回，已获得的${facts.gold}金币＋${facts.silver}银币保留在你的账户。`+suffix;
   }
 }
 
@@ -49,17 +52,22 @@ type Row={wake_id:string;resident_id:string;created_at:number;text:string;status
 /** The caller must supply reviewed copy; this module does not invent model-visible text. */
 export class SnowTournamentResultBell {
   constructor(private readonly db:Database.Database,private readonly store:SnowTournamentStore,
-    private readonly options:{eligible(residentId:string):boolean;notify(residentId:string):void;render(facts:SnowResultFacts):string;now?:()=>number}) {}
+    private readonly options:{eligible(residentId:string):boolean;notify(residentId:string):void;render(facts:SnowResultFacts):string;now?:()=>number;
+      finale?:SnowFinaleCompensation["notificationFacts"]}) {}
   queue(editionId:string) {
     const ids=this.db.transaction(()=>{
-      const edition=this.store.read(editionId) as Edition|null;
+      const edition=this.store.read(editionId) as (Edition&FinaleEdition)|null;
       if(!edition) return [];
+      const finale=this.options.finale?.(edition);
       const recipients:string[]=[];
       for(const facts of settledSnowResultFacts(edition)) {
         if(!this.options.eligible(facts.residentId)) continue;
+        const compensation=finale?.(facts.residentId);
+        if(compensation&&!compensation.ready) continue;
+        const confirmed=compensation?{...facts,finaleSeeds:compensation.seeds,finaleStatue:compensation.statue}:facts;
         const key="snow-result:"+createHash("sha256").update(JSON.stringify([editionId,facts.residentId])).digest("hex").slice(0,32);
         if(this.db.prepare("INSERT INTO snow_tournament_result_wakes (wake_id,edition_id,resident_id,created_at,text) VALUES (?,?,?,?,?) ON CONFLICT(edition_id,resident_id) DO NOTHING")
-          .run(key,editionId,facts.residentId,this.options.now?.()??Date.now(),this.options.render(facts)).changes) recipients.push(facts.residentId);
+          .run(key,editionId,facts.residentId,this.options.now?.()??Date.now(),this.options.render(confirmed)).changes) recipients.push(facts.residentId);
       }
       return recipients;
     })();

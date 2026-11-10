@@ -1,5 +1,7 @@
 import type { LingyePlaceId, LingyePlaceViewModel } from "../view-models";
 
+const mapAsset = (path: string) => `${path}?v=2`;
+
 interface LingyeMapPageProps {
   notice: string | null;
   places: readonly LingyePlaceViewModel[];
@@ -17,7 +19,7 @@ export function LingyeMapPage({ notice, places, onOpenPlace, onOpenTogether }: L
             className="lingye-map-image"
             draggable="false"
             height="1536"
-            src="/lingye/map.webp"
+            src={mapAsset("/lingye/map.webp")}
             width="1024"
           />
 
@@ -30,7 +32,7 @@ export function LingyeMapPage({ notice, places, onOpenPlace, onOpenTogether }: L
               style={{ left: `${place.left}%`, top: `${place.top}%` }}
               type="button"
             >
-              <img alt="" draggable="false" src={place.imageUrl} />
+              <img alt="" draggable="false" src={mapAsset(place.imageUrl)} />
             </button>
           ))}
 

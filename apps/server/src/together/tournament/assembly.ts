@@ -15,6 +15,7 @@ import { snowTournamentForResident } from "./resident-facade.js";
 import { SnowTournamentTools } from "./tools.js";
 import { renderSnowPlayerSignal } from "./player-copy.js";
 import { SnowTournamentResultBell, renderSnowResult } from "./result-bell.js";
+import { SnowFinaleCompensation, type FinaleGrant, type FinaleReceipt } from "./finale-compensation.js";
 import {SnowTournamentTeamSignals} from "./team-signals.js";
 import { SnowTournamentSpectators } from "./spectators.js";
 
@@ -26,7 +27,7 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
   parsePublic:(value:unknown)=>SnowTournamentResponse;
   now?:()=>number;
   engine?:SnowTournamentEnginePort;
-  economy?:SnowTournamentEconomy;
+  economy?:SnowTournamentEconomy & {grantFinaleCompensation?(input:FinaleGrant):Promise<FinaleReceipt|null>};
   schedule?: {
     season: MonthlySnowSeason;
     host: SnowTournamentScheduleHost;
@@ -51,9 +52,18 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
   const engine=matchHost ?? dependencies.schedule?.host ?? dependencies.engine;
   const results=engine ? new SnowTournamentResults(store,engine,now) : null;
   const settlement=dependencies.economy ? new SnowTournamentSettlement(store,teams,dependencies.economy,now) : null;
+  const finale=dependencies.economy?.grantFinaleCompensation
+    ? new SnowFinaleCompensation(db,store,dependencies.economy.grantFinaleCompensation.bind(dependencies.economy)) : null;
   const resultBell=runtime?.season && runtime.playerSignals && settlement
-    ? new SnowTournamentResultBell(db,store,{...runtime.playerSignals,render:renderSnowResult}) : null;
+    ? new SnowTournamentResultBell(db,store,{...runtime.playerSignals,render:renderSnowResult,
+      ...(finale?{finale:finale.notificationFacts.bind(finale)}:{})}) : null;
   let reportSettlement:(id:string,error:unknown)=>void=()=>{};
+  const publishResult=async(id:string)=>{
+    const phase=store.readEditionPhase(id);
+    if(phase!=="completed"&&phase!=="cancelled")return;
+    for(const failure of await finale?.reconcile(id)??[])reportSettlement(failure.id,failure.error);
+    resultBell?.queue(id);
+  };
   const syncActivity=(id:string)=>{
     if (!dependencies.mainActivity) return;
     const edition=store.read(id);
@@ -64,10 +74,10 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
   const reconcileSettlement=(id:string)=>{
     syncActivity(id);
     if (!settlement) return;
-    void settlement.reconcile(id).then(failures=>{
+    void settlement.reconcile(id).then(async failures=>{
       for (const failure of failures) reportSettlement(failure.id,failure.error);
       syncActivity(id);
-      resultBell?.queue(id);
+      await publishResult(id);
     }).catch(error=>reportSettlement(id,error));
   };
   const registrationBell=runtime?.season && runtime.registrationBell
@@ -148,7 +158,7 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
       residents:()=>{
         const rows=db.prepare("SELECT resident_id AS id,resident_name AS name FROM residents ORDER BY resident_id").all() as {id:string;name:string}[];
         return rows.filter(row=>runtime.registrationBell!.isEligible(row.id)).map(row=>({...row,name:dependencies.displayName(row.name)}));
-      },afterTeamMutation:id=>teamSignals?.sync(id),afterMutation:async id=>{const failures=await settlement!.reconcile(id);resultBell?.queue(id);return failures;}}) : null;
+      },afterTeamMutation:id=>teamSignals?.sync(id),afterMutation:async id=>{const failures=await settlement!.reconcile(id);await publishResult(id);return failures;}}) : null;
   return {
     store,
     publicService,
@@ -172,7 +182,7 @@ export function createSnowTournamentDomain(db:Database.Database, dependencies:{
         if (settlement?.hasPending(entry)) reconcileSettlement(entry.id);
         else {
           syncActivity(entry.id);
-          if (entry.phase==="completed" || entry.phase==="cancelled") resultBell?.queue(entry.id);
+          if (entry.phase==="completed" || entry.phase==="cancelled") void publishResult(entry.id).catch(error=>reportSettlement(entry.id,error));
         }
       }
       const clock=startSnowTournamentClock(scheduler,report);

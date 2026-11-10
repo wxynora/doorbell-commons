@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { HarvestGrant, SnowTournamentEconomy } from "./settlement.js";
+import type { FinaleGrant, FinaleReceipt } from './finale-compensation.js';
 
 const journal=z.string().min(1);
 const payment=z.object({ok:z.literal(true),payment_id:journal,resident_id:journal,gold:z.literal(10000),journal_id:journal}).strict();
@@ -13,6 +14,8 @@ const furniture=z.object({ok:z.literal(true),grant_id:journal,edition_id:journal
   quantity:z.literal(1),granted_at:z.number().int().nonnegative(),expires_at:z.number().int().positive()}).strict();
 const harvest=z.object({ok:z.literal(true),grant_id:journal,edition_id:journal,resident_id:journal,
   bonus_percent:z.literal(15),granted_at:z.number().int().nonnegative(),expires_at:z.number().int().positive()}).strict();
+const finale=z.object({ok:z.literal(true),grant_id:journal,edition_id:journal,farm_id:journal,
+  seed_ids:z.array(journal).length(3),granted_at:z.number().int().nonnegative(),statue_expires_at:z.number().int().positive().nullable()}).strict();
 
 /** Only the original service-authenticated Farm ledger owns these balances. */
 export class SnowTournamentFarmEconomy implements SnowTournamentEconomy {
@@ -80,5 +83,13 @@ export class SnowTournamentFarmEconomy implements SnowTournamentEconomy {
     const value=harvest.parse(result.data);
     return {id:value.grant_id,editionId:value.edition_id,residentId:value.resident_id,bonusPercent:value.bonus_percent,
       grantedAt:value.granted_at,expiresAt:value.expires_at};
+  }
+  async grantFinaleCompensation(input:FinaleGrant):Promise<FinaleReceipt|null> {
+    const result=await this.post('finale-compensation',{grant_id:input.id,edition_id:input.editionId,
+      resident_id:input.residentId,farm_id:input.farmId,statue:input.statue});
+    if(result.status!==200)return null;
+    const value=finale.parse(result.data);
+    return {id:value.grant_id,editionId:value.edition_id,farmId:value.farm_id,seedIds:value.seed_ids,
+      grantedAt:value.granted_at,statueExpiresAt:value.statue_expires_at};
   }
 }
