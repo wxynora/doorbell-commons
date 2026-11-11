@@ -418,8 +418,9 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
                 name: f.name,
                 plots: farmView(f, now).plots,
             } } : {};
+        const text = visitView(f, now, visitorId ? readFarm(visitorId) : undefined, targetRef);
         persistProjectedRead();
-        return { status: 200, json: { ok: true, text: visitView(f, now, visitorId ? readFarm(visitorId) : undefined, targetRef), ...publicDetail, ...(moments.length ? {moment_activities:moments} : {}) } };
+        return { status: 200, json: { ok: true, text, ...publicDetail, ...(moments.length ? {moment_activities:moments} : {}) } };
     }
     if (action === "leaderboard" || action === "ranking") {
         persistProjectedRead();
