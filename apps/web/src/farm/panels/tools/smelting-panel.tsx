@@ -1,3 +1,4 @@
+import { createFarmReceiptKey } from "../../receipt-key.js";
 import { ProductionQuantity, validProductionQuantity } from "../../production/quantity-control";
 import { type CSSProperties, useRef, useState } from "react";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
@@ -271,7 +272,7 @@ export function SmeltingPanelContent({
       ({
         expectedFarmDoorplate: farmCatalog.data.farm.farm_doorplate,
         expectedSmeltingRevision: liveSmelting.revision,
-        idempotencyKey: globalThis.crypto.randomUUID(),
+        idempotencyKey: createFarmReceiptKey(),
         materialIds: [...selectedMaterialIds],
         ...(batchOpen && Number(quantity) > 1 ? { quantity: Number(quantity) } : {}),
       } satisfies SmeltingActionInput);

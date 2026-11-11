@@ -1,3 +1,4 @@
+import { createFarmReceiptKey } from "../receipt-key.js";
 import type { SceneDecorationLayout } from "../scenes/field/scene-types";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRanchReturnRefresh } from "./use-ranch-return-refresh";
@@ -775,7 +776,7 @@ export function FarmFieldContent({
         retryAttempt ??
         ({
           expectedShopRevision: kitchen.shop_revision,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createFarmReceiptKey(),
           items: items.map((item) => ({ ...item })),
         } satisfies KitchenPurchaseInput);
       if (attempt.items.length === 0) return;
@@ -830,7 +831,7 @@ export function FarmFieldContent({
         retryAttempt ??
         ({
           expectedShopRevision: kitchen.shop_revision,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createFarmReceiptKey(),
         } satisfies KitchenShopRefreshInput);
       setKitchenShopRefreshAction({ stage: "submitting", attempt });
       let result: KitchenShopRefreshResult;
@@ -869,7 +870,7 @@ export function FarmFieldContent({
         ({
           expectedFarmDoorplate: field.farm.farm_doorplate,
           expectedKitchenInventoryRevision: kitchen.kitchen_inventory_revision,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createFarmReceiptKey(),
           items: selectedCookingIngredientIds.map(toRawKitchenCookItemRef),
           ...(quantity > 1 ? { quantity } : {}),
         } satisfies KitchenCookInput);
@@ -916,7 +917,7 @@ export function FarmFieldContent({
         retryAttempt ??
         ({
           expectedRevision: ranch.revision,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createFarmReceiptKey(),
         } satisfies RanchCollectionAttempt);
       setRanchCollectionAction({ stage: "submitting", attempt });
       let result: RanchCollectionResult;
@@ -951,7 +952,7 @@ export function FarmFieldContent({
         const result = await onRanchInteractionAction({
           action: "catch",
           expectedRevision: ranch.revision,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createFarmReceiptKey(),
           raidId,
         });
         if (result.ok) {
@@ -1396,7 +1397,7 @@ export function FarmFieldContent({
                             expectedFarmDoorplate: field.farm.farm_doorplate,
                             expectedKitchenInventoryRevision:
                               kitchen?.kitchen_inventory_revision ?? "",
-                            idempotencyKey: crypto.randomUUID(),
+                            idempotencyKey: createFarmReceiptKey(),
                             recipeId,
                             ...(quantity > 1 ? { quantity } : {}),
                           });

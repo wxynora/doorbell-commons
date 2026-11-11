@@ -1,3 +1,4 @@
+import { createFarmReceiptKey } from "../receipt-key.js";
 import { useCallback, useState } from "react";
 import {
   type RanchResidentActionInput,
@@ -276,7 +277,7 @@ export function RanchResidentDetail({
           input: {
             action,
             expectedRevision: ranch.revision,
-            idempotencyKey: crypto.randomUUID(),
+            idempotencyKey: createFarmReceiptKey(),
             kindId,
             payload,
             residentType: liveResident.residentType,

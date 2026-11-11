@@ -1,3 +1,4 @@
+import { createFarmReceiptKey } from "../../receipt-key.js";
 import {decorationLeaseLabel} from "../../scenes/field/decoration-leases.js";
 import { lazy, Suspense, useState } from "react";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
@@ -372,7 +373,7 @@ export function FarmBackpackPanel({
                             action,
                             decorationId: item.decoration_id as string,
                             expectedRevision: ranch.revision,
-                            idempotencyKey: crypto.randomUUID(),
+                            idempotencyKey: createFarmReceiptKey(),
                           },
                           label,
                         })

@@ -1,3 +1,4 @@
+import { createFarmReceiptKey } from "../../receipt-key.js";
 import { type ReactNode, useState } from "react";
 import type { ApiResult } from "../../../auth/auth-client";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
@@ -99,10 +100,6 @@ function NeighborhoodRankingBoard({
       )}
     </section>
   );
-}
-
-function messageActionKey(): string {
-  return globalThis.crypto.randomUUID();
 }
 
 const MESSAGE_TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
@@ -263,7 +260,7 @@ export function NeighborhoodScene({
           return;
         }
         const input = {
-          idempotencyKey: messageActionKey(),
+          idempotencyKey: createFarmReceiptKey(),
           expectedRevision: neighborhoodRevision,
           targetFarmDoorplate: messageTarget,
           body: messageDraft,

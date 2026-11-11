@@ -1,3 +1,4 @@
+import { createFarmReceiptKey } from "../receipt-key.js";
 import { useState } from "react";
 import type { BoundKitchenRead } from "../../auth/kitchen-client";
 import {
@@ -664,7 +665,7 @@ export function KitchenInventoryPanelContent({
   const makeInputBase = () => ({
     expectedFarmDoorplate: kitchen?.data.farm.farm_doorplate ?? "",
     expectedInventoryRevision: kitchen?.kitchen_inventory_revision ?? "",
-    idempotencyKey: crypto.randomUUID(),
+    idempotencyKey: createFarmReceiptKey(),
   });
 
   const queueAction: KitchenActionSubmitter = (input, label) => {

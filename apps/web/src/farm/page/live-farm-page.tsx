@@ -1,3 +1,4 @@
+import { createFarmReceiptKey } from "../receipt-key.js";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   getBoundFarmField,
@@ -436,7 +437,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
         const attempt =
           priorAttempt?.expectedShopRevision === expectedShopRevision
             ? priorAttempt
-            : { expectedShopRevision, idempotencyKey: crypto.randomUUID() };
+            : { expectedShopRevision, idempotencyKey: createFarmReceiptKey() };
         farmShopOpenAttemptRef.current = attempt;
         const result = await openBoundFarmShop(attempt);
         if (!result.ok) {
@@ -518,7 +519,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
             ? priorAttempt
             : {
                 expectedShopRevision: kitchen.shop_revision,
-                idempotencyKey: crypto.randomUUID(),
+                idempotencyKey: createFarmReceiptKey(),
               };
         cookingShopOpenAttemptRef.current = attempt;
         const result = await openBoundKitchenShop(attempt);
@@ -565,7 +566,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
       if (!expectedFarmDoorplate) return;
       const acknowledgementIdentity = `${bulletin.revision}:${acknowledge}`;
       const idempotencyKey =
-        bulletinAckKeysRef.current.get(acknowledgementIdentity) ?? crypto.randomUUID();
+        bulletinAckKeysRef.current.get(acknowledgementIdentity) ?? createFarmReceiptKey();
       bulletinAckKeysRef.current.set(acknowledgementIdentity, idempotencyKey);
       const result = await acknowledgeBoundBulletin({
         humanNoticeIds: bulletin.humanNotices?.map((notice) => notice.id) ?? [],
@@ -1056,7 +1057,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
         retryAttempt ??
         ({
           expectedRevision: state.data.revision,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createFarmReceiptKey(),
         } satisfies FarmHarvestAttempt);
       setHarvestAction({ stage: "submitting", attempt });
       const result = await harvestBoundFarmField(attempt);
@@ -1172,7 +1173,7 @@ export function LiveFarmPage({ active = true, actionListLauncher, onBack, previe
         retryAttempt ??
         ({
           expectedRevision: state.data.revision,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createFarmReceiptKey(),
         } satisfies FarmLandUpgradeAttempt);
       setLandUpgradeAction({ stage: "submitting", attempt });
       const result = await upgradeBoundFarmLand(attempt);

@@ -1,3 +1,4 @@
+import { createFarmReceiptKey } from "../../receipt-key.js";
 import { useState } from "react";
 import {
   type BoundOriginalPlantAction,
@@ -49,7 +50,7 @@ export function OriginalPlantCreator({
     const attempt =
       retry ??
       ({
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: createFarmReceiptKey(),
         expectedRevision: catalogRevision as string,
         name: draft.name,
         latin: draft.latinName,

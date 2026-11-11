@@ -1,3 +1,4 @@
+import { createFarmReceiptKey } from "../../receipt-key.js";
 import { type CSSProperties, useRef, useState } from "react";
 import type { BoundKitchenRead } from "../../../auth/kitchen-client";
 import { kitchenCookIssueMessage } from "../../../auth/kitchen-cook-client";
@@ -313,7 +314,7 @@ function useCookingResultSale(kitchen: BoundKitchenRead | null, onKitchenInvento
       quantity: itemInstanceIds.length,
       expectedFarmDoorplate: kitchen.data.farm.farm_doorplate,
       expectedInventoryRevision: kitchen.kitchen_inventory_revision,
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: createFarmReceiptKey(),
     };
     submitting.current = true;
     setBusy(true);

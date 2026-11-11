@@ -1,3 +1,4 @@
+import { createFarmReceiptKey } from "../receipt-key.js";
 import { useEffect, useRef, useState } from "react";
 import type { ApiResult } from "../../auth/auth-client";
 import {
@@ -253,7 +254,7 @@ export function FarmMarketPanelContent({
         action: "browse",
         expectedFarmDoorplate: farmDoorplate,
         expectedRevision,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: createFarmReceiptKey(),
       },
       label: "刷新集市",
     });
@@ -271,7 +272,7 @@ export function FarmMarketPanelContent({
     const base = {
       expectedFarmDoorplate: farmDoorplate,
       expectedRevision,
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: createFarmReceiptKey(),
     } as const;
     if (barter) {
       if (!validWant) return;
@@ -309,7 +310,7 @@ export function FarmMarketPanelContent({
         action: "purchase-order-list",
         expectedFarmDoorplate: farmDoorplate,
         expectedRevision,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: createFarmReceiptKey(),
         kind: selectedPurchaseItem.kind,
         itemId: selectedPurchaseItem.item_id,
         quantity: parsedPurchaseQuantity,
@@ -392,7 +393,7 @@ export function FarmMarketPanelContent({
                           action: "mystery-merchant-buy",
                           expectedFarmDoorplate: farmDoorplate,
                           expectedRevision,
-                          idempotencyKey: crypto.randomUUID(),
+                          idempotencyKey: createFarmReceiptKey(),
                           items,
                         },
                         label: "向神秘商人结账",
@@ -640,7 +641,7 @@ export function FarmMarketPanelContent({
                               action: "purchase-order-unlist",
                               expectedFarmDoorplate: farmDoorplate,
                               expectedRevision,
-                              idempotencyKey: crypto.randomUUID(),
+                              idempotencyKey: createFarmReceiptKey(),
                               listingId: order.listing_id,
                             },
                             label: "撤下收购",
@@ -676,7 +677,7 @@ export function FarmMarketPanelContent({
                                 action: "purchase-order-fulfill",
                                 expectedFarmDoorplate: farmDoorplate,
                                 expectedRevision,
-                                idempotencyKey: crypto.randomUUID(),
+                                idempotencyKey: createFarmReceiptKey(),
                                 orderOwnerDoorplate: order.buyer_farm_doorplate,
                                 listingId: order.listing_id,
                                 quantity: parsedFulfillQuantity,
@@ -740,7 +741,7 @@ export function FarmMarketPanelContent({
                                         action: "unlist",
                                         expectedFarmDoorplate: farmDoorplate,
                                         expectedRevision,
-                                        idempotencyKey: crypto.randomUUID(),
+                                        idempotencyKey: createFarmReceiptKey(),
                                         itemId,
                                         kind: listing.kind,
                                       },
@@ -760,7 +761,7 @@ export function FarmMarketPanelContent({
                                         action: "buy",
                                         expectedFarmDoorplate: farmDoorplate,
                                         expectedRevision,
-                                        idempotencyKey: crypto.randomUUID(),
+                                        idempotencyKey: createFarmReceiptKey(),
                                         sellerDoorplate: listing.seller_farm_doorplate,
                                         kind: listing.kind,
                                         itemId,
@@ -798,14 +799,14 @@ export function FarmMarketPanelContent({
                                           action: "barter-unlist",
                                           expectedFarmDoorplate: farmDoorplate,
                                           expectedRevision,
-                                          idempotencyKey: crypto.randomUUID(),
+                                          idempotencyKey: createFarmReceiptKey(),
                                           listingId: listing.listing_id,
                                         }
                                       : {
                                           action: "barter-accept",
                                           expectedFarmDoorplate: farmDoorplate,
                                           expectedRevision,
-                                          idempotencyKey: crypto.randomUUID(),
+                                          idempotencyKey: createFarmReceiptKey(),
                                           sellerDoorplate: listing.seller_farm_doorplate,
                                           listingId: listing.listing_id,
                                         },
@@ -1006,7 +1007,7 @@ export function FarmCropCodex({
           cropId: entry.crop_id,
           expectedCodexRevision: farmCatalog.codex_revision,
           expectedFarmDoorplate: farmCatalog.data.farm.farm_doorplate,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createFarmReceiptKey(),
         },
         label: actionName === "star" ? "收藏" : "取消收藏",
       });
@@ -1346,7 +1347,7 @@ export function FarmExpeditionPanelContent({
     input: {
       action: actionName,
       expectedRevision,
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: createFarmReceiptKey(),
       payload,
     } as ExpeditionActionInput,
     label,
@@ -1727,7 +1728,7 @@ export function RanchDispatchPanelContent({
       input: {
         ...input,
         expectedRevision,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: createFarmReceiptKey(),
       } as RanchInteractionActionInput,
       label,
     });

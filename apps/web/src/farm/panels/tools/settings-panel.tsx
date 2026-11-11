@@ -1,3 +1,4 @@
+import { createFarmReceiptKey } from "../../receipt-key.js";
 import { LayoutSharingPanel } from "../../scenes/field/layout-sharing-panel";
 import type { SceneDecorationLayout } from "../../scenes/field/scene-types";
 import { useState } from "react";
@@ -71,7 +72,7 @@ export function FarmSettingsPanelContent({
         input: {
           expectedCatalogRevision: catalogRevision,
           field,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createFarmReceiptKey(),
           value,
         },
         label,
