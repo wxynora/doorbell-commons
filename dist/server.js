@@ -1120,8 +1120,8 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         },
     });
     const balanceCoordinator = createLingyeFarmBalanceCoordinator(lingyeWorldDatabase, lingyeWorldBackend, {
-        beforeFarmBalanceProjection: ({ world, now, stageFarm }) => {
-            const capturedPlayerThefts = captureCommittedPlayerPatrolThefts(lingyeWorldDatabase, lingyeWorldBackend, world);
+        beforeFarmBalanceProjection: ({ world, now, stageFarm, persistenceHints }) => {
+            const capturedPlayerThefts = captureCommittedPlayerPatrolThefts(lingyeWorldDatabase, lingyeWorldBackend, world, persistenceHints);
             for (const capture of capturedPlayerThefts) stageFarm(capture.actorFarmId);
             halloweenRuntime.effectHooks.beforeFarmBalanceProjection({ world, now, capturedPlayerThefts });
         },
@@ -1129,7 +1129,8 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
     });
     setWorldCommitCoordinator((world, ...args) => {
         const result = balanceCoordinator(world, ...args);
-        ranchRaidScheduler?.reschedule(world.farms);
+        if (result?.ranchRaidsChanged ?? true)
+            ranchRaidScheduler?.reschedule(world.farms);
         return result;
     });
     const syncLedgerProjection = () => synchronizeFarmBalanceProjections(lingyeWorldDatabase, playerFarms, save);

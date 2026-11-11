@@ -24,12 +24,14 @@ export async function measureFarmPhaseAsync(phase, operation) {
 export async function withFarmRequestTiming(operation, publish = row => console.info(JSON.stringify(row))) {
     const started = performance.now();
     const context = {phases: {}, calls: {}};
+    const details = {};
     const startedAt = new Date().toISOString();
     return requestTiming.run(context, async () => {
-        try { return await operation(); }
+        try { return await operation(details); }
         finally {
             // No credentials, identities, arguments, receipts or player content.
             const row = {event: "farm_request_timing", startedAt,
+                ...details,
                 totalMs: Math.round((performance.now() - started) * 100) / 100,
                 phasesMs: Object.fromEntries(Object.entries(context.phases).map(([k,v]) => [k, Math.round(v * 100) / 100])),
                 calls: context.calls};

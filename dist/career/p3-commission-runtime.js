@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { allFarms, getFarm, getNatureWorld, replaceFarm, replaceFarmsAndNatureAtomic } from "../store.js";
+import { allFarms, getFarm, readFarm, getNatureWorld, replaceFarm, replaceFarmsAndNatureAtomic } from "../store.js";
 import { reconcileNatureTreatment } from "../nature-runtime.js";
 import { runLingyeWorldTransaction } from "../lingye-world-database.js";
 import { AGRONOMY_COMMISSION_REWARD_GOLD, AGRONOMY_COMMISSION_SILVER, CareerDomainError } from "./contracts.js";
@@ -389,14 +389,14 @@ function animalSource(farm, ownerResidentId, source) {
     };
 }
 
-export function securityTrailSources(database, farm, ownerResidentId) {
-    return (farm.trail ?? [])
+export function securityTrailSources(database, farm, ownerResidentId, entries = farm.trail ?? []) {
+    return entries
         .filter((entry) => entry?.kind === "stolen" &&
             typeof entry.eventId === "string" && entry.eventId.length > 0)
         .map((entry) => {
             const sourceId = `p3:security:trail:${entry.eventId}`;
             const actorFarm = typeof entry.actorFarmId === "string" && entry.actorFarmId.length > 0
-                ? getFarm(entry.actorFarmId)
+                ? readFarm(entry.actorFarmId)
                 : null;
             const actorResidentId = actorFarm ? registeredResidentForFarm(database, actorFarm) : null;
             return {

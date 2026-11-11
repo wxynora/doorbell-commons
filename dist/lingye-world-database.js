@@ -434,7 +434,7 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
             };
             // Cross-farm settlement hooks must stage their affected farm before
             // changing its balance; it joins this transaction and its rollback.
-            options.beforeFarmBalanceProjection?.({ world, context, now, stageFarm });
+            options.beforeFarmBalanceProjection?.({ world, context, now, stageFarm, persistenceHints });
             migrated = world.farms.filter(farm => farm?.doorbellMcpMigration?.migrationId);
             const ledgerAuthority = context?.balanceAuthority === "ledger";
             let balanceOperation = null;

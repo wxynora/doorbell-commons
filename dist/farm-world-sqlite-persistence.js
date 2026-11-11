@@ -309,6 +309,7 @@ export function createFarmWorldSqlitePersistence(database) {
             if (!durableBoundary && (farms.some(entry=>entry.recordChanges.length) || components.some(entry=>entry.changes.length)))
                 fail("farm_durable_checkpoint_nested_forbidden","Only a receipt-only Chef completion may run inside an older outer transaction");
             const farmPlans=new Map(),componentPlans=new Map();
+            let ranchRaidsChanged = false;
             for (const entry of farms) {
                 const residentId=entry.state.doorbellMcpMigration?.residentId??null;
                 if (!entry.position.exists)
@@ -321,6 +322,7 @@ export function createFarmWorldSqlitePersistence(database) {
                     enqueueGuestbookMessageChanges(database,entry.id,beforeMessages,entry.state.messages??[]);
                 }
                 writeRecordChanges(database,"farm",entry.id,entry.recordChanges);
+                ranchRaidsChanged ||= entry.recordChanges.some(({path}) => path.startsWith("/ranch/raids/"));
                 measureFarmPhase("receiptSync",()=>synchronizeReceipts(database,entry.id,entry.receipts,{
                     allowCrossDomain:input.allowCrossDomain===true,durableBoundary,mutationFarmCount:farms.length,
                     validatedReceipts:entry.decomposed===undefined,partialReceipts:entry.partialReceipts,
@@ -334,7 +336,7 @@ export function createFarmWorldSqlitePersistence(database) {
                 }
                 componentPlans.set(entry.key,entry.records);
             }
-            return {farms:farms.map(entry=>entry.id),components:components.map(entry=>entry.key),durableBoundary,farmPlans,componentPlans};
+            return {farms:farms.map(entry=>entry.id),components:components.map(entry=>entry.key),durableBoundary,farmPlans,componentPlans,ranchRaidsChanged};
         });
     };
     return Object.freeze({

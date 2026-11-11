@@ -202,9 +202,12 @@ export async function handleDoorbellMcpMigration(req, res, method, runtime) {
 }
 
 export function handleDoorbellFarmExecution(req, res, method, executeFarmAction) {
-    return withFarmRequestTiming(() => executeDoorbellFarmRequest(req, res, method, executeFarmAction));
+    return withFarmRequestTiming(
+        details => executeDoorbellFarmRequest(req, res, method, executeFarmAction, details),
+        row => console.info(JSON.stringify({ ...row, status: res.statusCode })),
+    );
 }
-async function executeDoorbellFarmRequest(req, res, method, executeFarmAction) {
+async function executeDoorbellFarmRequest(req, res, method, executeFarmAction, timing) {
     if (!requireDoorbellService(req, res, method))
         return;
     try {
@@ -225,7 +228,10 @@ async function executeDoorbellFarmRequest(req, res, method, executeFarmAction) {
             return internalServiceError(res, binding.error.status, binding.error.code, binding.error.message);
         if (!legacyAgentAccessRevoked(binding.farm))
             return internalServiceError(res, 409, "farm_migration_required", "Legacy farm access must be revoked before Doorbell execution is enabled");
+        timing.op = body.source_op ?? (body.action === "status" ? "farm.status" : undefined);
         const out = measureFarmPhase("action", () => executeFarmAction(binding.farm, body.action, body.params, body.detail === true, Date.now(), body.source_op));
+        if (typeof out.json?.code === "string")
+            timing.resultCode = out.json.code;
         const publicResult = {
             ok: out.json?.ok === true,
             text: typeof out.json?.text === "string" ? out.json.text : "农场没有返回可读取的结果。",
