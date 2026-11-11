@@ -1,3 +1,5 @@
+import { FARM_RECEIPT_TTL_MS } from "../../farm-receipt-retention.js";
+import { pendingMotionEntry, settledMotionReceipt } from "./npc-motion-record.js";
 import { selectOutcome } from './random-outcome.js';
 import { drawNpcReceiptEntry, npcReceiptKey } from '../../npc/receipt-greeting.js';
 import { glimmerContentEditor, cookingIngredients, animals, pets } from '../../content.js';
@@ -35,7 +37,7 @@ export function triggerNpcMotions(farm, sourceOp, motions, now, context = {}) {
     else if (entry?.type === 'choice') {
         const id = randomBytes(9).toString('base64url');
         farm.npcMotions ??= {};
-        farm.npcMotions[id] = { entry: structuredClone(entry), createdAt: now };
+        farm.npcMotions[id] = { entry: pendingMotionEntry(entry), createdAt: now };
         result = [{id,entry}];
     } else if (entry) {
         const labels = npcEffectLabels();
@@ -53,9 +55,15 @@ export function triggerNpcMotions(farm, sourceOp, motions, now, context = {}) {
 }
 
 export function settleNpcMotion(farm, id, option, now) {
-    const pending = farm.npcMotions?.[id];
-    if (!pending || !Object.hasOwn(pending.entry.options, option)) return null;
-    if (pending.result) return { ...pending.result, replay: true };
+    const pending = farm.npcMotionChoiceReceipts?.[id] ?? farm.npcMotions?.[id];
+    if (!pending) return null;
+    const validOption = pending.optionKeys ? pending.optionKeys.includes(option)
+        : Object.hasOwn(pending.entry.options, option);
+    if (!validOption) return null;
+    if (pending.result) {
+        const expired = Number.isSafeInteger(pending.settledAt) && now >= pending.settledAt + FARM_RECEIPT_TTL_MS;
+        return expired ? null : { ...pending.result, replay: true };
+    }
     const selected = pending.entry.options[option];
     const labels = npcEffectLabels();
     const cost = observeNpcEffect(farm, 'cost', selected.cost, () => settleEncounterCost(farm, selected), labels);
@@ -70,9 +78,8 @@ export function settleNpcMotion(farm, id, option, now) {
         eventName: pending.entry.name, option, optionLabel: selected.label,
         outcomeIndex: selected.outcomes ? selected.outcomes.indexOf(outcome) : null, resultText: result.text,
         effects: [...cost.effects, ...reward.effects], unknownEffects: [...cost.unknownEffects, ...reward.unknownEffects] });
-    pending.result = result;
-    pending.selected = option;
-    pending.settledAt = now;
+    (farm.npcMotionChoiceReceipts ??= {})[id] = settledMotionReceipt({ ...pending, result, selected: option, settledAt: now });
+    delete farm.npcMotions[id];
     return result;
 }
 

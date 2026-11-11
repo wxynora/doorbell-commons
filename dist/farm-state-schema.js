@@ -1,3 +1,4 @@
+import { FARM_RECEIPT_EXPIRY_INDEX_SQL } from "./farm-receipt-retention.js";
 import {FARM_RECORD_SCHEMA_SQL,encodeStateRecords,decodeStateRecords,writeRecordChanges} from "./farm-state-records.js";
 
 export const FARM_IDENTITY_SCHEMA_SQL = `
@@ -12,8 +13,10 @@ export const FARM_IDENTITY_SCHEMA_SQL = `
     scope TEXT NOT NULL CHECK(length(scope)>0), receipt_key TEXT NOT NULL,
     payload_hash TEXT NOT NULL CHECK(length(payload_hash)>0),
     result_json TEXT NOT NULL CHECK(json_valid(result_json)),
+    expires_at INTEGER,
     PRIMARY KEY(farm_id,scope,receipt_key)
   ) WITHOUT ROWID;
+  ${FARM_RECEIPT_EXPIRY_INDEX_SQL}
   CREATE TABLE world_components(component_key TEXT PRIMARY KEY CHECK(length(component_key)>0 AND component_key<>'farms'));
   ${FARM_RECORD_SCHEMA_SQL}
 `;

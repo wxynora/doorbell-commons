@@ -1,3 +1,5 @@
+import { compactNpcMotionRecords } from "./domain/glimmer/npc-motion-storage.js";
+import { installFarmReceiptExpiry } from "./farm-receipt-retention.js";
 import {cloneFarmForMutation} from "./farm-mutation-scope.js";
 import { FARM_IDENTITY_SCHEMA_SQL, migrateFarmRecordsV3ToV4 } from "./farm-state-schema.js";
 import { measureFarmPhase } from "./server/farm-request-timing.js";
@@ -84,7 +86,7 @@ import { installHalloweenSchema } from "./halloween/schema.mjs";
 import { advanceLingyeNpcWorld } from "./npc/world-schedule.js";
 import { createLingyeNpcBusinessObserver } from "./npc/business-affinity-integration.js";
 
-export const LINGYE_WORLD_SCHEMA_VERSION = 4;
+export const LINGYE_WORLD_SCHEMA_VERSION = 5;
 const LINGYE_WORLD_SCHEMA_VERSION_2 = 2;
 
 const FARM_WORLD_PERSISTENCE_SCHEMA_SQL = `
@@ -117,6 +119,7 @@ const FARM_WORLD_PERSISTENCE_TABLES = Object.freeze({
         "receipt_key",
         "payload_hash",
         "result_json",
+        "expires_at",
     ]),
     world_components: Object.freeze(["component_key"]),
 });
@@ -233,6 +236,16 @@ export function installLingyeWorldSchema(database) {
     if (version?.schema_version === 3) {
         runLingyeWorldTransaction(database, () => migrateFarmRecordsV3ToV4(database));
         version = database.prepare("SELECT schema_version FROM lingye_world_schema_meta WHERE singleton_id=1").get();
+    }
+    if (version?.schema_version === 4) {
+        runLingyeWorldTransaction(database, () => {
+            const now = Date.now();
+            installFarmReceiptExpiry(database, now);
+            compactNpcMotionRecords(database, now, true);
+            installEconomySchema(database);
+            database.prepare("UPDATE lingye_world_schema_meta SET schema_version=5 WHERE singleton_id=1").run();
+        });
+        version = { schema_version: 5 };
     }
     if (version?.schema_version !== LINGYE_WORLD_SCHEMA_VERSION)
         throw new Error(`Unsupported Lingye world schema version: ${version?.schema_version ?? "missing"}`);

@@ -1,3 +1,4 @@
+import { farmReceiptExpiry } from "./farm-receipt-retention.js";
 import { encodeStateRecords, decodeStateRecords, writeRecordChanges, recordFromRow } from "./farm-state-records.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -45,6 +46,7 @@ const HUMAN_RECEIPT_FIELDS = Object.freeze([
 ]);
 
 export const LEGACY_FARM_RECEIPT_SCOPES = Object.freeze([
+    Object.freeze({ path: Object.freeze(["npcMotionChoiceReceipts"]), kind: "npc_motion_choice" }),
     Object.freeze({path:Object.freeze(["doorbellMomentsRaffleReceipts"]),kind:"moments_raffle"}),
     Object.freeze({path: Object.freeze(["doorbellMomentsGiftReceipts"]), kind: "moments_gift"}),
     Object.freeze({path: Object.freeze(["doorbellMomentsActivityReceipts"]), kind: "moments_activity"}),
@@ -473,8 +475,8 @@ export function importFarmWorldToDatabase(database, sourceWorld) {
     `);
     const insertReceipt = database.prepare(`
       INSERT INTO farm_action_receipts (
-        farm_id, scope, receipt_key, payload_hash, result_json
-      ) VALUES (?, ?, ?, ?, ?)
+        farm_id, scope, receipt_key, payload_hash, result_json, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
     `);
     runLingyeWorldTransaction(database, () => {
         for (const component of components) {
@@ -491,6 +493,7 @@ export function importFarmWorldToDatabase(database, sourceWorld) {
                     receipt.receiptKey,
                     receipt.payloadHash,
                     receipt.resultJson,
+                    farmReceiptExpiry(receipt.scope, receipt.receiptKey, Date.now(), receipt.resultJson),
                 );
             }
         }

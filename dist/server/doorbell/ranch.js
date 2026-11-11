@@ -1,3 +1,4 @@
+import { TIMED_FARM_RECEIPT_SCOPES } from "../../farm-receipt-retention.js";
 import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
 import { getFarm, playerFarms } from "../../store.js";
@@ -15,6 +16,7 @@ import {
     isPlainObject,
     requireDoorbellHumanFieldService,
     validateFarmBinding,
+    validateTimedFarmBinding,
 } from "./contract.js";
 
 export async function handleDoorbellHumanRanchRead(req, res, method) {
@@ -54,7 +56,7 @@ export async function handleDoorbellHumanRanchResidentAction(req, res, method) {
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         if (!isPlainObject(body))
             return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
-        const binding = validateFarmBinding(body);
+        const binding = validateTimedFarmBinding(body, TIMED_FARM_RECEIPT_SCOPES.ranchResident);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
         const out = handleHumanRanchResidentAction(binding.farm, body);
@@ -76,7 +78,7 @@ export async function handleDoorbellHumanRanchDecorationAction(req, res, method)
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         if (!isPlainObject(body))
             return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
-        const binding = validateFarmBinding(body);
+        const binding = validateTimedFarmBinding(body, TIMED_FARM_RECEIPT_SCOPES.ranchDecoration);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
         const out = handleHumanRanchDecorationAction(binding.farm, body);
@@ -98,7 +100,7 @@ export async function handleDoorbellHumanRanchCollection(req, res, method, hallo
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         if (!isPlainObject(body))
             return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
-        const binding = validateFarmBinding(body);
+        const binding = validateTimedFarmBinding(body, TIMED_FARM_RECEIPT_SCOPES.ranchCollection);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
         const now = Date.now();
@@ -125,7 +127,7 @@ export async function handleDoorbellHumanRanchInteractionAction(req, res, method
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         if (!isPlainObject(body))
             return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
-        const binding = validateFarmBinding(body);
+        const binding = validateTimedFarmBinding(body, TIMED_FARM_RECEIPT_SCOPES.ranchInteraction);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
         const now = Date.now();

@@ -1204,15 +1204,16 @@ export class EconomyService {
         if (idempotencyKey.length === 0)
             throw new EconomyError("IDEMPOTENCY_CONFLICT");
         const payloadHash = hashPayload(payload);
-        const existing = this.#database
-            .prepare("SELECT command_type, payload_hash, result_json FROM economy_commands WHERE idempotency_key = ?")
-            .get(idempotencyKey);
+        const lookup = this.#database.prepare(`
+            SELECT c.command_type, c.payload_hash, j.result_json
+            FROM economy_commands c JOIN economy_journals j ON j.journal_id = c.journal_id
+            WHERE c.idempotency_key = ?
+        `);
+        const existing = lookup.get(idempotencyKey);
         if (existing !== undefined)
             return this.#replay(existing, commandType, payloadHash);
         return runImmediate(this.#database, () => {
-            const raced = this.#database
-                .prepare("SELECT command_type, payload_hash, result_json FROM economy_commands WHERE idempotency_key = ?")
-                .get(idempotencyKey);
+            const raced = lookup.get(idempotencyKey);
             if (raced !== undefined)
                 return this.#replay(raced, commandType, payloadHash);
             const now = this.#now();
@@ -1266,9 +1267,9 @@ export class EconomyService {
             }
             this.#database
                 .prepare(`INSERT INTO economy_commands (
-            idempotency_key, command_type, payload_hash, journal_id, result_json, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?)`)
-                .run(idempotencyKey, commandType, payloadHash, journal.journalId, resultJson, now);
+            idempotency_key, command_type, payload_hash, journal_id, created_at
+          ) VALUES (?, ?, ?, ?, ?)`)
+                .run(idempotencyKey, commandType, payloadHash, journal.journalId, now);
             return result;
         });
     }

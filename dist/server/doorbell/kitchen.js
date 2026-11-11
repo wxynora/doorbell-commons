@@ -1,3 +1,4 @@
+import { TIMED_FARM_RECEIPT_SCOPES } from "../../farm-receipt-retention.js";
 import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
 import { jsonOut, readJsonBody } from "../http.js";
@@ -14,6 +15,7 @@ import {
     isPlainObject,
     requireDoorbellHumanFieldService,
     validateFarmBinding,
+    validateTimedFarmBinding,
 } from "./contract.js";
 
 export async function handleDoorbellHumanKitchenRead(req, res, method, careerBenefitsForFarm) {
@@ -51,7 +53,7 @@ export async function handleDoorbellHumanKitchenShopOpen(req, res, method, caree
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         if (!isPlainObject(body))
             return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
-        const binding = validateFarmBinding(body);
+        const binding = validateTimedFarmBinding(body, TIMED_FARM_RECEIPT_SCOPES.kitchenShop);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
         const out = handleHumanKitchenShopOpen(binding.farm, body, Date.now(), careerBenefitsForFarm?.(binding.farm));
@@ -73,7 +75,7 @@ export async function handleDoorbellHumanKitchenPurchase(req, res, method, caree
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         if (!isPlainObject(body))
             return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
-        const binding = validateFarmBinding(body);
+        const binding = validateTimedFarmBinding(body, TIMED_FARM_RECEIPT_SCOPES.kitchenPurchase);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
         const out = handleHumanKitchenPurchase(binding.farm, body, Date.now(), careerBenefitsForFarm?.(binding.farm));
@@ -95,7 +97,7 @@ export async function handleDoorbellHumanKitchenCook(req, res, method, careerBen
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         if (!isPlainObject(body))
             return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
-        const binding = validateFarmBinding(body);
+        const binding = validateTimedFarmBinding(body, TIMED_FARM_RECEIPT_SCOPES.kitchenCook);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
         const now = Date.now();
@@ -122,7 +124,7 @@ export async function handleDoorbellHumanKitchenShopRefresh(req, res, method, ca
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         if (!isPlainObject(body))
             return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
-        const binding = validateFarmBinding(body);
+        const binding = validateTimedFarmBinding(body, TIMED_FARM_RECEIPT_SCOPES.kitchenRefresh);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
         const out = handleHumanKitchenShopRefresh(binding.farm, body, Date.now(), careerBenefitsForFarm?.(binding.farm));
@@ -144,7 +146,7 @@ export async function handleDoorbellHumanKitchenInventoryAction(req, res, method
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         if (!isPlainObject(body))
             return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
-        const binding = validateFarmBinding(body);
+        const binding = validateTimedFarmBinding(body, TIMED_FARM_RECEIPT_SCOPES.kitchenInventory);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
         const out = handleHumanKitchenInventoryAction(binding.farm, body, Date.now(), careerBenefitsForFarm?.(binding.farm));

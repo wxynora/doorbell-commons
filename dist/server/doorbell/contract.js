@@ -1,6 +1,7 @@
+import { farmReceiptIssuedAt, FARM_RECEIPT_TTL_MS } from "../../farm-receipt-retention.js";
 import { timingSafeEqual } from "node:crypto";
 import { NPC_ID } from "../../config.js";
-import { playerFarms, readFarm } from "../../store.js";
+import { playerFarms, readFarm, farmReceiptExpiryForRetry } from "../../store.js";
 import { jsonOut } from "../http.js";
 
 export const DOORBELL_SERVICE_TOKEN = process.env.AIFARM_DOORBELL_SERVICE_TOKEN ?? "";
@@ -76,4 +77,24 @@ export function validateFarmBinding(body) {
     if (farm.id !== expectedDoorplate)
         return { error: { status: 409, code: "farm_doorplate_mismatch", message: "The farm human credential does not match the expected doorplate" } };
     return { farm };
+}
+
+export function validateTimedFarmBinding(body, scope, now = Date.now()) {
+    const binding = validateFarmBinding(body);
+    if (binding.error) return binding;
+    const key = body.idempotency_key;
+    if (typeof key !== "string" || !UUID_RE.test(key)) {
+        return { error: { status: 400, code: "invalid_request", message: "Invalid farm action request identifier" } };
+    }
+    const issued = farmReceiptIssuedAt(key);
+    if (issued !== null && issued > now) {
+        return { error: { status: 400, code: "invalid_request", message: "Invalid farm action request time" } };
+    }
+    const expiresAt = issued === null
+        ? farmReceiptExpiryForRetry(binding.farm.id, scope, key)
+        : issued + FARM_RECEIPT_TTL_MS;
+    if (!expiresAt || now >= expiresAt) {
+        return { error: { status: 409, code: "idempotency_conflict", message: "The farm action request has expired" } };
+    }
+    return binding;
 }

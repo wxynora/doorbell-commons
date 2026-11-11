@@ -5,6 +5,8 @@ import { FarmWorldPersistenceError } from "./farm-world-sqlite-persistence.js";
 import { diffFarmStateRecords, encodeStateRecords, farmRecordPath, stateRecordChanges } from "./farm-state-records.js";
 
 const storage = new AsyncLocalStorage();
+let activeScopes = 0;
+export const hasActiveFarmMutationScopes = () => activeScopes > 0;
 const active = Symbol("activeFarmMutationScope");
 const own = (value, key) => Object.hasOwn(value, key);
 const record = value => value !== null && typeof value === "object" && !Array.isArray(value) &&
@@ -20,7 +22,13 @@ export function withFarmMutationScope(operation) {
     if (typeof operation !== "function") throw new TypeError("farm_mutation_operation_required");
     if (currentFarmMutationScope()) return operation();
     const scope = { farms: new Map(), components: new Map(), [active]: true };
-    const release = () => { scope[active] = false; scope.farms.clear(); scope.components.clear(); };
+    activeScopes++;
+    const release = () => {
+        activeScopes--;
+        scope[active] = false;
+        scope.farms.clear();
+        scope.components.clear();
+    };
     return storage.run(scope, () => {
         try {
             const result = operation();
@@ -54,7 +62,7 @@ function ledgerFor(farm, descriptor) {
 
 // Clone only the ancestors of a present receipt ledger. Other farm objects and
 // immutable receipt payloads remain ordinary references until record encoding.
-function farmParts(farm, copyMutableReceipts) {
+function farmParts(farm, copyMutableReceipts, collectReceipts = true) {
     if (!record(farm) || typeof farm.id !== "string" || farm.id.length === 0) {
         throw new FarmWorldMigrationError("farm_world_invalid", "A persisted farm must have a valid id");
     }
@@ -63,13 +71,14 @@ function farmParts(farm, copyMutableReceipts) {
     for (const descriptor of LEGACY_FARM_RECEIPT_SCOPES) {
         const ledger = ledgerFor(farm, descriptor);
         if (ledger === undefined) continue;
-        const scope = farmRecordPath(descriptor.path);
-        const entries = new Map();
-        for (const key of Object.keys(ledger)) {
-            entries.set(key, copyMutableReceipts && descriptor.kind === "chef_store"
-                ? structuredClone(ledger[key]) : ledger[key]);
+        if (collectReceipts) {
+            const entries = new Map();
+            for (const key of Object.keys(ledger)) {
+                entries.set(key, copyMutableReceipts && descriptor.kind === "chef_store"
+                    ? structuredClone(ledger[key]) : ledger[key]);
+            }
+            receiptEntries.set(farmRecordPath(descriptor.path), entries);
         }
-        receiptEntries.set(scope, entries);
         let original = farm, shadow = state;
         for (const key of descriptor.path.slice(0, -1)) {
             if (shadow[key] === original[key]) shadow[key] = { ...original[key] };
@@ -121,28 +130,28 @@ export function captureComponentMutation(key, value) {
     return records;
 }
 
-function selectedReceipts(explicitReceiptKeys, current) {
-    if (explicitReceiptKeys === undefined) return null;
-    if (!Array.isArray(explicitReceiptKeys)) throw new TypeError("Farm receipt keys must be an array");
-    const scopes = new Set(LEGACY_FARM_RECEIPT_SCOPES.map(item => farmRecordPath(item.path)));
-    const selected = new Map();
-    for (const entry of explicitReceiptKeys) {
-        if (!record(entry) || !scopes.has(entry.scope) || typeof entry.receiptKey !== "string" || !entry.receiptKey)
+function selectedReceiptKeys(farm, keys) {
+    if (!Array.isArray(keys)) throw new TypeError("Farm receipt keys must be an array");
+    const seen = new Map();
+    for (const entry of keys) {
+        const descriptor = record(entry) && LEGACY_FARM_RECEIPT_SCOPES.find(
+            candidate => farmRecordPath(candidate.path) === entry.scope,
+        );
+        if (!descriptor || typeof entry.receiptKey !== "string" || !entry.receiptKey)
             throw new TypeError("Invalid farm receipt key");
-        const keys = selected.get(entry.scope) ?? new Set();
-        if (keys.has(entry.receiptKey)) {
-            throw new FarmWorldMigrationError("farm_receipt_duplicate", "Farm receipt key is duplicated");
-        }
-        if (!current.get(entry.scope)?.has(entry.receiptKey)) {
+        const ledger = ledgerFor(farm, descriptor);
+        if (!ledger || !own(ledger, entry.receiptKey))
             throw new FarmWorldMigrationError("farm_receipt_missing", "Selected farm receipt is missing");
-        }
-        keys.add(entry.receiptKey);
-        selected.set(entry.scope, keys);
+        const scopeKeys = seen.get(entry.scope) ?? new Set();
+        if (scopeKeys.has(entry.receiptKey))
+            throw new FarmWorldMigrationError("farm_receipt_duplicate", "Farm receipt key is duplicated");
+        scopeKeys.add(entry.receiptKey);
+        seen.set(entry.scope, scopeKeys);
     }
-    return selected;
+    return keys;
 }
 
-function changedReceiptKeys(parts, before, explicitReceiptKeys) {
+function changedReceiptKeys(parts, before) {
     const previous = before?.receiptEntries ?? new Map();
     if (!(previous instanceof Map)) throw new TypeError("farm_mutation_snapshot_invalid");
     for (const [scope, entries] of previous) {
@@ -153,13 +162,11 @@ function changedReceiptKeys(parts, before, explicitReceiptKeys) {
             }
         }
     }
-    const selected = selectedReceipts(explicitReceiptKeys, parts.receiptEntries);
     const receiptKeys = [];
     for (const [scope, entries] of parts.receiptEntries) {
         const old = previous.get(scope);
         for (const [key, receipt] of entries) {
-            if (!old?.has(key) || selected?.get(scope)?.has(key) ||
-                (!selected && !isDeepStrictEqual(old.get(key), receipt))) {
+            if (!old?.has(key) || !isDeepStrictEqual(old.get(key), receipt)) {
                 receiptKeys.push({ scope, receiptKey: key });
             }
         }
@@ -167,25 +174,35 @@ function changedReceiptKeys(parts, before, explicitReceiptKeys) {
     return receiptKeys;
 }
 
+function mutationParts(farm, before, explicitReceiptKeys) {
+    // Declared keys are the complete receipt write set for a scoped action.
+    // Legacy actions still discover additions from their request snapshot.
+    const selected = explicitReceiptKeys === undefined ? null : selectedReceiptKeys(farm, explicitReceiptKeys);
+    const parts = farmParts(farm, false, !selected || !before);
+    return {
+        state: parts.state,
+        receiptKeys: selected && before ? selected : changedReceiptKeys(parts, before),
+    };
+}
+
 // Only the actual writer needs an encoded delta. The economy coordinator may
 // still change balance/counter fields after this dirty-farm selection.
 export function farmMutationChanged(farm, before, explicitReceiptKeys) {
     if (!before) return true;
-    const parts = farmParts(farm, false);
-    if (changedReceiptKeys(parts,before,explicitReceiptKeys).length) return true;
+    const parts = mutationParts(farm, before, explicitReceiptKeys);
+    if (parts.receiptKeys.length) return true;
     if (before.state !== undefined) return !isDeepStrictEqual(before.state,parts.state);
     return stateRecordChanges(before.records,encodeStateRecords(parts.state)).length > 0;
 }
 
 export function planFarmMutation(farm, before, explicitReceiptKeys) {
-    const parts = farmParts(farm, false);
-    const receiptKeys = changedReceiptKeys(parts,before,explicitReceiptKeys);
+    const { state, receiptKeys } = mutationParts(farm, before, explicitReceiptKeys);
     if (before?.state !== undefined) {
-        const recordChanges = diffFarmStateRecords(before.state,parts.state);
+        const recordChanges = diffFarmStateRecords(before.state,state);
         return {recordChanges, receiptKeys, messagesBefore:before.state.messages ?? []};
     }
     const beforeRecords = before?.records ?? new Map();
-    const records = encodeStateRecords(parts.state);
+    const records = encodeStateRecords(state);
     return {recordChanges:stateRecordChanges(beforeRecords,records), beforeRecords, records, receiptKeys};
 }
 

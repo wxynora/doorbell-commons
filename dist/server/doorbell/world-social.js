@@ -1,3 +1,4 @@
+import { TIMED_FARM_RECEIPT_SCOPES } from "../../farm-receipt-retention.js";
 import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
 import { getFarm, getGlimmerWorld } from "../../store.js";
@@ -14,6 +15,7 @@ import {
     isPlainObject,
     requireDoorbellHumanFieldService,
     validateFarmBinding,
+    validateTimedFarmBinding,
 } from "./contract.js";
 
 export async function handleDoorbellHumanGlimmerRead(req, res, method) {
@@ -79,7 +81,7 @@ export async function handleDoorbellHumanExpeditionAction(req, res, method) {
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         if (!isPlainObject(body))
             return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
-        const binding = validateFarmBinding(body);
+        const binding = validateTimedFarmBinding(body, TIMED_FARM_RECEIPT_SCOPES.expedition);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
         const out = handleHumanExpeditionAction(binding.farm, body);
@@ -101,7 +103,7 @@ export async function handleDoorbellHumanMarketAction(req, res, method) {
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         if (!isPlainObject(body))
             return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
-        const binding = validateFarmBinding(body);
+        const binding = validateTimedFarmBinding(body, TIMED_FARM_RECEIPT_SCOPES.market);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
         const out = body.action === "buy" || body.action === "barter-accept" || body.action === "purchase-order-fulfill"
@@ -125,7 +127,7 @@ export async function handleDoorbellHumanNeighborhoodMessageAction(req, res, met
         const body = await readJsonBody(req, MAX_BODY_BYTES);
         if (!isPlainObject(body))
             return humanFieldError(res, 400, "invalid_request", "The request body must be an object");
-        const binding = validateFarmBinding(body);
+        const binding = validateTimedFarmBinding(body, TIMED_FARM_RECEIPT_SCOPES.neighborhood);
         if (binding.error)
             return humanFieldError(res, binding.error.status, binding.error.code, binding.error.message);
         const out = handleHumanNeighborhoodMessageAction(binding.farm, body);

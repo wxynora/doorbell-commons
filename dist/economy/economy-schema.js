@@ -1,4 +1,4 @@
-export const ECONOMY_SCHEMA_VERSION = 4;
+export const ECONOMY_SCHEMA_VERSION = 5;
 function runImmediate(database, operation) {
     if (database.isTransaction) {
         return operation();
@@ -79,14 +79,6 @@ const ECONOMY_SCHEMA_V3_MIGRATION_SQL = `
   ALTER TABLE economy_trades ADD COLUMN frozen_at INTEGER;
   UPDATE economy_trades SET frozen_at = updated_at WHERE state = 'frozen';
 `;
-const ECONOMY_SCHEMA_V3_META_SQL = `
-  DROP TABLE economy_schema_meta;
-  CREATE TABLE economy_schema_meta (
-    singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
-    schema_version INTEGER NOT NULL CHECK (schema_version = 3)
-  );
-  INSERT INTO economy_schema_meta (singleton_id, schema_version) VALUES (1, 3);
-`;
 const ECONOMY_SCHEMA_V4_ADDITIONS_SQL = `
   CREATE TABLE economy_silver_escrows (
     escrow_id TEXT PRIMARY KEY,
@@ -147,21 +139,16 @@ const ECONOMY_SCHEMA_V4_ADDITIONS_SQL = `
   CREATE TRIGGER economy_silver_escrow_receipts_no_delete
     BEFORE DELETE ON economy_silver_escrow_receipts BEGIN SELECT RAISE(ABORT, 'immutable silver escrow receipt'); END;
 `;
-const ECONOMY_SCHEMA_V4_META_SQL = `
-  DROP TABLE economy_schema_meta;
+const ECONOMY_SCHEMA_META_SQL = `
   CREATE TABLE economy_schema_meta (
     singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
-    schema_version INTEGER NOT NULL CHECK (schema_version = 4)
+    schema_version INTEGER NOT NULL CHECK (schema_version = ${ECONOMY_SCHEMA_VERSION})
   );
-  INSERT INTO economy_schema_meta (singleton_id, schema_version) VALUES (1, 4);
+  INSERT INTO economy_schema_meta (singleton_id, schema_version) VALUES (1, ${ECONOMY_SCHEMA_VERSION});
 `;
-export const ECONOMY_SCHEMA_SQL = `
-  CREATE TABLE economy_schema_meta (
-    singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
-    schema_version INTEGER NOT NULL CHECK (schema_version = 4)
-  );
 
-  INSERT INTO economy_schema_meta (singleton_id, schema_version) VALUES (1, 4);
+export const ECONOMY_SCHEMA_SQL = `
+  ${ECONOMY_SCHEMA_META_SQL}
 
   CREATE TABLE economy_accounts (
     resident_id TEXT PRIMARY KEY REFERENCES residents(resident_id) ON DELETE RESTRICT,
@@ -191,7 +178,6 @@ export const ECONOMY_SCHEMA_SQL = `
     command_type TEXT NOT NULL,
     payload_hash TEXT NOT NULL CHECK (length(payload_hash) = 64),
     journal_id TEXT NOT NULL UNIQUE REFERENCES economy_journals(journal_id) ON DELETE RESTRICT,
-    result_json TEXT NOT NULL,
     created_at INTEGER NOT NULL
   );
 
@@ -409,36 +395,26 @@ function installVersionedEconomySchema(database) {
     const existing = database
         .prepare("SELECT schema_version FROM economy_schema_meta WHERE singleton_id = 1")
         .get();
-    if (existing !== undefined) {
-        if (existing.schema_version === ECONOMY_SCHEMA_VERSION)
-            return;
-        if (existing.schema_version === 1) {
-            runImmediate(database, () => database.exec(`
-          ${ECONOMY_SCHEMA_V2_ADDITIONS_SQL}
-          ${ECONOMY_SCHEMA_V3_MIGRATION_SQL}
-          ${ECONOMY_SCHEMA_V3_META_SQL}
-          ${ECONOMY_SCHEMA_V4_ADDITIONS_SQL}
-          ${ECONOMY_SCHEMA_V4_META_SQL}
-        `));
-            return;
-        }
-        if (existing.schema_version === 2) {
-            runImmediate(database, () => database.exec(`
-          ${ECONOMY_SCHEMA_V3_MIGRATION_SQL}
-          ${ECONOMY_SCHEMA_V3_META_SQL}
-          ${ECONOMY_SCHEMA_V4_ADDITIONS_SQL}
-          ${ECONOMY_SCHEMA_V4_META_SQL}
-        `));
-            return;
-        }
-        if (existing.schema_version === 3) {
-            runImmediate(database, () => database.exec(`
-          ${ECONOMY_SCHEMA_V4_ADDITIONS_SQL}
-          ${ECONOMY_SCHEMA_V4_META_SQL}
-        `));
-            return;
-        }
-        throw new Error(`Unsupported economy schema version: ${existing.schema_version}`);
-    }
-    throw new Error("Economy schema metadata is missing");
+    if (!existing) throw new Error("Economy schema metadata is missing");
+    const version = existing.schema_version;
+    if (version === ECONOMY_SCHEMA_VERSION) return;
+    if (version < 1 || version > 4) throw new Error(`Unsupported economy schema version: ${version}`);
+    if (version === 1) database.exec(ECONOMY_SCHEMA_V2_ADDITIONS_SQL);
+    if (version <= 2) database.exec(ECONOMY_SCHEMA_V3_MIGRATION_SQL);
+    if (version <= 3) database.exec(ECONOMY_SCHEMA_V4_ADDITIONS_SQL);
+
+    // The old command result was a second copy of its journal result.
+    const mismatch = database.prepare(`
+        SELECT 1 FROM economy_commands c
+        LEFT JOIN economy_journals j ON j.journal_id = c.journal_id
+        WHERE j.journal_id IS NULL OR c.command_type IS NOT j.command_type
+           OR c.payload_hash IS NOT j.payload_hash OR c.result_json IS NOT j.result_json
+        LIMIT 1
+    `).get();
+    if (mismatch) throw new Error("Economy command and journal results differ");
+    database.exec(`
+        ALTER TABLE economy_commands DROP COLUMN result_json;
+        DROP TABLE economy_schema_meta;
+        ${ECONOMY_SCHEMA_META_SQL}
+    `);
 }

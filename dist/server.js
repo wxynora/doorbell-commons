@@ -19,7 +19,7 @@ import { existsSync } from "node:fs";
 import { advance, projectFarmGrowth, steal, visitorWater, tryWaterReward, buyPotionSet, ensureHumanKey, pushSocialInbox, pushLog, craft, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog } from "./engine.js";
 import { dispatch, farmView, viewShop, viewBag, viewEncyclopedia, shopBrief, viewMarket, buyFromMarket, visitView, tendNpc, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText } from "./flavor.js";
-import { createFarm, getFarm, readFarm, allFarms, playerFarms, captureLiveFarmMutation, replaceFarm, replaceFarmAndMysteryMerchantAtomic, save, getGlimmerWorld, getNatureWorld, getMysteryMerchantWorld, getPublicExpeditionWorld, readPublicExpeditionWorld, getQixiLantern2026World, restoreCommittedWorldInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, withWorldCommitContext, advanceStoredMysteryMerchantWorld } from "./store.js";
+import { createFarm, getFarm, readFarm, sweepExpiredFarmReceipts, allFarms, playerFarms, captureLiveFarmMutation, replaceFarm, replaceFarmAndMysteryMerchantAtomic, save, getGlimmerWorld, getNatureWorld, getMysteryMerchantWorld, getPublicExpeditionWorld, readPublicExpeditionWorld, getQixiLantern2026World, restoreCommittedWorldInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, withWorldCommitContext, advanceStoredMysteryMerchantWorld } from "./store.js";
 import { MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, NPC_ID, GROW_TICKS, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { sweepNonces, htmlReadme, htmlGuide } from "./agent.js";
@@ -1577,8 +1577,16 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             reply(res, false, "农场后台出了点岔子，稍后再试。");
         }
     }));
-    setInterval(() => { const t = Date.now(); sweepGuard(t); sweepNonces(t); legacyAgent.sweepFlashes(t); }, 60_000).unref(); // 周期清理限流表 + 过期 nonce/flash
+    const cleanupTimer = setInterval(() => {
+        const now = Date.now();
+        sweepGuard(now);
+        sweepNonces(now);
+        legacyAgent.sweepFlashes(now);
+        try { sweepExpiredFarmReceipts(now); }
+        catch (error) { console.error("[farm-receipts] expiry cleanup failed", error); }
+    }, 60_000).unref();
     server.once("close", () => {
+        clearInterval(cleanupTimer);
         if (activeHalloweenFarmRuntime === halloweenRuntime) activeHalloweenFarmRuntime = null;
         if (activeHalloweenCandyTool) activeHalloweenCandyTool = null;
         stopP3Scheduler();

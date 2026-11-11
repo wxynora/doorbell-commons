@@ -1,5 +1,5 @@
 import { measureFarmPhase } from "./server/farm-request-timing.js";
-import { withFarmMutationScope, currentFarmMutationScope, captureFarmMutation, captureComponentMutation, cloneFarmForMutation, snapshotFarmMutation, farmMutationChanged } from "./farm-mutation-scope.js";
+import { withFarmMutationScope, currentFarmMutationScope, hasActiveFarmMutationScopes, captureFarmMutation, captureComponentMutation, cloneFarmForMutation, snapshotFarmMutation, farmMutationChanged } from "./farm-mutation-scope.js";
 import { encodeStateRecords, stateRecordChanges } from "./farm-state-records.js";
 // 农场仓库：唯一 id、内存索引、JSON 存档（含 rngState）、健壮读档。
 import { createHash, randomInt } from "node:crypto";
@@ -191,6 +191,17 @@ export function captureLiveFarmMutation(farm) {
     if (farm && farms.get(farm.id) === farm) return captureFarmMutation(farm);
 }
 export const readFarm = id => farms.get(id);
+export function farmReceiptExpiryForRetry(farmId, scope, key) {
+    return worldPersistenceAdapter?.receiptExpiry(farmId, scope, key);
+}
+
+export function sweepExpiredFarmReceipts(now) {
+    if (!worldPersistenceAdapter || hasActiveFarmMutationScopes()) return;
+    for (const row of worldPersistenceAdapter.pruneExpiredReceipts(now)) {
+        const ledger = row.scope.slice(1).split("/").reduce((state, field) => state?.[field], farms.get(row.farm_id));
+        if (ledger) delete ledger[row.receipt_key];
+    }
+}
 export const allFarms = () => [...farms.values()];
 /** 真实玩家农场（排除常驻 NPC 阿土）——排行榜等"只算玩家"的地方用。 */
 export const playerFarms = () => [...farms.values()].filter((f) => f.id !== NPC_ID);
@@ -930,7 +941,7 @@ function finishLoadedWorld(options = {}) {
 export function load(options = {}) {
     if (worldPersistenceAdapter) {
         try {
-            const world = worldPersistenceAdapter.loadLegacyWorld();
+            const world = worldPersistenceAdapter.loadLegacyWorld({ checkIntegrity: false });
             // Normalizers below operate in place. Retain the already-loaded
             // values only until startup reconciliation commits their changes.
             startupBefore = {

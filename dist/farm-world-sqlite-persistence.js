@@ -1,3 +1,4 @@
+import { farmReceiptExpiry, pruneExpiredFarmReceipts } from "./farm-receipt-retention.js";
 import { measureFarmPhase } from "./server/farm-request-timing.js";
 import {wakeGuestbookJudgments,enqueueGuestbookMessageChanges} from './server/doorbell/guestbook-judgments.mjs';
 import {encodeStateRecords,decodeStateRecords,stateRecordChanges,readStoredRecords,writeRecordChanges,RANCH_KIND_COLLECTIONS} from './farm-state-records.js';
@@ -178,8 +179,8 @@ function synchronizeReceipts(database, farmId, receipts, options = {}) {
     }
     const insert = database.prepare(`
       INSERT INTO farm_action_receipts (
-        farm_id, scope, receipt_key, payload_hash, result_json
-      ) VALUES (?, ?, ?, ?, ?)
+        farm_id, scope, receipt_key, payload_hash, result_json, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
     `);
     const update = database.prepare(`
       UPDATE farm_action_receipts
@@ -201,6 +202,7 @@ function synchronizeReceipts(database, farmId, receipts, options = {}) {
                 receipt.receiptKey,
                 receipt.payloadHash,
                 receipt.resultJson,
+                farmReceiptExpiry(receipt.scope, receipt.receiptKey, Date.now(), receipt.resultJson),
             );
             continue;
         }
@@ -340,6 +342,14 @@ export function createFarmWorldSqlitePersistence(database) {
         });
     };
     return Object.freeze({
+        receiptExpiry(farmId, scope, key) {
+            return database.prepare(`
+                SELECT expires_at FROM farm_action_receipts WHERE farm_id=? AND scope=? AND receipt_key=?
+            `).get(farmId, scope, key)?.expires_at;
+        },
+        pruneExpiredReceipts(now) {
+            return pruneExpiredFarmReceipts(database, now);
+        },
         loadLegacyWorld(options={}) {
             const keys=database.prepare("SELECT component_key FROM world_components").all().map(row=>row.component_key);
             if (!keys.length) fail("farm_persistence_not_migrated","Farm world has not been imported into Lingye SQLite");

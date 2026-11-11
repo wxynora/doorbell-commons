@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createFarmReceiptKey } from "../../farm-receipt-retention.js";
 import { cloneFarmForMutation, snapshotFarmMutation, planFarmMutation } from "../../farm-mutation-scope.js";
 
 import {
@@ -641,7 +641,7 @@ export async function handleLegacyHumanRoute({
                     target_farm_doorplate: target,
                     message: String(form.text ?? ""),
                     expected_neighborhood_revision: neighborhoodMessageActionRevision(f, now),
-                    idempotency_key: randomUUID(),
+                    idempotency_key: createFarmReceiptKey(now),
                 }, now);
                 if (out.status === 200) {
                     flash = `💬 已在「${getFarm(target)?.name ?? target}」的留言板留言。`;
