@@ -87,9 +87,6 @@ export function validateTimedFarmBinding(body, scope, now = Date.now()) {
         return { error: { status: 400, code: "invalid_request", message: "Invalid farm action request identifier" } };
     }
     const issued = farmReceiptIssuedAt(key);
-    if (issued !== null && issued > now) {
-        return { error: { status: 400, code: "invalid_request", message: "Invalid farm action request time" } };
-    }
     const expiresAt = issued === null
         ? farmReceiptExpiryForRetry(binding.farm.id, scope, key)
         : issued + FARM_RECEIPT_TTL_MS;
