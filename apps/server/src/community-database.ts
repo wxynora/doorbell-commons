@@ -5357,16 +5357,38 @@ export class CommunityDatabase {
     }
 
     const replace = this.#database.transaction(() => {
-      this.#database
-        .prepare("DELETE FROM qq_group_member_snapshots WHERE group_id = ?")
-        .run(normalizedGroupId);
-      const insert = this.#database.prepare(
+      const existingMemberIds = new Set(
+        (
+          this.#database
+            .prepare("SELECT qq_number FROM qq_group_member_snapshots WHERE group_id = ?")
+            .all(normalizedGroupId) as Array<{ qq_number: string }>
+        ).map((row) => row.qq_number),
+      );
+      const nextMemberIds = new Set(normalizedMemberIds);
+      const deleteMember = this.#database.prepare(
+        "DELETE FROM qq_group_member_snapshots WHERE group_id = ? AND qq_number = ?",
+      );
+      for (const existingMemberId of existingMemberIds) {
+        if (!nextMemberIds.has(existingMemberId)) {
+          deleteMember.run(normalizedGroupId, existingMemberId);
+        }
+      }
+      const insertMember = this.#database.prepare(
         `INSERT INTO qq_group_member_snapshots (group_id, qq_number, captured_at)
          VALUES (?, ?, ?)`,
       );
       for (const memberId of normalizedMemberIds) {
-        insert.run(normalizedGroupId, memberId, capturedAt);
+        if (!existingMemberIds.has(memberId)) {
+          insertMember.run(normalizedGroupId, memberId, capturedAt);
+        }
       }
+      this.#database
+        .prepare(
+          `INSERT INTO qq_group_member_snapshot_captures (group_id, captured_at)
+           VALUES (?, ?)
+           ON CONFLICT(group_id) DO UPDATE SET captured_at = excluded.captured_at`,
+        )
+        .run(normalizedGroupId, capturedAt);
     });
     replace.immediate();
   }
@@ -5381,10 +5403,13 @@ export class CommunityDatabase {
       )
       .all(groupId) as Array<{ qq_number: string; captured_at: number }>;
     if (rows.length === 0) return undefined;
+    const capture = this.#database
+      .prepare("SELECT captured_at FROM qq_group_member_snapshot_captures WHERE group_id = ?")
+      .get(groupId) as { captured_at: number } | undefined;
     return {
       groupId,
       memberIds: rows.map((row) => row.qq_number),
-      capturedAt: rows[0]?.captured_at ?? 0,
+      capturedAt: capture?.captured_at ?? rows[0]?.captured_at ?? 0,
     };
   }
 

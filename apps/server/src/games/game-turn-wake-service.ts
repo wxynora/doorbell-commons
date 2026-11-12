@@ -182,8 +182,13 @@ export class GameTurnWakeService {
     if(!this.#eligibility(view.kind,view.game,actor.playerId).needsDecision)return;
     const delivery:GameContextDelivery={after:this.#options.actionCursor?.(residentId,roomId)??{eventSequence:0,chatSequence:0}};
     const message=await this.#options.gameTool.wakeMessage(residentId,roomId,delivery);
-    const fresh=await this.#options.games.view(caller,roomId);
-    if(fresh.revision!==view.revision||!this.#eligibility(fresh.kind,fresh.game,actor.playerId).needsDecision)return;
+    // The eligible view is already in hand; recheck the version cheaply
+    // against the committed room and only reproject when it moved on.
+    const room=this.#options.tables.read(roomId);
+    if(room===null||room.roomId!==roomId||room.kind!==view.kind||room.revision!==view.revision){
+      const fresh=await this.#options.games.view(caller,roomId);
+      if(fresh.revision!==view.revision||!this.#eligibility(fresh.kind,fresh.game,actor.playerId).needsDecision)return;
+    }
     const wakeId=gameTurnWakeSourceKey(roomId,view.revision,residentId)+':'+encodeURIComponent(eventId);
     if(this.#options.wakes.get(residentId,wakeId))return;
     const reactions=this.#options.reactionContext?.read(roomId,actor.playerId);
@@ -411,7 +416,14 @@ export class GameTurnWakeService {
     }
     if (this.#closed) return;
 
-    const fresh = await this.#options.games.view(caller, view.roomId);
+    // The delivered view already carries this revision's projection and the
+    // eligibility gate above ran on it. Recheck the version cheaply against
+    // the committed room; only reproject when the room moved on while the
+    // message was being rendered.
+    const room = this.#options.tables.read(view.roomId);
+    const unchanged =
+      room !== null && room.roomId === view.roomId && room.kind === view.kind && room.revision === revision;
+    const fresh = unchanged ? view : await this.#options.games.view(caller, view.roomId);
     if (this.#closed) return;
     const freshRevision = this.#requireRevision(fresh.revision);
     if (fresh.roomId !== view.roomId || fresh.kind !== view.kind || freshRevision !== revision) {

@@ -27,13 +27,16 @@ export function unpackRow(row:DomainObject,fields:FieldMapping):DomainObject {
   return result;
 }
 
-/** Upsert changed entity rows first; delete removed children before removed parents. */
-export function applyRowPlans(db:Database.Database,scope:Record<string,string>,plans:RowPlan[]):void {
+/** Upsert changed entity rows first; delete removed children before removed parents.
+ *  A caller that already read these tables in its own transaction passes `existingRows`
+ *  so the diff reuses that baseline instead of querying every table again. */
+export function applyRowPlans(db:Database.Database,scope:Record<string,string>,plans:RowPlan[],existingRows?:Record<string,DomainObject[]>):void {
   const scopeKeys=Object.keys(scope);
   const scopeWhere=scopeKeys.map(key=>quote(key)+"=?").join(" AND ");
   const removals:{plan:RowPlan;rows:DomainObject[]}[]=[];
   for(const plan of plans) {
-    const existing=db.prepare(`SELECT * FROM ${quote(plan.table)} WHERE ${scopeWhere}`).all(...scopeKeys.map(key=>scope[key])) as DomainObject[];
+    const existing=(existingRows && Object.hasOwn(existingRows,plan.table) ? existingRows[plan.table] :
+      db.prepare(`SELECT * FROM ${quote(plan.table)} WHERE ${scopeWhere}`).all(...scopeKeys.map(key=>scope[key]))) as DomainObject[];
     const identity=(row:DomainObject)=>plan.keys.map(key=>{const value=String(row[key]);return value.length+":"+value;}).join("");
     const oldByKey=new Map(existing.map(row=>[identity(row),row]));
     const wanted=new Set(plan.rows.map(identity));

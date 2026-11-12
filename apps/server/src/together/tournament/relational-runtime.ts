@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { isDeepStrictEqual } from "node:util";
 import { applyRowPlans, packRow, unpackRow, type DomainObject, type FieldMapping, type RowPlan } from "./relational-rows.js";
 import { readReceiptValue, readReceiptValues, writeReceiptValue } from "./relational-values.js";
-import { readBattleRows, saveBattleRows, removeBattleRows } from "./relational-battle.js";
+import { readBattleHeaderRow, readBattleRows, readBattleTickRows, saveBattleRows, removeBattleRows } from "./relational-battle.js";
 
 const runtimeFields:FieldMapping=[["teamIds","_teams"],["owner","owner"],["lastSeenAt","last_seen_at"],["matchAt","match_at"],
   ["choiceTeamId","choice_team_id"],["attackers","_attackers"],["lineups","_lineups"],["chat","_chat"],
@@ -171,8 +171,7 @@ export function readRuntimeRound(db:Database.Database,editionId:string,matchId:s
 }
 
 /** Restores the host state without storing any edition- or match-sized JSON document. */
-export function readRuntimeRows(db:Database.Database,editionId:string,matchId:string):DomainObject|null {
-  const [root]=getRows(db,"snow_tournament_runtime_details",editionId,matchId,"edition_id");if(!root)return null;
+export function readRuntimeRows(db:Database.Database,editionId:string,matchId:string):DomainObject|null {  const [root]=getRows(db,"snow_tournament_runtime_details",editionId,matchId,"edition_id");if(!root)return null;
   const value=unpackRow(root,runtimeFields),extras=readReceiptValues(db,editionId,extraKind(matchId));applyExtra(value,extras.get("root"));
   if(Array.isArray(value.teamIds))value.teamIds=getRows(db,"snow_tournament_runtime_teams",editionId,matchId,"position").map(row=>row.team_id);
   if(Array.isArray(value.attackers))value.attackers=getRows(db,"snow_tournament_runtime_attackers",editionId,matchId,"position").map(row=>row.team_id);
@@ -233,6 +232,65 @@ export function readRuntimeRows(db:Database.Database,editionId:string,matchId:st
     value.active=active;
   }
   return value;
+}
+
+export type TickRuntimeHeader={
+  state:DomainObject;
+  detailsRow:DomainObject;activeRow:DomainObject|null;battleStateRow:DomainObject|null;
+};
+type TickBattleBaseline={rows:Record<string,DomainObject[]>;extras:Map<string,unknown>};
+export type CompletedTickRead={state:DomainObject;baseline:TickBattleBaseline};
+
+/** First phase of the tick-scoped read: the fields the per-second tick decides on,
+ *  without chat, command batches, finished rounds or command receipts. */
+export function readRuntimeTickHeader(db:Database.Database,editionId:string,matchId:string,gameIndex:number):TickRuntimeHeader|null {
+  const invalid=db.prepare("SELECT 1 FROM snow_tournament_invalid_runtime WHERE edition_id=? AND match_id=?").get(editionId,matchId);
+  if(invalid)return null;
+  const [detailsRow]=getRows(db,"snow_tournament_runtime_details",editionId,matchId,"edition_id");
+  if(!detailsRow)return null;
+  const state=unpackRow(detailsRow,runtimeFields);
+  if(Array.isArray(state.attackers))state.attackers=getRows(db,"snow_tournament_runtime_attackers",editionId,matchId,"position").map(row=>row.team_id);
+  if(Array.isArray(state.rounds)) {
+    state.rounds=[];
+    for(const row of getRows(db,"snow_tournament_runtime_rounds",editionId,matchId,"position"))
+      if(row.position===gameIndex&&!row.is_null)state.rounds[gameIndex]={};
+  }
+  const [activeRow]=getRows(db,"snow_tournament_active_rounds",editionId,matchId,"edition_id") as (DomainObject|undefined)[];
+  const [battleStateRow]=getRows(db,"snow_tournament_battle_state",editionId,matchId,"battle_id") as (DomainObject|undefined)[];
+  const activeRowOrNull:DomainObject|null=activeRow??null,battleStateRowOrNull:DomainObject|null=battleStateRow??null;
+  if(state.active && typeof state.active==="object" && activeRowOrNull && battleStateRowOrNull) {
+    const active=unpackRow(activeRowOrNull,activeFields),battle=readBattleHeaderRow(battleStateRowOrNull);
+    if(battle)active.battle=battle;
+    state.active=active;
+  } else state.active=null;
+  return {state,detailsRow,activeRow:activeRowOrNull,battleStateRow:battleStateRowOrNull};
+}
+
+/** Second phase: the live battle plus the per-tick projections of the active round.
+ *  Chat, lineups, batches and finished rounds stay unread; paths that save the full
+ *  runtime re-read them instead of persisting this scoped view. */
+export function completeRuntimeTickRead(db:Database.Database,editionId:string,matchId:string,header:TickRuntimeHeader):
+  CompletedTickRead|null {
+  const state=header.state;
+  if(Array.isArray(state.teamIds))state.teamIds=getRows(db,"snow_tournament_runtime_teams",editionId,matchId,"position").map(row=>row.team_id);
+  const active=state.active as DomainObject;
+  const {activeRow,battleStateRow}=header;
+  if(!active || !activeRow || !battleStateRow)return null;
+  const [mask,membersMask]=String(activeRow.field_presence).split("|");
+  const unpacked=unpackRow({...activeRow,field_presence:mask},activeFields);
+  unpacked.battle=active.battle;
+  if(unpacked.members && typeof unpacked.members==="object")
+    unpacked.members=unpackRow({...activeRow,field_presence:membersMask},memberFields);
+  for(const item of getRows(db,"snow_tournament_active_participants",editionId,matchId,"kind,position"))unpacked[item.kind].push(item.resident_id);
+  for(const item of getRows(db,"snow_tournament_active_side_state",editionId,matchId,"side")){
+    const side=unpackRow(item,sideFields);for(const [name,entry] of Object.entries(side))
+      Object.defineProperty(unpacked[name],item.side,{value:entry,enumerable:true,writable:true,configurable:true});
+  }
+  const tickRead=readBattleTickRows(db,editionId,matchId,battleStateRow);
+  if(!tickRead)return null;
+  unpacked.battle=tickRead.battle;
+  state.active=unpacked;
+  return {state,baseline:tickRead.baseline};
 }
 
 /** Data needed by the public lobby; battle units, commands and private chat stay in their own tables. */

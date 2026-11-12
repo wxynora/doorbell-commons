@@ -4,8 +4,8 @@ import type Database from "better-sqlite3";
 export type HomeRecordKind = "post" | "receipt" | "fact" | "audience" | "like" | "comment" | "gift" | "option" | "read_cursor" | "notification_read" | "notification_reported" | "activity_status" | "raffle" | "raffle_prize" | "raffle_audience" | "raffle_sticker" | "sticker_attachment" | "progression" | "progression_event" | "progression_notice" | "poll_option" | "poll_vote" | "promotion" | "promotion_seen" | "promotion_notice";
 export type SqlValue = string | number | null;
 export type HomeRecord = { record_id: string; home_id: string };
+export type HomeTable = { home_id: string; table_name: string };
 export type EnsureMomentsHomeTable = (homeId: string) => string;
-type HomeTable = { home_id: string; table_name: string };
 
 /** One physical content table per home, on Main's existing SQLite connection.
  * Schema creation is injected from database/community-migrations.ts. */
@@ -23,10 +23,25 @@ export class HomeMomentRecords {
     return `"${table}"`;
   }
 
+  /** Directory read for one request; pass the result to allOver so many batched reads share it. */
+  homeTables(homeId?: string): HomeTable[] {
+    return this.tables(homeId);
+  }
+
+  private selectAll<T>(kinds: readonly HomeRecordKind[], where: string, parameters: SqlValue[], tableName: string): T[] {
+    const kindClause = kinds.map(() => "?").join(",");
+    return this.database.prepare(`SELECT * FROM ${this.quote(tableName)} WHERE record_type IN (${kindClause}) AND (${where})`)
+      .all(...kinds, ...parameters) as T[];
+  }
+
   all<T>(kind: HomeRecordKind, where="1", parameters: SqlValue[]=[], homeId?: string): T[] {
-    return this.tables(homeId).flatMap(({table_name}) =>
-      this.database.prepare(`SELECT * FROM ${this.quote(table_name)} WHERE record_type=? AND (${where})`)
-        .all(kind,...parameters) as T[]);
+    return this.tables(homeId).flatMap(({table_name}) => this.selectAll<T>([kind], where, parameters, table_name));
+  }
+
+  /** Same batched query across an explicitly pre-fetched table list; one call costs one SELECT per table. */
+  allOver<T>(tables: readonly HomeTable[], kind: HomeRecordKind | readonly HomeRecordKind[], where="1", parameters: SqlValue[]=[]): T[] {
+    const kinds = Array.isArray(kind) ? kind : [kind];
+    return tables.flatMap(({table_name}) => this.selectAll<T>(kinds, where, parameters, table_name));
   }
 
   aggregate(kind: HomeRecordKind, where: string, parameters: SqlValue[], homeId?: string): { count: number; quantity: number } {

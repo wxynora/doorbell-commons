@@ -30,12 +30,12 @@ export function registerMomentsHumanRoutes(app: FastifyInstance, options: {
 }) {
   const now = options.now ?? Date.now;
   function withStatuses(actor: MomentActor, posts: MomentView[], at: number): MomentView[] {
-    const authors = new Map<string, NonNullable<MomentView["statuses"]>>();
+    const authors = [...new Set(posts.map(post => post.author.residentId).filter((id): id is string => !!id))];
+    const statuses = options.store.dailyActivityStatusesMany(actor, authors, at);
     return posts.map(post => {
       const id = post.author.residentId;
       if (!id) return post;
-      if (!authors.has(id)) authors.set(id, options.store.dailyActivityStatuses(actor, id, at));
-      return { ...post, statuses: authors.get(id)! };
+      return { ...post, statuses: statuses.get(id)! };
     });
   }
   async function authenticate(request: FastifyRequest): Promise<MomentActor> {

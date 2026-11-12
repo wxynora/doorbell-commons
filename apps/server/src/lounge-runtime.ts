@@ -82,6 +82,15 @@ export interface LoungeChatRuntimePort {
 
 export type LoungeChatSessionChanged = (residentId: string) => void;
 
+/**
+ * Narrow presence probe for the say path: reads only the caller's own row
+ * instead of rendering a full lounge snapshot. Undefined means "no readable
+ * presence", mirroring how the snapshot renders presence.
+ */
+export type LoungeChatRuntimePresenceReader = (
+  residentId: string,
+) => { areaId: string } | undefined;
+
 function currentPresence(
   snapshot: LoungeSnapshot,
   residentId: string,
@@ -104,6 +113,7 @@ export class LoungeChatRuntime implements LoungeChatRuntimePort {
   readonly #canChat: LoungeChatCanChat;
   readonly #now: () => number;
   readonly #onSessionChanged: LoungeChatSessionChanged | undefined;
+  readonly #readPresence: LoungeChatRuntimePresenceReader | undefined;
   readonly #leaseRevisions = new Map<string, number>();
 
   constructor(options: {
@@ -113,6 +123,7 @@ export class LoungeChatRuntime implements LoungeChatRuntimePort {
     canChat: LoungeChatCanChat;
     now?: () => number;
     onSessionChanged?: LoungeChatSessionChanged;
+    readPresence?: LoungeChatRuntimePresenceReader;
   }) {
     this.#loungeService = options.loungeService;
     this.#sessionStore = options.sessionStore;
@@ -120,6 +131,7 @@ export class LoungeChatRuntime implements LoungeChatRuntimePort {
     this.#canChat = options.canChat;
     this.#now = options.now ?? Date.now;
     this.#onSessionChanged = options.onSessionChanged;
+    this.#readPresence = options.readPresence;
   }
 
   async canChat(residentId: string): Promise<boolean> {
@@ -194,14 +206,20 @@ export class LoungeChatRuntime implements LoungeChatRuntimePort {
     await this.expire(residentId, at);
     const session = this.#sessionStore.active(residentId, at);
     if (!session || !(await this.canChat(residentId))) return null;
-    const presence = currentPresence(
-      this.#loungeService.readSnapshotForResident(residentId),
-      residentId,
-    );
-    if (presence?.area_id !== "conversation") {
+    const presence = this.#readOwnPresence(residentId);
+    if (presence?.areaId !== "conversation") {
       this.#loungeService.chooseArea({ residentId, areaId: "conversation" });
     }
     return session;
+  }
+
+  #readOwnPresence(residentId: string): { areaId: string } | undefined {
+    if (this.#readPresence) return this.#readPresence(residentId);
+    const entry = currentPresence(
+      this.#loungeService.readSnapshotForResident(residentId),
+      residentId,
+    );
+    return entry ? { areaId: entry.area_id } : undefined;
   }
 
   #readChatMode(residentId: string): LoungeChatMode {
@@ -310,12 +328,25 @@ export function createLoungeRuntime(options: LoungeRuntimeOptions) {
     settings: database,
     canChat,
     now,
+    readPresence: (residentId) => {
+      // Snapshot presence is filtered by active communities; the narrow probe
+      // must report "no readable presence" for inactive residents so the
+      // chooseArea path keeps raising the same not-active error.
+      if (!database.findActiveHumanCommunityByResidentId(residentId)) return undefined;
+      return database.loungeStore.readPresence(residentId);
+    },
     onSessionChanged: (residentId) => {
       chatWakes?.sessionChanged(residentId);
       options.onSessionChanged?.(residentId);
     },
   });
-  const say = new LoungeChatTool({ loungeService: lounge, runtime: chatRuntime, canChat, now });
+  const say = new LoungeChatTool({
+    loungeService: lounge,
+    runtime: chatRuntime,
+    canChat,
+    now,
+    readPublicMessage: (messageId) => database.loungeStore.readPublicMessage(messageId),
+  });
   const invitationService = new LoungeGameInvitationService({
     database,
     tables,

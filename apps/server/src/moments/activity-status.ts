@@ -1,4 +1,4 @@
-import type { HomeMomentRecords, HomeRecord } from "./home-records.js";
+import type { HomeMomentRecords, HomeRecord, HomeTable, SqlValue } from "./home-records.js";
 
 /** Only trusted, structured activity outcomes may supply these keys. No text classification. */
 export const activityStatusKeys = [
@@ -136,39 +136,99 @@ export function receiptStatusKeys(records:HomeMomentRecords,receiptId:string):Ac
   return canonicalStatusKeys(records.all<StatusRow>("activity_status","receipt_id=?",[receiptId]).map(row=>row.kind).filter(isActivityStatusKey));
 }
 
-/** Caller has authenticated the viewer. Every referenced post keeps its own visibility. */
-export function collectDailyActivityStatuses(records:HomeMomentRecords,viewerResidentId:string,residentId:string,now:number,canRead:(post:StatusPost)=>boolean):ActivityStatus[] {
+/**
+ * Caller has authenticated the viewer. Every referenced post keeps its own visibility.
+ * One shared read set for every requested resident: today's receipts, their status rows, and
+ * today's community-wide interactions; the posts they touch are looked up in one reverse query,
+ * so today's interaction with an old post still counts as today's activity.
+ */
+export function collectDailyActivityStatusesMany(records:HomeMomentRecords,viewerResidentId:string,residentIds:readonly string[],now:number,canReadPosts:(posts:StatusPost[])=>Map<string,boolean>,directory?:HomeTable[]):Map<string,ActivityStatus[]> {
   const from=activityDayStart(now);
   const inDay=(time:number)=>time>=from&&time<=now;
-  const posts=records.all<StatusPost>("post");
-  const byId=new Map(posts.map(post=>[post.moment_id,post]));
-  const visible=(id:string)=>{const post=byId.get(id);return !!post&&canRead(post);};
-  const latest=new Map<ActivityStatusKey,number>();
-  const add=(key:ActivityStatusKey,time:number)=>{if(inDay(time))latest.set(key,Math.max(time,latest.get(key)??-Infinity));};
-  for(const receipt of records.all<Receipt>("receipt","resident_id=? AND occurred_at>=? AND occurred_at<=?",[residentId,from,now])) {
-    const linked=posts.filter(post=>post.receipt_id===receipt.receipt_id);
-    const own=residentId===viewerResidentId;
-    if(!own&&!linked.some(canRead))continue;
-    const keys=receiptStatusKeys(records,receipt.receipt_id);
-    // Unshared facts stay with their owner; every other viewer needs a readable linked post.
-    if(!keys.length&&(own||linked.some(canRead))&&receiptFallback[receipt.kind])keys.push(receiptFallback[receipt.kind]!);
-    for(const key of distinctStatusKeys(keys))add(key,receipt.occurred_at);
+  const residents=[...new Set(residentIds)];
+  if(!residents.length)return new Map<string,ActivityStatus[]>();
+  const inList=(values:readonly SqlValue[])=>values.map(() => "?").join(",");
+  const keyOf=new Map<string,string>(residents.map(id=>[`resident:${id}`,id]));
+  const latest=new Map<string,Map<ActivityStatusKey,number>>();
+  const tables=directory??records.homeTables();
+
+  const receipts=records.allOver<Receipt>(tables,"receipt",`resident_id IN (${inList(residents)}) AND occurred_at>=? AND occurred_at<=?`,[...residents,from,now]);
+  const receiptIds=[...new Set(receipts.map(receipt=>receipt.receipt_id))];
+  const statusKeysOf=new Map<string,ActivityStatusKey[]>();
+  if(receiptIds.length) {
+    for(const row of records.allOver<StatusRow>(tables,"activity_status",`receipt_id IN (${inList(receiptIds)})`,receiptIds)) {
+      if(!isActivityStatusKey(row.kind))continue;
+      const keys=statusKeysOf.get(row.receipt_id);
+      if(keys)keys.push(row.kind);else statusKeysOf.set(row.receipt_id,[row.kind]);
+    }
+    for(const [receiptId,keys] of statusKeysOf)statusKeysOf.set(receiptId,canonicalStatusKeys(keys));
   }
-  for(const post of posts)if(post.author_id===residentId&&canRead(post)&&inDay(post.created_at))add(post.receipt_id?"social.share":"social.post",post.created_at);
-  const key=`resident:${residentId}`;
-  for(const type of ["like","comment","gift"] as const) {
-    for(const row of records.all<Interaction>(type,type==="gift"?"delivered_at>=? AND delivered_at<=?":"created_at>=? AND created_at<=?",[from,now])) {
-      if(!visible(row.moment_id))continue;
-      const post=byId.get(row.moment_id)!;
-      const sent=row.actor_key===key,received=post.author_id===residentId&&row.actor_key!==key;
-      const time=type==="gift"?row.delivered_at!:row.created_at;
-      if(type==="like"){if(sent)add("social.like",time);if(received)add("social.liked",time);}
-      else if(type==="comment"){if(sent)add("social.comment",time);if(received)add("social.commented",time);}
-      else {
-        const item=row.item_kind==="dish"?"dish":row.purchase_total!==null?"purchased-bait":"bait";
-        if(sent)add(`gift.sent.${item}`,time);if(received)add(`gift.received.${item}`,time);
-      }
+  // Today's interactions span the whole community: likes, comments and gifts may sit in any home table
+  // and may target posts from any day.
+  type TimedRow={type:"like"|"comment"|"gift";row:Interaction;time:number};
+  const interactions:TimedRow[]=[];
+  for(const row of records.allOver<Interaction & { record_type:string }>(tables,["like","comment","gift"],
+    "(record_type!='gift' AND created_at>=? AND created_at<=?) OR (record_type='gift' AND delivered_at>=? AND delivered_at<=?)",
+    [from,now,from,now]))
+    interactions.push({type:row.record_type as "like"|"comment"|"gift",row,time:row.record_type==="gift"?row.delivered_at!:row.created_at});
+  const interactionMomentIds=[...new Set(interactions.map(({row})=>row.moment_id))];
+  const postClauses:string[]=[`(created_at>=? AND created_at<=? AND author_id IN (${inList(residents)}))`];
+  const postParameters:SqlValue[]=[from,now,...residents];
+  if(receiptIds.length){postClauses.push(`receipt_id IN (${inList(receiptIds)})`);postParameters.push(...receiptIds);}
+  if(interactionMomentIds.length){postClauses.push(`moment_id IN (${inList(interactionMomentIds)})`);postParameters.push(...interactionMomentIds);}
+  const posts=records.allOver<StatusPost>(tables,"post",postClauses.join(" OR "),postParameters);
+  const byId=new Map(posts.map(post=>[post.moment_id,post]));
+  const linked=new Map<string,StatusPost[]>();
+  for(const post of posts)if(post.receipt_id){
+    const list=linked.get(post.receipt_id);
+    if(list)list.push(post);else linked.set(post.receipt_id,[post]);
+  }
+  const readable=canReadPosts(posts);
+  const visible=(id:string)=>{const post=byId.get(id);return !!post&&readable.get(post.moment_id)===true;};
+  const add=(residentId:string,key:ActivityStatusKey,time:number)=>{
+    if(!inDay(time))return;
+    const per=latest.get(residentId)??latest.set(residentId,new Map()).get(residentId)!;
+    per.set(key,Math.max(time,per.get(key)??-Infinity));
+  };
+  for(const receipt of receipts) {
+    const residentId=keyOf.get(`resident:${receipt.resident_id}`);
+    if(residentId===undefined)continue;
+    const own=residentId===viewerResidentId;
+    const receiptPosts=linked.get(receipt.receipt_id)??[];
+    if(!own&&!receiptPosts.some(post=>readable.get(post.moment_id)===true))continue;
+    let keys=statusKeysOf.get(receipt.receipt_id)??[];
+    // Unshared facts stay with their owner; every other viewer needs a readable linked post.
+    if(!keys.length&&(own||receiptPosts.some(post=>readable.get(post.moment_id)===true))&&receiptFallback[receipt.kind])
+      keys=[receiptFallback[receipt.kind]!];
+    for(const key of distinctStatusKeys(keys))add(residentId,key,receipt.occurred_at);
+  }
+  for(const post of posts) {
+    const residentId=keyOf.get(`resident:${post.author_id}`);
+    if(residentId!==undefined&&readable.get(post.moment_id)===true&&inDay(post.created_at))
+      add(residentId,post.receipt_id?"social.share":"social.post",post.created_at);
+  }
+  for(const {type,row,time} of interactions) {
+    if(!visible(row.moment_id))continue;
+    const post=byId.get(row.moment_id)!;
+    const actorResident=keyOf.get(row.actor_key);
+    const authorResident=keyOf.get(`resident:${post.author_id}`);
+    if(actorResident!==undefined){
+      if(type==="like")add(actorResident,"social.like",time);
+      else if(type==="comment")add(actorResident,"social.comment",time);
+      else add(actorResident,`gift.sent.${giftItemKey(row)}`,time);
+    }
+    if(authorResident!==undefined&&row.actor_key!==`resident:${authorResident}`){
+      if(type==="like")add(authorResident,"social.liked",time);
+      else if(type==="comment")add(authorResident,"social.commented",time);
+      else add(authorResident,`gift.received.${giftItemKey(row)}`,time);
     }
   }
-  return [...latest].map(([key,occurredAt])=>({key,occurredAt})).sort((a,b)=>b.occurredAt-a.occurredAt||a.key.localeCompare(b.key));
+  return new Map(residents.map(residentId=>{
+    const per=latest.get(residentId)??new Map<ActivityStatusKey,number>();
+    return [residentId,[...per].map(([key,occurredAt])=>({key,occurredAt}))
+      .sort((a,b)=>b.occurredAt-a.occurredAt||a.key.localeCompare(b.key))] as const;
+  }));
+}
+function giftItemKey(row:Interaction):"dish"|"purchased-bait"|"bait" {
+  return row.item_kind==="dish"?"dish":row.purchase_total!==null?"purchased-bait":"bait";
 }

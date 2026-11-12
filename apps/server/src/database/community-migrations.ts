@@ -20,7 +20,7 @@ import { tournamentEngine } from "../together/tournament/engine-adapter.js";
 import { validateSnowMatchRuntime } from "../together/tournament/match-host.js";
 import { readRoundRecovery } from "../together/tournament/relational-match-view.js";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 65;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 66;
 const DAILY_POLL_SCHEMA_SQL = `
   CREATE TABLE lingye_daily_polls (
     issue_date TEXT PRIMARY KEY,
@@ -3286,6 +3286,20 @@ CREATE TABLE lingye_daily_farm_question_citations (
           AND json_extract(record_json, '$.reason') = 'game_invitation';
     `);
     database.pragma('user_version = 65');
+  })();
+
+  if (databaseSchemaVersion < 66) database.transaction(() => {
+    database.exec(`
+      CREATE TABLE qq_group_member_snapshot_captures (
+        group_id TEXT PRIMARY KEY,
+        captured_at INTEGER NOT NULL
+      );
+      INSERT INTO qq_group_member_snapshot_captures (group_id, captured_at)
+        SELECT group_id, MIN(captured_at)
+        FROM qq_group_member_snapshots
+        GROUP BY group_id;
+    `);
+    database.pragma('user_version = 66');
   })();
 
 }

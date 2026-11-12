@@ -6,6 +6,7 @@ import {
   type LoungeChatDurationMinutes,
 } from "./lounge-chat-wake-policy.js";
 import type { LoungeChatRuntimePort } from "./lounge-runtime.js";
+import type { LoungeMessageRecord } from "./lounge-store.js";
 import type {
   LoungeChooseAreaInput,
   LoungeEnterInput,
@@ -35,8 +36,20 @@ export interface LoungeChatToolOptions {
   runtime?: LoungeChatRuntimePort;
   now?: () => number;
   generateMessageId?: () => string;
+  /**
+   * Source of the random bytes inside a generated option. Defaults to
+   * node:crypto randomBytes; tests inject it to force deterministic
+   * cross-generation option collisions.
+   */
+  generateOptionRandom?: (byteLength: number) => Uint8Array;
   /** Trusted runtime state that prevents chat area changes during a game. */
   canChat?: (residentId: string) => boolean | Promise<boolean>;
+  /**
+   * Single-message readability probe with the same visibility rules as the
+   * snapshot's message list; lets reply-target validation avoid a full
+   * snapshot read.
+   */
+  readPublicMessage?: (messageId: string) => LoungeMessageRecord | undefined;
 }
 
 export type LoungeChatToolErrorCode =
@@ -72,8 +85,23 @@ type PendingLoungeChatOption = Pick<LoungeChatOption, "kind" | "messageId"> & {
   durationMinutes?: LoungeChatDurationMinutes;
 };
 
-const OPTION_PATTERN = /^[A-Za-z0-9_-]{6}$/u;
-const USED_OPTIONS = new Set<string>();
+/**
+ * The option string embeds the render generation that created it
+ * (4-byte big-endian counter) followed by random bytes. A discarded
+ * generation's option can therefore never bind to a later generation's
+ * pending action, even if the random parts are identical: the embedded
+ * generation counters differ, and the decode rejects any mismatch.
+ */
+const OPTION_GENERATION_BYTES = 4;
+const OPTION_RANDOM_BYTES = 8;
+const OPTION_BYTES = OPTION_GENERATION_BYTES + OPTION_RANDOM_BYTES;
+const OPTION_PATTERN = /^[A-Za-z0-9_-]{16}$/u;
+
+interface ResidentOptionGroup {
+  /** Monotonic per-resident render counter embedded in this generation's options. */
+  generation: number;
+  options: Map<string, PendingLoungeChatOption>;
+}
 
 // These short labels are only the candidate adapter's readable receipt. They
 // are intentionally not registered as model-visible descriptions here.
@@ -121,17 +149,37 @@ export class LoungeChatTool {
   readonly #runtime: LoungeChatRuntimePort | undefined;
   readonly #now: () => number;
   readonly #generateMessageId: () => string;
+  readonly #generateOptionRandom: (byteLength: number) => Uint8Array;
   readonly #canChat: (residentId: string) => boolean | Promise<boolean>;
-  readonly #latestOptions = new Map<string, Map<string, PendingLoungeChatOption>>();
+  readonly #readPublicMessage:
+    | ((messageId: string) => LoungeMessageRecord | undefined)
+    | undefined;
+  readonly #latestOptions = new Map<string, ResidentOptionGroup>();
+  /** Per-process offset so options from a previous process lifetime can never rebind. */
+  readonly #generationBase: number;
 
   constructor(options: LoungeChatToolOptions) {
     this.#loungeService = options.loungeService;
     this.#runtime = options.runtime;
     this.#now = options.now ?? Date.now;
     this.#generateMessageId = options.generateMessageId ?? randomUUID;
+    this.#generateOptionRandom = options.generateOptionRandom ?? randomBytes;
     this.#canChat =
       options.canChat ??
       (options.runtime ? options.runtime.canChat.bind(options.runtime) : () => false);
+    this.#readPublicMessage = options.readPublicMessage;
+    this.#generationBase = randomBytes(OPTION_GENERATION_BYTES).readUInt32BE(0);
+  }
+
+  /**
+   * Number of option identities currently retained for validity checks. Each
+   * render replaces the resident's previous option group, so this stays at the
+   * current valid generation instead of growing with history.
+   */
+  storedOptionCount(): number {
+    let total = 0;
+    for (const group of this.#latestOptions.values()) total += group.options.size;
+    return total;
   }
 
   async execute(residentId: string, args: LoungeChatToolArgs): Promise<string>;
@@ -206,13 +254,28 @@ export class LoungeChatTool {
   ): LoungeChatOption[] {
     const options: LoungeChatOption[] = [];
     const group = new Map<string, PendingLoungeChatOption>();
-    this.#latestOptions.set(residentId, group);
+    // Each render is a new generation: the embedded counter makes every
+    // previous generation's option strings structurally invalid, so only the
+    // identities still valid need collision avoidance and storage.
+    const generation = (this.#latestOptions.get(residentId)?.generation ?? 0) + 1;
+    const taken = new Set<string>();
+    for (const existing of this.#latestOptions.values()) {
+      for (const key of existing.options.keys()) taken.add(key);
+    }
+    this.#latestOptions.set(residentId, { generation, options: group });
+    const embeddedGeneration = (this.#generationBase + generation) >>> 0;
     const leaseRevision = this.#runtime?.getLeaseRevision(residentId) ?? 0;
     const presence = currentPresence(snapshot, residentId);
     if (canChat) {
       if (presence?.area_id === "conversation") {
         options.push(
-          this.#newOption({ residentId, kind: "leave", leaseRevision }, LEAVE_LABEL, group),
+          this.#newOption(
+            { residentId, kind: "leave", leaseRevision },
+            LEAVE_LABEL,
+            group,
+            taken,
+            embeddedGeneration,
+          ),
         );
       } else {
         for (const durationMinutes of ENTER_DURATIONS) {
@@ -221,6 +284,8 @@ export class LoungeChatTool {
               { residentId, kind: "enter", durationMinutes, leaseRevision },
               `${ENTER_LABEL}（${durationMinutes}分钟）`,
               group,
+              taken,
+              embeddedGeneration,
             ),
           );
         }
@@ -233,6 +298,8 @@ export class LoungeChatTool {
           { residentId, kind: "retract", messageId: message.message_id, leaseRevision },
           `撤回消息 ${message.message_id}`,
           group,
+          taken,
+          embeddedGeneration,
         ),
       );
     }
@@ -243,12 +310,17 @@ export class LoungeChatTool {
     pending: PendingLoungeChatOption,
     label: string,
     group: Map<string, PendingLoungeChatOption>,
+    taken: Set<string>,
+    embeddedGeneration: number,
   ): LoungeChatOption {
     let option = "";
     do {
-      option = randomBytes(4).toString("base64url");
-    } while (USED_OPTIONS.has(option));
-    USED_OPTIONS.add(option);
+      const bytes = Buffer.alloc(OPTION_BYTES);
+      bytes.writeUInt32BE(embeddedGeneration, 0);
+      bytes.set(this.#generateOptionRandom(OPTION_RANDOM_BYTES), OPTION_GENERATION_BYTES);
+      option = bytes.toString("base64url");
+    } while (taken.has(option));
+    taken.add(option);
     group.set(option, pending);
     return {
       option,
@@ -285,18 +357,20 @@ export class LoungeChatTool {
     text: string,
     replyToMessageId: string | undefined,
   ): Promise<string> {
-    const snapshot = this.#readSnapshot(residentId);
     if (this.#runtime) {
       if (!(await this.#runtime.activeForSay(residentId))) {
         throw new LoungeChatToolError("not_in_lounge", "请先进入休息室闲聊。");
       }
-    } else if (currentPresence(snapshot, residentId)?.area_id !== "conversation") {
-      throw new LoungeChatToolError("not_in_lounge", "请先进入休息室闲聊。");
+    } else {
+      const snapshot = this.#readSnapshot(residentId);
+      if (currentPresence(snapshot, residentId)?.area_id !== "conversation") {
+        throw new LoungeChatToolError("not_in_lounge", "请先进入休息室闲聊。");
+      }
     }
     await this.#assertCanChat(residentId);
     if (
       replyToMessageId !== undefined &&
-      !snapshot.messages.some((message) => message.message_id === replyToMessageId)
+      !this.#replyTargetReadable(residentId, replyToMessageId)
     ) {
       throw new LoungeChatToolError(
         "reply_target_invalid",
@@ -319,6 +393,15 @@ export class LoungeChatTool {
         await this.#chatAllowed(residentId),
       ),
     ].join("\n\n");
+  }
+
+  #replyTargetReadable(residentId: string, messageId: string): boolean {
+    if (this.#readPublicMessage) {
+      return this.#readPublicMessage(messageId) !== undefined;
+    }
+    return this.#readSnapshot(residentId).messages.some(
+      (message) => message.message_id === messageId,
+    );
   }
 
   async #executeOption(residentId: string, option: string): Promise<string> {
@@ -377,7 +460,17 @@ export class LoungeChatTool {
 
   #decodeOption(snapshot: LoungeSnapshot, residentId: string, option: string): LoungeChatOption {
     if (!OPTION_PATTERN.test(option)) throw optionInvalid();
-    const pending = this.#latestOptions.get(residentId)?.get(option);
+    const entry = this.#latestOptions.get(residentId);
+    if (!entry) throw optionInvalid();
+    // The option carries the generation that created it. A discarded
+    // generation's option (even one whose random part is identical to a
+    // current-generation option, forced or by chance) cannot bind, because
+    // its embedded generation differs from the only valid generation.
+    const embeddedGeneration = Buffer.from(option, "base64url").readUInt32BE(0);
+    if (embeddedGeneration !== ((this.#generationBase + entry.generation) >>> 0)) {
+      throw optionInvalid();
+    }
+    const pending = entry.options.get(option);
     if (!pending || pending.residentId !== residentId) throw optionInvalid();
     const leaseRevision = this.#runtime?.getLeaseRevision(residentId) ?? 0;
     if (pending.leaseRevision !== leaseRevision) throw optionInvalid();

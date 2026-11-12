@@ -183,6 +183,31 @@ export class LoungeStore {
     return rows.map(mapMessage);
   }
 
+  /**
+   * Single-message read with the same visibility rules as listMessages:
+   * withdrawn messages and messages without a resident row are not readable.
+   */
+  readPublicMessage(messageId: string): LoungeMessageRecord | undefined {
+    assertIdentifier(messageId, "message id");
+    const row = this.database
+      .prepare(
+        `SELECT message.sequence,
+                message.message_id,
+                message.resident_id,
+                resident.resident_name,
+                message.text,
+                message.created_at,
+                message.reply_to_message_id,
+                message.activity_id,
+                message.withdrawn_at
+         FROM lounge_public_messages AS message
+         JOIN residents AS resident ON resident.resident_id = message.resident_id
+         WHERE message.message_id = ? AND message.withdrawn_at IS NULL`,
+      )
+      .get(messageId) as LoungeMessageRow | undefined;
+    return row ? mapMessage(row) : undefined;
+  }
+
   listActivities(): LoungeActivityRecord[] {
     const rows = this.database
       .prepare(
@@ -215,6 +240,24 @@ export class LoungeStore {
       )
       .all() as LoungePresenceRow[];
     return rows.map(mapPresence);
+  }
+
+  /** Single-resident presence read; undefined when the resident has no presence row. */
+  readPresence(residentId: string): LoungePresenceRecord | undefined {
+    assertIdentifier(residentId, "resident id");
+    const row = this.database
+      .prepare(
+        `SELECT resident_id,
+                area_id,
+                slot_id,
+                idle_position_json,
+                entered_at,
+                last_spoke_at
+         FROM lounge_presence
+         WHERE resident_id = ?`,
+      )
+      .get(residentId) as LoungePresenceRow | undefined;
+    return row ? mapPresence(row) : undefined;
   }
 
   upsertPresence(input: LoungePresenceRecord): LoungePresenceRecord {
@@ -458,19 +501,8 @@ export class LoungeStore {
   }
 
   #readPresence(residentId: string): LoungePresenceRecord {
-    const row = this.database
-      .prepare(
-        `SELECT resident_id,
-                area_id,
-                slot_id,
-                idle_position_json,
-                entered_at,
-                last_spoke_at
-         FROM lounge_presence
-         WHERE resident_id = ?`,
-      )
-      .get(residentId) as LoungePresenceRow | undefined;
-    if (!row) throw new Error("Upserted lounge presence could not be read");
-    return mapPresence(row);
+    const presence = this.readPresence(residentId);
+    if (!presence) throw new Error("Upserted lounge presence could not be read");
+    return presence;
   }
 }

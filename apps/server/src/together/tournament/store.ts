@@ -1,8 +1,8 @@
 import type Database from "better-sqlite3";
 import { isDeepStrictEqual } from "node:util";
 import { appendSnowSettlementReceipt, readEditionRows, saveEditionRows, type SnowSettlementReceiptSection } from "./relational-edition.js";
-import { deleteRuntimeRows, publicRuntimeFromState, readPublicRuntimes, readRuntimeRows, readRuntimeRound, saveRuntimeRows, type PublicRuntime } from "./relational-runtime.js";
-import { saveBattleRows } from "./relational-battle.js";
+import { completeRuntimeTickRead, deleteRuntimeRows, publicRuntimeFromState, readPublicRuntimes, readRuntimeRows, readRuntimeRound, readRuntimeTickHeader, saveRuntimeRows, type CompletedTickRead, type PublicRuntime, type TickRuntimeHeader } from "./relational-runtime.js";
+import { hydrateBattleCommandHistory, saveBattleRows, type BattleBaseline } from "./relational-battle.js";
 import { readMatchEditionView, readRoundRecovery, readScheduledSnowEditions, readTechnicalView } from "./relational-match-view.js";
 
 const SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -74,6 +74,19 @@ export class SnowTournamentStore {
     return readRuntimeRows(this.db,editionId,matchId);
   }
 
+  /** First phase of the tick-scoped match read; null means the full restore path applies. */
+  readMatchTickHeader(editionId:string,matchId:string,gameIndex:number):TickRuntimeHeader|null {
+    return readRuntimeTickHeader(this.db,editionId,matchId,gameIndex);
+  }
+
+  completeMatchTickRead(editionId:string,matchId:string,header:TickRuntimeHeader):CompletedTickRead|null {
+    return completeRuntimeTickRead(this.db,editionId,matchId,header);
+  }
+
+  hydrateBattleCommandHistory(editionId:string,matchId:string,battle:Record<string,any>):void {
+    hydrateBattleCommandHistory(this.db,editionId,matchId,battle);
+  }
+
   readMatchTerminal(editionId:string,matchId:string,index:number) {
     const invalid=this.db.prepare("SELECT raw_text FROM snow_tournament_invalid_runtime WHERE edition_id=? AND match_id=?")
       .get(editionId,matchId) as {raw_text:string}|undefined;
@@ -106,8 +119,11 @@ export class SnowTournamentStore {
     if(publicChanged)this.changed();
   }
 
-  /** Normal running ticks change only the clock, automated seats and battle entities. */
-  saveBattleTick(editionId:string,matchId:string,state:Record<string,any>,previous:PublicRuntime,saveCommandHistory:boolean):void {
+  /** Normal running ticks change only the clock, automated seats and battle entities.
+   *  `baseline` is the row set this transaction already read; the battle save then
+   *  diffs in memory and appends new command receipts instead of rereading tables. */
+  saveBattleTick(editionId:string,matchId:string,state:Record<string,any>,previous:PublicRuntime,saveCommandHistory:boolean,
+    baseline?:BattleBaseline):void {
     this.db.transaction(()=>{
       this.db.prepare("UPDATE snow_tournament_runtime_details SET last_seen_at=? WHERE edition_id=? AND match_id=?")
         .run(state.lastSeenAt,editionId,matchId);
@@ -118,7 +134,7 @@ export class SnowTournamentStore {
         const insert=this.db.prepare("INSERT INTO snow_tournament_active_participants(edition_id,match_id,kind,position,resident_id) VALUES(?,?,'npc',?,?)");
         state.active.npc.forEach((id:string,position:number)=>insert.run(editionId,matchId,position,id));
       }
-      saveBattleRows(this.db,editionId,matchId,state.active.battle,saveCommandHistory);
+      saveBattleRows(this.db,editionId,matchId,state.active.battle,saveCommandHistory,baseline);
     })();
     if(publicRuntimeChanged(previous,publicRuntimeFromState(state)))this.changed();
   }

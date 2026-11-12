@@ -4,7 +4,7 @@ import { snowRoundRecoveryKey, type SnowTournamentStore } from "./store.js";
 import { SnowTournamentRecovery } from "./recovery.js";
 import type { SnowSignalSink, SignalChanges } from "./player-signals.js";
 import type { SnowTeamMember } from "./roster.js";
-import { publicRuntimeFromState, type PublicRuntime } from "./relational-runtime.js";
+import { publicRuntimeFromState, type CompletedTickRead, type PublicRuntime } from "./relational-runtime.js";
 
 type Role = "attack" | "defend";
 type HostInput = Parameters<SnowTournamentScheduleHost["reconcileMatch"]>[0];
@@ -208,6 +208,14 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
     } catch { return this.retryCorrupt(input); }
   }
 
+  /** The ordinary per-second tick precondition, evaluated on the tick header. */
+  private tickReady(state:Runtime,input:HostInput):boolean {
+    return state.owner===this.owner && state.suspendedUntil===undefined && !!state.attackers &&
+      !state.rounds[input.gameIndex] && state.active?.index===input.gameIndex &&
+      state.active.nextTickAt!==null && state.active.battle?.runtime?.started===true &&
+      state.active.battle.status==="running" && input.now>=state.matchAt;
+  }
+
   reconcileMatch(input: HostInput) {
     const changed=new Set<string>();
     const frame=(state:Runtime|null)=>state?.active?JSON.stringify([
@@ -224,16 +232,28 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
       let { edition, match, teams } = this.match(input);
       if (edition.rulesVersion !== this.engine.rulesVersion) throw new Error("snow_engine_rules_mismatch");
       if (!["scheduled", "in_progress"].includes(match.status)) return null;
-      let state = this.restoreRuntime(input);
+      // The per-second tick reads a scoped view of the current match: the header
+      // carries every field that decides whether this wake is such a tick, and the
+      // completion loads the live battle without its command receipt history.
+      let header=this.store.readMatchTickHeader(input.editionId,input.matchId,input.gameIndex);
+      if (header) {
+        const entry=this.store.readRoundRecovery(input.editionId,input.matchId,input.gameIndex) as RoundRecovery|undefined;
+        try { validateSnowMatchRuntime(header.state as Runtime,input.gameIndex,this.engine,entry); }
+        catch { header=null; }
+      }
+      const paused=this.recovery.pending(input);
+      let tickBaseline:CompletedTickRead["baseline"]|undefined;
+      let state:Runtime|null;
+      if (header && paused===undefined && this.tickReady(header.state as Runtime,input)) {
+        const completed=this.store.completeMatchTickRead(input.editionId,input.matchId,header);
+        if (completed) { state=completed.state as Runtime; tickBaseline=completed.baseline; }
+        else state=this.restoreRuntime(input);
+      } else state=this.restoreRuntime(input);
       if(this.store.readEditionPhase(input.editionId)==="cancelled") return null;
       before=frame(state);
       if (state?.suspendedUntil!==undefined && input.now<state.suspendedUntil) return state.suspendedUntil;
-      const paused=this.recovery.pending(input);
       const restarted=state && state.owner!==this.owner;
-      const previousTick=state && !restarted && paused===undefined && state.suspendedUntil===undefined &&
-        !!state.attackers && !state.rounds[input.gameIndex] && state.active?.index===input.gameIndex &&
-        state.active.nextTickAt!==null && state.active.battle.runtime?.started===true && state.active.battle.status==="running"
-        ? publicRuntimeFromState(state) : undefined;
+      const previousTick=tickBaseline && state ? publicRuntimeFromState(state) : undefined;
       if (paused!==undefined || restarted) {
         // A terminal is already authoritative. Downtime must not delay its settlement.
         if (!(state?.active && state.active.battle.status!=="running")) {
@@ -271,12 +291,12 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
         return state.suspendedUntil;
       }
       delete state.suspendedUntil;
-      const saved = state;
+      let saved = state;
       let npcCommandIssued=false;
       const finish = (at: number | null,ordinaryTick=false) => {
         saved.lastSeenAt = Math.max(saved.lastSeenAt,input.now);
         if(ordinaryTick && previousTick){
-          this.store.saveBattleTick(input.editionId,input.matchId,saved,previousTick,npcCommandIssued);
+          this.store.saveBattleTick(input.editionId,input.matchId,saved,previousTick,npcCommandIssued,tickBaseline);
           committedFrame={battle:saved.active!.battle,nextTickAt:saved.active!.nextTickAt};
           tickSignals=()=>this.signalsFor(input,input.now,saved,{edition,match,teams});
         }
@@ -310,7 +330,7 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
         round.nextTickAt = startAt + second;
         battle.runtime = { started: true };
       }
-      if (input.now < round.nextTickAt) return finish(round.nextTickAt);
+      if (input.now < round.nextTickAt) return finish(round.nextTickAt,true);
       // Keep the original wall-clock phase: normal event-loop delay is not downtime.
       // A round itself bounds catch-up to its remaining 600 ticks.
       const dueTicks=Math.min(600-battle.tick,Math.floor((input.now-round.nextTickAt)/second)+1);
@@ -333,6 +353,19 @@ export class SnowTournamentMatchHost implements SnowTournamentScheduleHost {
         return finish(round.nextTickAt,true);
       }
       if (battle.endReason !== "core_broken" && battle.endReason !== "time_limit") throw new Error("snow_engine_terminal_invalid");
+      if (tickBaseline) {
+        // The scoped read skipped chat, command batches and finished rounds; restore
+        // them from this same transaction before the full save, and reattach the
+        // command receipts the tick-scoped battle did not carry.
+        const full=this.read(input) as Runtime|null;
+        if (full?.active) round.batches=full.active.batches??{};
+        if (full) {
+          full.active=saved.active;
+          full.lastSeenAt=Math.max(full.lastSeenAt,saved.lastSeenAt,input.now);
+          saved=full;
+        }
+        this.store.hydrateBattleCommandHistory(input.editionId,input.matchId,round.battle);
+      }
       saved.rounds[round.index] = {
         battleId: battle.battleId, rulesVersion: battle.rulesVersion, attackSideId: battle.attackSideId,
         defendSideId: battle.defendSideId, status: battle.status, endReason: battle.endReason, tick: battle.tick, coreHp: battle.coreHp,
