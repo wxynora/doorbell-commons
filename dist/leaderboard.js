@@ -2,7 +2,7 @@
 import { equippedTitle } from "./titles.js";
 import { currentDayIndex } from "./time.js";
 import { dailyScore } from "./daily.js";
-import { economyGoldSpentToday } from "./daily-spend.js";
+import { economyGoldSpentTodayByResident, economyGoldSpentForFarm } from "./daily-spend.js";
 function top(farms, score, n = 5) {
     return farms
         .map((f) => {
@@ -13,9 +13,14 @@ function top(farms, score, n = 5) {
         .sort((a, b) => b.value - a.value)
         .slice(0, n);
 }
-export function leaderboardScores(now) {
+/**
+ * 今日各项榜单分值。dailySpendByResident 允许调用方传入一次分组汇总的当日
+ * 金币消费，让全服榜单与本人名次共用同一份结果，而不是逐户各查一次。
+ */
+export function leaderboardScores(now, dailySpendByResident) {
     const today = currentDayIndex(now);
     const directCoinSpend = dailyScore(today, "coinSpend");
+    const spendByResident = dailySpendByResident ?? economyGoldSpentTodayByResident(now);
     return {
         todayTasks: dailyScore(today, "tasks"),
         todayLogins: dailyScore(today, "logins"),
@@ -23,7 +28,7 @@ export function leaderboardScores(now) {
         todayEvents: dailyScore(today, "events"),
         todayStolen: dailyScore(today, "stolen"),
         todayWatered: dailyScore(today, "watered"),
-        todaySpent: (f) => directCoinSpend(f) + economyGoldSpentToday(f, now),
+        todaySpent: (f) => directCoinSpend(f) + economyGoldSpentForFarm(f, spendByResident),
         todayOddDishes: dailyScore(today, "oddDishes"),
         todayRaidIncome: (f) => f.ranch?.raidIncome?.day === today ? f.ranch.raidIncome.n : 0,
         todayRaidLoss: (f) => f.ranch?.raidLoss?.day === today ? f.ranch.raidLoss.n : 0,
@@ -38,9 +43,9 @@ function rankOf(farms, currentFarm, score) {
     return rank;
 }
 /** 当前农场在每个农场榜的权威全服名次；榜外和 0 分也保留。 */
-export function buildCurrentFarmLeaderboardRows(farms, currentFarm, now) {
+export function buildCurrentFarmLeaderboardRows(farms, currentFarm, now, dailySpendByResident) {
     const title = equippedTitle(currentFarm);
-    return Object.fromEntries(Object.entries(leaderboardScores(now)).map(([key, score]) => [key, {
+    return Object.fromEntries(Object.entries(leaderboardScores(now, dailySpendByResident)).map(([key, score]) => [key, {
             name: currentFarm.name,
             code: currentFarm.id,
             value: score(currentFarm),
@@ -49,8 +54,8 @@ export function buildCurrentFarmLeaderboardRows(farms, currentFarm, now) {
             titleColor: title?.color,
         }]));
 }
-export function buildLeaderboards(farms, ugc, now) {
-    const scores = leaderboardScores(now);
+export function buildLeaderboards(farms, ugc, now, dailySpendByResident) {
+    const scores = leaderboardScores(now, dailySpendByResident);
     return {
         todayTasks: top(farms, scores.todayTasks),
         todayLogins: top(farms, scores.todayLogins),

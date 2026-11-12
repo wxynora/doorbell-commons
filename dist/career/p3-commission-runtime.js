@@ -497,24 +497,52 @@ export function syncAuthorityJobs(database, backend, now = Date.now()) {
     return now;
 }
 
+function escapeLikePattern(value) {
+    return value.replace(/[\\%_]/gu, (character) => `\\${character}`);
+}
+
 export function farmActionTouchesLockedCareerObject(database, farmId, action, params = {}) {
     if (!["run", "water", "harvest", "ripen", "use", "steal"].includes(action))
         return false;
     const prefix = `${farmId}:plot:`;
-    const lockedPlotIds = new Set(database.prepare(`
-      SELECT object_id FROM career_job_object_locks WHERE object_type = 'farm_plot'
-    `).all()
-        .map((row) => row.object_id)
-        .filter((objectId) => objectId.startsWith(prefix))
-        .map((objectId) => Number(objectId.slice(prefix.length)))
-        .filter((plotId) => Number.isSafeInteger(plotId) && plotId > 0));
-    if (lockedPlotIds.size === 0)
-        return false;
-    if (params.plotId !== undefined)
-        return lockedPlotIds.has(Number(params.plotId));
-    if (action === "ripen" && Array.isArray(params.plots))
-        return params.plots.some((plotId) => lockedPlotIds.has(Number(plotId)));
-    return true;
+    if (params.plotId !== undefined) {
+        // Single plot: point query on the full object id. Non-positive or
+        // non-numeric plot ids can never be locked (same filter the previous
+        // full-scan applied before membership check).
+        const plotId = Number(params.plotId);
+        if (!Number.isSafeInteger(plotId) || plotId <= 0)
+            return false;
+        return database.prepare(`
+          SELECT 1 FROM career_job_object_locks
+          WHERE object_type = 'farm_plot' AND object_id = ?
+        `).get(`${prefix}${plotId}`) !== undefined;
+    }
+    if (action === "ripen" && Array.isArray(params.plots)) {
+        const objectIds = params.plots
+            .map((plotId) => Number(plotId))
+            .filter((plotId) => Number.isSafeInteger(plotId) && plotId > 0)
+            .map((plotId) => `${prefix}${plotId}`);
+        if (objectIds.length === 0)
+            return false;
+        const placeholders = objectIds.map(() => "?").join(", ");
+        return database.prepare(`
+          SELECT 1 FROM career_job_object_locks
+          WHERE object_type = 'farm_plot' AND object_id IN (${placeholders})
+          LIMIT 1
+        `).get(...objectIds) !== undefined;
+    }
+    // Whole-farm actions (run, or plot-less harvest/use/steal): any locked
+    // plot of this farm blocks the action. The prefix search stays in SQL;
+    // the numeric-suffix filter matches the previous full-scan semantics.
+    const rows = database.prepare(`
+      SELECT object_id FROM career_job_object_locks
+      WHERE object_type = 'farm_plot'
+        AND object_id LIKE ? ESCAPE '\\'
+    `).all(escapeLikePattern(prefix) + "%");
+    return rows.some((row) => {
+        const plotId = Number(row.object_id.slice(prefix.length));
+        return Number.isSafeInteger(plotId) && plotId > 0;
+    });
 }
 
 const LOCKED_CAREER_OBJECT_TEXT = Object.freeze({

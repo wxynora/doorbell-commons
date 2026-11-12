@@ -27,6 +27,7 @@ import { allUgc } from "../ugc.js";
 import { currentDayIndex } from "../time.js";
 import { titleById } from "../titles.js";
 import { buildCurrentFarmLeaderboardRows, buildLeaderboards } from "../leaderboard.js";
+import { economyGoldSpentTodayByResident } from "../daily-spend.js";
 import { getMysteryMerchantWorld, playerFarms } from "../store.js";
 import { activeMysteryMerchantEvent, projectMysteryMerchant } from "../mystery-merchant.js";
 import { cropCodexActionRevision } from "./crop-codex-revision.js";
@@ -654,8 +655,10 @@ function projectNeighborhood(farm, now) {
   const farms = playerFarms();
   if (!farms.some((item) => item.id === farm.id)) farms.push(farm);
   const ugcs = allUgc();
-  const leaderboards = buildLeaderboards(farms, ugcs, now);
-  const currentFarmRows = buildCurrentFarmLeaderboardRows(farms, farm, now);
+  // 榜单与本人名次共用一次分组汇总的当日金币消费，不再逐户各查一遍。
+  const dailySpendByResident = economyGoldSpentTodayByResident(now);
+  const leaderboards = buildLeaderboards(farms, ugcs, now, dailySpendByResident);
+  const currentFarmRows = buildCurrentFarmLeaderboardRows(farms, farm, now, dailySpendByResident);
   const rankings = {};
   for (const [key, rows] of Object.entries(leaderboards)) {
     if (key === "hot" || !Array.isArray(rows)) continue;
@@ -833,6 +836,36 @@ function projectMarket(farm, now, mysteryMerchantWorld = getMysteryMerchantWorld
       farm.id,
     ),
   };
+}
+
+/**
+ * Project only the persisted field shop. The shop write edge needs exactly
+ * this slice; skipping the multi-domain catalog keeps one shop open request
+ * from paying for backpack, codex, neighborhood, market and revision work.
+ */
+export function projectHumanFarmShop(farm, now = Date.now()) {
+  if (!farm || typeof farm !== "object") throw new TypeError("Farm catalog requires a farm");
+  return {
+    data: { shop: projectShop(farm, now) },
+    server_time: new Date(now).toISOString(),
+  };
+}
+
+/**
+ * Settings actions only gate on farm identity/name and the settings slice, so
+ * compute that revision directly instead of projecting the whole catalog.
+ * Byte-identical to projectHumanFarmCatalog(farm, now).revision, whose
+ * revision hashes only { farm, settings }.
+ */
+export function projectHumanFarmSettingsRevision(farm) {
+  if (!farm || typeof farm !== "object") throw new TypeError("Farm catalog requires a farm");
+  return opaqueRevision({
+    farm: {
+      farm_doorplate: String(farm.id ?? ""),
+      farm_name: safeText(farm.name),
+    },
+    settings: projectSettings(farm),
+  });
 }
 
 /**

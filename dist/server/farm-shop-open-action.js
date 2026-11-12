@@ -2,7 +2,7 @@ import { cloneFarmForMutation } from "../farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { refreshShop } from "../engine.js";
 import { replaceFarm } from "../store.js";
-import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
+import { projectHumanFarmShop } from "./farm-catalog-structured.js";
 import {
   createMinimalHumanActionReceipt,
   replayMinimalHumanActionReceipt,
@@ -76,7 +76,7 @@ function errorResponse(code, message, status = 409, currentRevision) {
 }
 
 function currentShop(farm, now) {
-  const projected = projectHumanFarmCatalog(farm, now);
+  const projected = projectHumanFarmShop(farm, now);
   const shop = projected.data.shop;
   return {
     revision: shop.status === "available" ? shop.revision : null,
@@ -84,14 +84,17 @@ function currentShop(farm, now) {
   };
 }
 
-function responseFor(farm, now, result) {
-  const projected = projectHumanFarmCatalog(farm, now);
-  const shop = projected.data.shop;
+function responseFromShop(shop, serverTime, result) {
   return {
     data: { result, resource: shop },
     shop_revision: shop.status === "available" ? shop.revision : null,
-    server_time: projected.server_time,
+    server_time: serverTime,
   };
+}
+
+function responseFor(farm, now, result) {
+  const projected = projectHumanFarmShop(farm, now);
+  return responseFromShop(projected.data.shop, projected.server_time, result);
 }
 
 /**
@@ -148,13 +151,14 @@ export function handleHumanFarmShopOpen(farm, body, now = Date.now()) {
     const working = cloneFarmForMutation(farm);
     const beforeRefreshAt = Number(working.shop?.refreshAt);
     refreshShop(working, now);
-    const projected = projectHumanFarmCatalog(working, now);
+    const projected = projectHumanFarmShop(working, now);
     const shop = projected.data.shop;
     if (shop.status !== "available") {
       return errorResponse("shop_unavailable", "The current farm shop is unavailable");
     }
     const refreshed = Number(working.shop?.refreshAt) !== beforeRefreshAt;
-    const response = responseFor(working, now, {
+    // 同一请求内复用已生成的商店投影，不再为回执重新投影一遍。
+    const response = responseFromShop(shop, projected.server_time, {
       receipt_id: body.idempotency_key,
       refreshed,
     });

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { dispatch } from "../game.js";
 import { replaceFarm } from "../store.js";
 import { equipTitle } from "../titles.js";
-import { projectHumanFarmCatalog } from "./farm-catalog-structured.js";
+import { projectHumanFarmCatalog, projectHumanFarmSettingsRevision } from "./farm-catalog-structured.js";
 import { applyHumanFarmNickname, applyHumanFarmSocialSetting } from "./farm-settings-authority.js";
 import {
   createMinimalHumanActionReceipt,
@@ -52,12 +52,14 @@ function digest(value) {
 }
 
 /**
- * Settings actions use the same complete catalog projection as the read
- * surface. The server_time field is deliberately excluded so a retry a few
- * milliseconds later sees the same revision for the same persisted state.
+ * The settings revision only depends on the farm identity/name and the
+ * settings slice, so it is computed directly instead of projecting the whole
+ * multi-domain catalog. It stays byte-identical to the catalog revision; the
+ * server_time field is irrelevant because the revision excludes it, so a retry
+ * a few milliseconds later sees the same revision for the same state.
  */
 export function farmSettingsActionRevision(farm, now = Date.now()) {
-  return projectHumanFarmCatalog(farm, now).revision;
+  return projectHumanFarmSettingsRevision(farm);
 }
 
 function fingerprint(body) {

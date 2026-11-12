@@ -1,4 +1,4 @@
-import { projectBankFacts, bankOperationReceipt, bankEconomicError } from "../../economy/bank-receipts.js";
+import { projectBankFacts, bankOperationReceipt, bankEconomicError, bankLoanFacts, bankDepositFacts } from "../../economy/bank-receipts.js";
 import { ratePercentToPpm } from "../../economy/bank-rates.js";
 import { reporterRelayWorkAllowed } from "../../career/reporter-relay-qualification.js";
 import { playerPatrolView,playerPatrolAction,PATROL_SELECTION_INSTRUCTION } from "../../security/player-patrol-presentation.js";
@@ -719,7 +719,7 @@ function residentForPublicFarm(database, value) {
     return rows[0].resident_id;
 }
 
-function publicPlayerLoan(database, loan, residentId) {
+function publicPlayerLoan(loan, residentId, farmForResident) {
     const lenderResidentId = loan.lenderResidentId ?? loan.lender_resident_id;
     const borrowerResidentId = loan.borrowerResidentId ?? loan.borrower_resident_id;
     const isLender = lenderResidentId === residentId;
@@ -734,7 +734,7 @@ function publicPlayerLoan(database, loan, residentId) {
     return {
         ...mapRows([facts])[0],
         role: isLender ? "lender" : "borrower",
-        counterparty: publicFarmForResident(database, counterpartyResidentId),
+        counterparty: farmForResident(counterpartyResidentId),
     };
 }
 
@@ -747,32 +747,7 @@ function commandExists(database, key) {
     return database.prepare("SELECT 1 FROM economy_commands WHERE idempotency_key = ?").get(key) !== undefined;
 }
 
-function readBankFacts(database, backend, rules, residentId, now = Date.now()) {
-    const account = backend.forResident(residentId).getOwnAccount();
-    const termDeposits = mapRows(database.prepare(`
-      SELECT deposit_id, principal, term_days, total_rate_ppm, opened_day,
-             maturity_day, state, interest_paid, created_at, ended_at
-      FROM economy_term_deposits
-      WHERE resident_id = ?
-      ORDER BY created_at DESC, deposit_id
-    `).all(residentId));
-    const systemLoans = mapRows(database.prepare(`
-      SELECT loan_id, principal_original, principal_outstanding, accrued_interest,
-             daily_rate_ppm, term_days, originated_day, accrued_through_day, interest_remainder, due_day, status, created_at, repaid_at
-      FROM economy_system_loans
-      WHERE borrower_resident_id = ?
-      ORDER BY created_at DESC, loan_id
-    `).all(residentId));
-    const playerLoanRows = mapRows(database.prepare(`
-      SELECT loan_id, lender_resident_id, borrower_resident_id, principal_original,
-             principal_outstanding, accrued_interest, total_rate_ppm, term_days,
-             status, lender_confirmed_at, borrower_confirmed_at,
-             originated_day, accrued_through_day, interest_remainder, due_day, created_at, repaid_at
-      FROM economy_player_loans
-      WHERE lender_resident_id = ? OR borrower_resident_id = ?
-      ORDER BY created_at DESC, loan_id
-    `).all(residentId, residentId));
-    const playerLoans = playerLoanRows.map((loan) => publicPlayerLoan(database, loan, residentId));
+function bankExchangeMonthIssued(database, residentId, now) {
     const month = new Date(now + 8 * 60 * 60 * 1_000).toISOString().slice(0, 7);
     const residentIssued = database.prepare(`
       SELECT COALESCE(silver_issued, 0) AS silver_issued
@@ -783,80 +758,327 @@ function readBankFacts(database, backend, rules, residentId, now = Date.now()) {
       SELECT COALESCE(silver_issued, 0) AS silver_issued
       FROM economy_exchange_global_months WHERE beijing_month = ?
     `).get(month)?.silver_issued ?? 0;
-    const options = [];
-    const revision = bankRevision(database, residentId);
-    const currentOption = (action, reference = null) => bankOption(database, residentId, action, reference, revision);
-    if (account.availableGold > 0)
-        options.push(option(currentOption("demand-deposit"), ["amount"]));
-    if (account.demandGold > 0)
-        options.push(option(currentOption("demand-withdraw"), ["amount"]));
-    if (!account.highSpendRestricted && account.availableGold >= 525 && residentIssued < 1_000 && globalIssued < 10_000)
-        options.push(option(currentOption("exchange-gold-silver"), ["amount"]));
-    if (!account.highSpendRestricted && account.availableGold >= 1_000_000)
-        options.push(option(currentOption("term-open"), ["amount", "termDays", "totalRatePercent"]));
-    for (const deposit of termDeposits.filter((item) => item.state === "active"))
-        options.push(option(currentOption("term-close", deposit.depositId)));
-    const openSystemLoan = systemLoans.find((loan) => loan.status !== "repaid");
-    if (rules.minimumSystemLoanCreditDays !== null && !account.highSpendRestricted && !openSystemLoan)
-        options.push(option(currentOption("system-loan-open"), ["amount", "termDays"]));
-    if (rules.minimumSystemLoanCreditDays !== null && openSystemLoan && account.availableGold > 0)
-        options.push(option(currentOption("system-loan-repay", openSystemLoan.loanId), ["amount"]));
-    if (account.availableSilver > account.silverAgentLock)
-        options.push(option(currentOption("silver-lock-increase"), ["amount"]));
-    if (!account.highSpendRestricted && account.availableSilver > account.silverAgentLock)
-        options.push(option(currentOption("player-loan-offer"), ["to", "amount", "termDays", "totalRatePercent"]));
-    if (!account.highSpendRestricted)
-        options.push(option(currentOption("player-loan-request"), ["to", "amount", "termDays", "totalRatePercent"]));
-    for (const loan of playerLoanRows) {
-        if (loan.status === "proposed") {
-            const needsConfirmation = loan.lenderResidentId === residentId
-                ? loan.lenderConfirmedAt === null
-                : loan.borrowerConfirmedAt === null;
-            if (needsConfirmation)
-                options.push(option(currentOption("player-loan-confirm", loan.loanId)));
-            options.push(option(currentOption("player-loan-cancel", loan.loanId)));
+    return { residentIssued, globalIssued };
+}
+
+// Batched counterparty identity mapping: one residents query for all involved
+// counterparties, one farm-list pass per distinct binding reference. Falls
+// back to the single-lookup path when there is nothing to batch.
+function bankCounterpartyResolver(database, counterpartyResidentIds) {
+    if (counterpartyResidentIds.size === 0)
+        return (counterpartyResidentId) => publicFarmForResident(database, counterpartyResidentId);
+    const ids = [...counterpartyResidentIds];
+    const placeholders = ids.map(() => "?").join(", ");
+    const bindings = new Map(database.prepare(`
+      SELECT resident_id, binding_reference FROM residents WHERE resident_id IN (${placeholders})
+    `).all(...ids).map((row) => [row.resident_id, row.binding_reference]));
+    const farmsByBinding = new Map();
+    return (counterpartyResidentId) => {
+        const bindingReference = bindings.get(counterpartyResidentId);
+        if (!bindingReference)
+            return null;
+        if (!farmsByBinding.has(bindingReference)) {
+            const matches = allFarms().filter((farm) =>
+                farm?.doorbellMcpMigration?.migrationId === bindingReference);
+            farmsByBinding.set(bindingReference, matches.length === 1
+                ? { doorplate: matches[0].id, name: matches[0].name }
+                : null);
         }
-        if (loan.borrowerResidentId === residentId &&
-            ["active", "overdue", "restricted"].includes(loan.status) && account.availableSilver > 0) {
-            options.push(option(currentOption("player-loan-repay", loan.loanId), ["amount"]));
+        return farmsByBinding.get(bindingReference);
+    };
+}
+
+function playerLoanCounterparties(residentId, loans) {
+    return new Set(loans.map((loan) =>
+        loan.lenderResidentId === residentId ? loan.borrowerResidentId : loan.lenderResidentId));
+}
+
+// Lazy per-view bank fact reader. Current balance, active contracts and
+// history details are separate reads; a section view only pulls what its
+// response exposes. Active/actionable contract rows additionally carry the
+// index they would hold in the full history ordering, so option labels stay
+// byte-identical without reading entire histories.
+function bankFactsLoader(database, backend, rules, residentId, now) {
+    const cache = Object.create(null);
+    const once = (key, read) => key in cache ? cache[key] : (cache[key] = read());
+    const account = () => once("account", () => backend.forResident(residentId).getOwnAccount());
+    const exchangeMonth = () => once("exchangeMonth", () => bankExchangeMonthIssued(database, residentId, now));
+    const revision = () => once("revision", () => bankRevision(database, residentId));
+    const termDepositHistory = () => once("termDepositHistory", () => mapRows(database.prepare(`
+      SELECT deposit_id, principal, term_days, total_rate_ppm, opened_day,
+             maturity_day, state, interest_paid, created_at, ended_at
+      FROM economy_term_deposits
+      WHERE resident_id = ?
+      ORDER BY created_at DESC, deposit_id
+    `).all(residentId)));
+    const activeTermDeposits = () => {
+        if (cache.termDepositHistory)
+            return cache.termDepositHistory
+                .map((deposit, optionIndex) => ({ ...deposit, optionIndex }))
+                .filter((deposit) => deposit.state === "active");
+        return once("activeTermDeposits", () => mapRows(database.prepare(`
+          SELECT deposit_id, principal, term_days, total_rate_ppm, opened_day,
+                 maturity_day, state, interest_paid, created_at, ended_at,
+                 (SELECT COUNT(*) FROM economy_term_deposits AS other
+                  WHERE other.resident_id = economy_term_deposits.resident_id
+                    AND (other.created_at > economy_term_deposits.created_at
+                      OR (other.created_at = economy_term_deposits.created_at
+                         AND other.deposit_id < economy_term_deposits.deposit_id))) AS option_index
+          FROM economy_term_deposits
+          WHERE resident_id = ? AND state = 'active'
+          ORDER BY created_at DESC, deposit_id
+        `).all(residentId)));
+    };
+    const systemLoanHistory = () => once("systemLoanHistory", () => mapRows(database.prepare(`
+      SELECT loan_id, principal_original, principal_outstanding, accrued_interest,
+             daily_rate_ppm, term_days, originated_day, accrued_through_day, interest_remainder, due_day, status, created_at, repaid_at
+      FROM economy_system_loans
+      WHERE borrower_resident_id = ?
+      ORDER BY created_at DESC, loan_id
+    `).all(residentId)));
+    const openSystemLoans = () => {
+        if (cache.systemLoanHistory)
+            return cache.systemLoanHistory
+                .map((loan, optionIndex) => ({ ...loan, optionIndex }))
+                .filter((loan) => loan.status !== "repaid");
+        return once("openSystemLoans", () => mapRows(database.prepare(`
+          SELECT loan_id, principal_original, principal_outstanding, accrued_interest,
+                 daily_rate_ppm, term_days, originated_day, accrued_through_day, interest_remainder, due_day, status, created_at, repaid_at,
+                 (SELECT COUNT(*) FROM economy_system_loans AS other
+                  WHERE other.borrower_resident_id = economy_system_loans.borrower_resident_id
+                    AND (other.created_at > economy_system_loans.created_at
+                      OR (other.created_at = economy_system_loans.created_at
+                         AND other.loan_id < economy_system_loans.loan_id))) AS option_index
+          FROM economy_system_loans
+          WHERE borrower_resident_id = ? AND status != 'repaid'
+          ORDER BY created_at DESC, loan_id
+        `).all(residentId)));
+    };
+    const playerLoanRawHistory = () => once("playerLoanRawHistory", () => mapRows(database.prepare(`
+      SELECT loan_id, lender_resident_id, borrower_resident_id, principal_original,
+             principal_outstanding, accrued_interest, total_rate_ppm, term_days,
+             status, lender_confirmed_at, borrower_confirmed_at,
+             originated_day, accrued_through_day, interest_remainder, due_day, created_at, repaid_at
+      FROM economy_player_loans
+      WHERE lender_resident_id = ? OR borrower_resident_id = ?
+      ORDER BY created_at DESC, loan_id
+    `).all(residentId, residentId)));
+    const playerLoanHistory = () => once("playerLoanHistory", () => {
+        const rows = playerLoanRawHistory();
+        const resolver = bankCounterpartyResolver(database, playerLoanCounterparties(residentId, rows));
+        return rows.map((loan) => publicPlayerLoan(loan, residentId, resolver));
+    });
+    const actionablePlayerLoans = () => {
+        if (cache.playerLoanRawHistory)
+            return cache.playerLoanRawHistory
+                .map((loan, optionIndex) => ({ ...loan, optionIndex }))
+                .filter((loan) => ["proposed", "active", "overdue", "restricted"].includes(loan.status));
+        return once("actionablePlayerLoans", () => mapRows(database.prepare(`
+          SELECT loan_id, lender_resident_id, borrower_resident_id, principal_original,
+                 principal_outstanding, accrued_interest, total_rate_ppm, term_days,
+                 status, lender_confirmed_at, borrower_confirmed_at,
+                 originated_day, accrued_through_day, interest_remainder, due_day, created_at, repaid_at,
+                 (SELECT COUNT(*) FROM economy_player_loans AS other
+                  WHERE (other.lender_resident_id = ? OR other.borrower_resident_id = ?)
+                    AND (other.created_at > economy_player_loans.created_at
+                      OR (other.created_at = economy_player_loans.created_at
+                         AND other.loan_id < economy_player_loans.loan_id))) AS option_index
+          FROM economy_player_loans
+          WHERE (lender_resident_id = ? OR borrower_resident_id = ?)
+            AND status IN ('proposed', 'active', 'overdue', 'restricted')
+          ORDER BY created_at DESC, loan_id
+        `).all(residentId, residentId, residentId, residentId)));
+    };
+    const options = () => once("options", () => {
+        const accountFacts = account();
+        const exchange = exchangeMonth();
+        const list = [];
+        const currentOption = (action, reference = null) => bankOption(database, residentId, action, reference, revision());
+        if (accountFacts.availableGold > 0)
+            list.push(option(currentOption("demand-deposit"), ["amount"]));
+        if (accountFacts.demandGold > 0)
+            list.push(option(currentOption("demand-withdraw"), ["amount"]));
+        if (!accountFacts.highSpendRestricted && accountFacts.availableGold >= 525 &&
+            exchange.residentIssued < 1_000 && exchange.globalIssued < 10_000)
+            list.push(option(currentOption("exchange-gold-silver"), ["amount"]));
+        if (!accountFacts.highSpendRestricted && accountFacts.availableGold >= 1_000_000)
+            list.push(option(currentOption("term-open"), ["amount", "termDays", "totalRatePercent"]));
+        for (const deposit of activeTermDeposits())
+            list.push(option(currentOption("term-close", deposit.depositId)));
+        const openSystemLoan = openSystemLoans()[0];
+        if (rules.minimumSystemLoanCreditDays !== null && !accountFacts.highSpendRestricted && !openSystemLoan)
+            list.push(option(currentOption("system-loan-open"), ["amount", "termDays"]));
+        if (rules.minimumSystemLoanCreditDays !== null && openSystemLoan && accountFacts.availableGold > 0)
+            list.push(option(currentOption("system-loan-repay", openSystemLoan.loanId), ["amount"]));
+        if (accountFacts.availableSilver > accountFacts.silverAgentLock)
+            list.push(option(currentOption("silver-lock-increase"), ["amount"]));
+        if (!accountFacts.highSpendRestricted && accountFacts.availableSilver > accountFacts.silverAgentLock)
+            list.push(option(currentOption("player-loan-offer"), ["to", "amount", "termDays", "totalRatePercent"]));
+        if (!accountFacts.highSpendRestricted)
+            list.push(option(currentOption("player-loan-request"), ["to", "amount", "termDays", "totalRatePercent"]));
+        for (const loan of actionablePlayerLoans()) {
+            if (loan.status === "proposed") {
+                const needsConfirmation = loan.lenderResidentId === residentId
+                    ? loan.lenderConfirmedAt === null
+                    : loan.borrowerConfirmedAt === null;
+                if (needsConfirmation)
+                    list.push(option(currentOption("player-loan-confirm", loan.loanId)));
+                list.push(option(currentOption("player-loan-cancel", loan.loanId)));
+            }
+            if (loan.borrowerResidentId === residentId && accountFacts.availableSilver > 0) {
+                list.push(option(currentOption("player-loan-repay", loan.loanId), ["amount"]));
+            }
         }
-    }
-    return projectBankFacts({
+        return list;
+    });
+    return {
         account,
-        deposits: { demandGold: account.demandGold, termDeposits },
+        exchangeMonth,
+        revision,
+        termDepositHistory,
+        activeTermDeposits,
+        systemLoanHistory,
+        openSystemLoans,
+        playerLoanRawHistory,
+        playerLoanHistory,
+        actionablePlayerLoans,
+        options,
+    };
+}
+
+// Sparse history lists: holes stand for history rows a section view does not
+// expose; defined slots sit at their exact full-history index so
+// projectBankFacts labels reference options identically.
+function bankSparseTermDeposits(loader) {
+    const termDeposits = [];
+    for (const deposit of loader.activeTermDeposits()) {
+        const { optionIndex, ...value } = deposit;
+        termDeposits[optionIndex] = value;
+    }
+    return termDeposits;
+}
+
+function bankSparseSystemLoans(loader) {
+    const systemLoans = [];
+    for (const loan of loader.openSystemLoans()) {
+        const { optionIndex, ...value } = loan;
+        systemLoans[optionIndex] = value;
+    }
+    return systemLoans;
+}
+
+function bankSparsePlayerLoans(database, loader, residentId) {
+    const playerLoans = [];
+    const rows = loader.actionablePlayerLoans();
+    const resolver = bankCounterpartyResolver(database, playerLoanCounterparties(residentId, rows));
+    for (const loan of rows) {
+        const { optionIndex, ...value } = loan;
+        playerLoans[optionIndex] = publicPlayerLoan(value, residentId, resolver);
+    }
+    return playerLoans;
+}
+
+function bankFacts(database, backend, rules, residentId, loader, now, contracts) {
+    const accountFacts = loader.account();
+    const exchange = loader.exchangeMonth();
+    return projectBankFacts({
+        account: accountFacts,
+        deposits: { demandGold: accountFacts.demandGold, termDeposits: contracts.termDeposits },
         exchange: {
             goldPerSilver: 500,
-            residentIssuedThisMonth: residentIssued,
-            residentRemainingThisMonth: Math.max(0, 1_000 - residentIssued),
-            globalIssuedThisMonth: globalIssued,
-            globalRemainingThisMonth: Math.max(0, 10_000 - globalIssued),
+            residentIssuedThisMonth: exchange.residentIssued,
+            residentRemainingThisMonth: Math.max(0, 1_000 - exchange.residentIssued),
+            globalIssuedThisMonth: exchange.globalIssued,
+            globalRemainingThisMonth: Math.max(0, 10_000 - exchange.globalIssued),
         },
-        loans: { playerLoans, systemLoans },
+        loans: { playerLoans: contracts.playerLoans, systemLoans: contracts.systemLoans },
         credit: {
-            creditPoints: account.creditPoints,
-            highSpendRestricted: account.highSpendRestricted,
+            creditPoints: accountFacts.creditPoints,
+            highSpendRestricted: accountFacts.highSpendRestricted,
             systemLoanCreditRuleConfigured: rules.minimumSystemLoanCreditDays !== null,
         },
-        options,
+        options: loader.options(),
     }, now);
 }
 
-function bankReference(facts, reference) {
-    const item = [
-        ...facts.deposits.termDeposits.map((value) => ({ type: "term_deposit", value })),
-        ...facts.loans.systemLoans.map((value) => ({ type: "system_loan", value })),
-        ...facts.loans.playerLoans.map((value) => ({ type: "player_loan", value })),
-    ].find(({ value }) => value.depositId === reference || value.loanId === reference);
-    if (!item)
-        throw new LingyeBusinessError("REFERENCE_NOT_FOUND", "没有找到这条银行记录。");
-    return item;
+function readBankFacts(database, backend, rules, residentId, now = Date.now()) {
+    const loader = bankFactsLoader(database, backend, rules, residentId, now);
+    const contracts = {
+        termDeposits: loader.termDepositHistory(),
+        systemLoans: loader.systemLoanHistory(),
+        playerLoans: loader.playerLoanHistory(),
+    };
+    return bankFacts(database, backend, rules, residentId, loader, now, contracts);
+}
+
+// Single bank record by ID, preserving the previous search precedence:
+// term deposits, system loans, player loans.
+function bankReferenceById(database, loader, residentId, reference, now) {
+    const deposit = mapRows(database.prepare(`
+      SELECT deposit_id, principal, term_days, total_rate_ppm, opened_day,
+             maturity_day, state, interest_paid, created_at, ended_at
+      FROM economy_term_deposits
+      WHERE resident_id = ? AND deposit_id = ?
+    `).all(residentId, reference))[0];
+    if (deposit)
+        return { type: "term_deposit", value: bankDepositFacts(deposit) };
+    const systemLoan = mapRows(database.prepare(`
+      SELECT loan_id, principal_original, principal_outstanding, accrued_interest,
+             daily_rate_ppm, term_days, originated_day, accrued_through_day, interest_remainder, due_day, status, created_at, repaid_at
+      FROM economy_system_loans
+      WHERE borrower_resident_id = ? AND loan_id = ?
+    `).all(residentId, reference))[0];
+    if (systemLoan)
+        return { type: "system_loan", value: bankLoanFacts(systemLoan, "system", now) };
+    const playerLoan = mapRows(database.prepare(`
+      SELECT loan_id, lender_resident_id, borrower_resident_id, principal_original,
+             principal_outstanding, accrued_interest, total_rate_ppm, term_days,
+             status, lender_confirmed_at, borrower_confirmed_at,
+             originated_day, accrued_through_day, interest_remainder, due_day, created_at, repaid_at
+      FROM economy_player_loans
+      WHERE (lender_resident_id = ? OR borrower_resident_id = ?) AND loan_id = ?
+    `).all(residentId, residentId, reference))[0];
+    if (playerLoan)
+        return {
+            type: "player_loan",
+            value: bankLoanFacts(publicPlayerLoan(playerLoan, residentId,
+                (counterpartyResidentId) => publicFarmForResident(database, counterpartyResidentId)), "player", now),
+        };
+    throw new LingyeBusinessError("REFERENCE_NOT_FOUND", "没有找到这条银行记录。");
 }
 
 function bankView(database, backend, rules, residentId, args, now = Date.now()) {
-    const facts = readBankFacts(database, backend, rules, residentId, now);
-    if (args.reference)
-        return success("已读取银行记录。", { reference: bankReference(facts, args.reference), rates: facts.rates, asOfDate: facts.asOfDate, options: facts.options });
+    const loader = bankFactsLoader(database, backend, rules, residentId, now);
+    if (args.reference) {
+        const reference = bankReferenceById(database, loader, residentId, args.reference, now);
+        const facts = bankFacts(database, backend, rules, residentId, loader, now, {
+            termDeposits: bankSparseTermDeposits(loader),
+            systemLoans: bankSparseSystemLoans(loader),
+            playerLoans: bankSparsePlayerLoans(database, loader, residentId),
+        });
+        return success("已读取银行记录。", { reference, rates: facts.rates, asOfDate: facts.asOfDate, options: facts.options });
+    }
     const section = args.section ?? null;
+    const contracts = section === null
+        ? {
+            termDeposits: loader.termDepositHistory(),
+            systemLoans: loader.systemLoanHistory(),
+            playerLoans: loader.playerLoanHistory(),
+        }
+        : {
+            // Own-section history is read in full; the other two stay sparse
+            // because only their option labels need contract rows.
+            termDeposits: section === "deposits"
+                ? loader.termDepositHistory()
+                : bankSparseTermDeposits(loader),
+            systemLoans: section === "loans"
+                ? loader.systemLoanHistory()
+                : bankSparseSystemLoans(loader),
+            playerLoans: section === "loans"
+                ? loader.playerLoanHistory()
+                : bankSparsePlayerLoans(database, loader, residentId),
+        };
+    const facts = bankFacts(database, backend, rules, residentId, loader, now, contracts);
     return success("已读取银行当前事实。", section === null
         ? facts
         : { section, value: facts[section], rates: facts.rates, asOfDate: facts.asOfDate, options: facts.options });
@@ -926,11 +1148,104 @@ function securityRelease(database, backend, residentId, args, now) {
     });
 }
 
-function requireCurrentBankOption(database, backend, rules, residentId, optionValue, replayed, now) {
-    if (!replayed &&
-        !readBankFacts(database, backend, rules, residentId, now).options.some((entry) => entry.option === optionValue)) {
-        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个银行 option 已经不是当前状态。");
+function bankOpenSystemLoanExists(database, residentId) {
+    return database.prepare(`
+      SELECT 1 FROM economy_system_loans
+      WHERE borrower_resident_id = ? AND status != 'repaid' LIMIT 1
+    `).get(residentId) !== undefined;
+}
+
+// Direct validity check for a single bank option. A revision match means no
+// economy journal touched this resident since the option was issued, so the
+// per-action conditions below are exactly the conditions that generated the
+// option list. system-loan-repay additionally requires the referenced loan to
+// still be the first open one, mirroring the option generation source.
+function bankOptionIsValid(database, backend, rules, residentId, parsed, now) {
+    if (parsed.revision !== bankRevision(database, residentId))
+        return false;
+    const account = backend.forResident(residentId).getOwnAccount();
+    switch (parsed.action) {
+        case "demand-deposit":
+            return account.availableGold > 0;
+        case "demand-withdraw":
+            return account.demandGold > 0;
+        case "exchange-gold-silver": {
+            if (account.highSpendRestricted || account.availableGold < 525)
+                return false;
+            const exchange = bankExchangeMonthIssued(database, residentId, now);
+            return exchange.residentIssued < 1_000 && exchange.globalIssued < 10_000;
+        }
+        case "term-open":
+            return !account.highSpendRestricted && account.availableGold >= 1_000_000;
+        case "term-close":
+            return parsed.reference !== null && database.prepare(`
+              SELECT 1 FROM economy_term_deposits
+              WHERE resident_id = ? AND deposit_id = ? AND state = 'active'
+            `).get(residentId, parsed.reference) !== undefined;
+        case "system-loan-open":
+            return rules.minimumSystemLoanCreditDays !== null &&
+                !account.highSpendRestricted &&
+                !bankOpenSystemLoanExists(database, residentId);
+        case "system-loan-repay":
+            if (rules.minimumSystemLoanCreditDays === null || parsed.reference === null ||
+                account.availableGold <= 0)
+                return false;
+            return database.prepare(`
+              SELECT 1 FROM economy_system_loans
+              WHERE borrower_resident_id = ? AND loan_id = ? AND status != 'repaid'
+                AND NOT EXISTS (
+                  SELECT 1 FROM economy_system_loans AS other
+                  WHERE other.borrower_resident_id = economy_system_loans.borrower_resident_id
+                    AND other.status != 'repaid'
+                    AND (other.created_at > economy_system_loans.created_at
+                      OR (other.created_at = economy_system_loans.created_at
+                         AND other.loan_id < economy_system_loans.loan_id))
+                )
+            `).get(residentId, parsed.reference) !== undefined;
+        case "silver-lock-increase":
+            return account.availableSilver > account.silverAgentLock;
+        case "player-loan-offer":
+            return !account.highSpendRestricted &&
+                account.availableSilver > account.silverAgentLock;
+        case "player-loan-request":
+            return !account.highSpendRestricted;
+        case "player-loan-confirm":
+        case "player-loan-cancel": {
+            if (parsed.reference === null)
+                return false;
+            const loan = database.prepare(`
+              SELECT status, lender_resident_id, lender_confirmed_at, borrower_confirmed_at
+              FROM economy_player_loans
+              WHERE loan_id = ? AND (lender_resident_id = ? OR borrower_resident_id = ?)
+            `).get(parsed.reference, residentId, residentId);
+            if (!loan || loan.status !== "proposed")
+                return false;
+            if (parsed.action === "cancel")
+                return true;
+            return loan.lender_resident_id === residentId
+                ? loan.lender_confirmed_at === null
+                : loan.borrower_confirmed_at === null;
+        }
+        case "player-loan-repay": {
+            if (parsed.reference === null || account.availableSilver <= 0)
+                return false;
+            return database.prepare(`
+              SELECT 1 FROM economy_player_loans
+              WHERE loan_id = ? AND borrower_resident_id = ?
+                AND status IN ('active', 'overdue', 'restricted')
+            `).get(parsed.reference, residentId) !== undefined;
+        }
+        default:
+            return false;
     }
+}
+
+function requireCurrentBankOption(database, backend, rules, residentId, optionValue, replayed, now) {
+    if (replayed)
+        return;
+    const parsed = parseBankOption(optionValue);
+    if (!parsed || !bankOptionIsValid(database, backend, rules, residentId, parsed, now))
+        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个银行 option 已经不是当前状态。");
 }
 
 function bankChoose(database, backend, rules, residentId, inputArgs, now = Date.now()) {
@@ -1049,7 +1364,9 @@ function bankChoose(database, backend, rules, residentId, inputArgs, now = Date.
         throw error;
     }
     const publicResult = parsed.action.startsWith("player-loan-")
-        ? publicPlayerLoan(database, result, residentId) : result;
+        ? publicPlayerLoan(result, residentId,
+            (counterpartyResidentId) => publicFarmForResident(database, counterpartyResidentId))
+        : result;
     const current = readBankFacts(database, backend, rules, residentId, now);
     return success("银行业务已办理。", {
         result: publicResult,
@@ -1185,7 +1502,19 @@ function constableInterviewFacts(database, backend, residentId, optionRevision) 
     return { interviews, publicNotices, options };
 }
 
-function readSchoolFacts(database, backend, residentId, now, optionRevision = schoolRevision(database, residentId)) {
+// Detail flags let view paths skip history reads that their response shape
+// never exposes. Receipt paths (go.school.choose) keep the full detail so the
+// stored `current` snapshot keeps its exact original shape.
+const SCHOOL_FULL_DETAIL = Object.freeze({ duties: true, employmentDetail: true, certificateTitles: true });
+const SCHOOL_VIEW_EMPLOYMENT_DETAIL = Object.freeze({ duties: false, employmentDetail: true, certificateTitles: false });
+const SCHOOL_VIEW_CERTIFICATE_DETAIL = Object.freeze({ duties: false, employmentDetail: false, certificateTitles: true });
+const SCHOOL_VIEW_CERTIFICATE_DETAIL_WITH_EMPLOYMENT = Object.freeze({ duties: false, employmentDetail: true, certificateTitles: true });
+const SCHOOL_VIEW_LEAN_DETAIL = Object.freeze({ duties: false, employmentDetail: false, certificateTitles: false });
+// Course records are addressed as `<career>:<level>:<courseIndex>` everywhere:
+// reference lookups and the view-path delivery decision share one pattern.
+const SCHOOL_COURSE_REFERENCE = /^(chef|agronomist|veterinarian|reporter|constable):([1-4]):([1-3])$/u;
+
+function readSchoolFacts(database, backend, residentId, now, optionRevision = schoolRevision(database, residentId), detail = SCHOOL_FULL_DETAIL) {
     backend.trustedSystemCommands.advanceConstableInterviews(now);
     backend.trustedSystemCommands.expireDueExamAttempts(residentId);
     const tracks = mapRows(database.prepare(`
@@ -1225,46 +1554,65 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
         ...certificate,
         canWork: certificate.status === "active" &&
             (certificate.effectiveAt === null || certificate.effectiveAt <= now),
-        title: careerTitle(database, residentId, certificate.career, certificate.qualificationLevel, now, certificate.sourceAttemptId),
+        ...(detail.certificateTitles
+            ? { title: careerTitle(database, residentId, certificate.career, certificate.qualificationLevel, now, certificate.sourceAttemptId) }
+            : {}),
     }));
-    const employment = mapRows(database.prepare(`
-      SELECT employment_id, career, institution, seat_number, employment_class, status,
-             availability, hired_at, ended_at
-      FROM career_employments WHERE resident_id = ?
-      ORDER BY hired_at DESC, employment_id
-    `).all(residentId)).map((record) => {
-        const activeLevel = Math.max(0, ...certificates
-            .filter((certificate) => certificate.career === record.career &&
-                certificate.canWork)
-            .map((certificate) => certificate.qualificationLevel));
-        return {
-            ...record,
-            seatNumber: record.employmentClass === "staff" ? record.seatNumber : null,
-            title: careerTitle(database, residentId, record.career, activeLevel, now),
-        };
-    });
-    const duties = mapRows(database.prepare(`
-      SELECT duty_id, employment_id, career, institution, duty_date,
-             qualification_level, base_wage_gold, status, performance_units,
-             performance_gold, performance_rate_bps, generated_at, settled_at
-      FROM career_duty_days WHERE resident_id = ?
-      ORDER BY duty_date DESC, duty_id
-    `).all(residentId));
-    const institutionStaffing = ["reporter", "veterinarian", "constable"].map((career) => {
-        const institution = CAREER_INSTITUTION[career];
-        const counts = database.prepare(`SELECT
-            SUM(CASE WHEN employment_class = 'staff' THEN 1 ELSE 0 END) AS staff_count,
-            SUM(CASE WHEN employment_class = 'external' THEN 1 ELSE 0 END) AS external_count
-          FROM career_employments
-          WHERE institution = ? AND status = 'active'`).get(institution);
-        return {
-            career,
-            institution,
-            staffCapacity: 2,
-            staffCount: counts.staff_count ?? 0,
-            externalCount: counts.external_count ?? 0,
-        };
-    });
+    let employment;
+    let institutionStaffing = null;
+    let paySummary = null;
+    if (detail.employmentDetail) {
+        employment = mapRows(database.prepare(`
+          SELECT employment_id, career, institution, seat_number, employment_class, status,
+                 availability, hired_at, ended_at
+          FROM career_employments WHERE resident_id = ?
+          ORDER BY hired_at DESC, employment_id
+        `).all(residentId)).map((record) => {
+            const activeLevel = Math.max(0, ...certificates
+                .filter((certificate) => certificate.career === record.career &&
+                    certificate.canWork)
+                .map((certificate) => certificate.qualificationLevel));
+            return {
+                ...record,
+                seatNumber: record.employmentClass === "staff" ? record.seatNumber : null,
+                title: careerTitle(database, residentId, record.career, activeLevel, now),
+            };
+        });
+        institutionStaffing = ["reporter", "veterinarian", "constable"].map((career) => {
+            const institution = CAREER_INSTITUTION[career];
+            const counts = database.prepare(`SELECT
+                SUM(CASE WHEN employment_class = 'staff' THEN 1 ELSE 0 END) AS staff_count,
+                SUM(CASE WHEN employment_class = 'external' THEN 1 ELSE 0 END) AS external_count
+              FROM career_employments
+              WHERE institution = ? AND status = 'active'`).get(institution);
+            return {
+                career,
+                institution,
+                staffCapacity: 2,
+                staffCount: counts.staff_count ?? 0,
+                externalCount: counts.external_count ?? 0,
+            };
+        });
+        paySummary = readCareerPaySummary(database, residentId);
+    }
+    else {
+        // Options only need the active employment record (id + availability).
+        employment = mapRows(database.prepare(`
+          SELECT employment_id, career, institution, seat_number, employment_class, status,
+                 availability, hired_at, ended_at
+          FROM career_employments WHERE resident_id = ? AND status = 'active'
+          ORDER BY hired_at DESC, employment_id
+        `).all(residentId));
+    }
+    const duties = detail.duties
+        ? mapRows(database.prepare(`
+          SELECT duty_id, employment_id, career, institution, duty_date,
+                 qualification_level, base_wage_gold, status, performance_units,
+                 performance_gold, performance_rate_bps, generated_at, settled_at
+          FROM career_duty_days WHERE resident_id = ?
+          ORDER BY duty_date DESC, duty_id
+        `).all(residentId))
+        : [];
     const constable = constableInterviewFacts(database, backend, residentId, optionRevision);
     const options = [...constable.options];
     const advancement = [];
@@ -1376,7 +1724,12 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
             startHour: EXAM_SESSION_START_HOUR,
             durationMinutes: EXAM_SESSION_DURATION_MS / (60 * 1_000),
         },
-        employment: { institutions: institutionStaffing, records: employment, duties, paySummary: readCareerPaySummary(database, residentId) },
+        employment: {
+            institutions: institutionStaffing,
+            records: employment,
+            ...(detail.duties ? { duties } : {}),
+            ...(detail.employmentDetail ? { paySummary } : {}),
+        },
         interviews: constable.interviews,
         publicNotices: constable.publicNotices,
         ...(certificates.some((certificate) => certificate.status === "active" && !certificate.canWork)
@@ -1393,11 +1746,17 @@ function readSchoolFacts(database, backend, residentId, now, optionRevision = sc
     };
 }
 
-function resumableSchoolCourses(database, backend, residentId, now, facts, optionRevision = schoolRevision(database, residentId)) {
-    const incomplete = facts.courses.filter((course) => course.completedAt === null);
-    if (incomplete.length === 0)
-        return { current: facts, currentCourses: [] };
-    const currentCourses = incomplete.map((course) => ({
+// Receipt projection must reflect the post-delivery state: delivering course
+// content writes content_delivery_id into career_courses, so the delivery is
+// completed before the receipt's school facts are read. The rows returned here
+// are the same objects listed as the receipt's currentCourses.
+function deliverResumableCourses(database, backend, residentId) {
+    return mapRows(database.prepare(`
+      SELECT career, qualification_level, course_index, content_read_at
+      FROM career_courses
+      WHERE resident_id = ? AND completed_at IS NULL
+      ORDER BY career, qualification_level, course_index
+    `).all(residentId)).map((course) => ({
         career: course.career,
         qualificationLevel: course.qualificationLevel,
         courseIndex: course.courseIndex,
@@ -1409,94 +1768,188 @@ function resumableSchoolCourses(database, backend, residentId, now, facts, optio
             courseIndex: course.courseIndex,
         }),
     }));
+}
+
+// Reference lookups must never write on failure: locate the enrolled course
+// row for a course-shaped reference first and deliver only that course's
+// lesson text. A missing row (REFERENCE_NOT_FOUND) or a non-course-shaped
+// reference performs no delivery write. getCourseContent keeps the delivery
+// idempotent, so repeat lookups add no further writes.
+function deliverReferenceCourse(database, backend, residentId, reference) {
+    const courseMatch = SCHOOL_COURSE_REFERENCE.exec(reference);
+    if (!courseMatch)
+        return;
+    const course = mapRows(database.prepare(`
+      SELECT career, qualification_level, course_index, enrolled_at,
+             content_read_at, content_delivery_id, content_delivered_at,
+             completed_at, best_correct_answers
+      FROM career_courses
+      WHERE resident_id = ? AND career = ? AND qualification_level = ? AND course_index = ?
+    `).all(residentId, courseMatch[1], Number(courseMatch[2]), Number(courseMatch[3])))[0];
+    if (!course)
+        return;
+    const content = backend.trustedQueries.getCourseContent({
+        residentId,
+        career: course.career,
+        level: course.qualificationLevel,
+        courseIndex: course.courseIndex,
+    });
     return {
-        current: readSchoolFacts(database, backend, residentId, now, optionRevision),
-        currentCourses,
+        type: "course",
+        value: {
+            ...course,
+            contentDeliveryId: content.contentDeliveryId,
+            contentDeliveredAt: content.deliveredAt,
+        },
+        content,
     };
 }
 
-function schoolReference(facts, backend, residentId, reference) {
-    const candidates = [
-        ...facts.courses.map((value) => ({ type: "course", value })),
-        ...facts.exams.map((value) => ({ type: "exam", value })),
-        ...facts.certificates.map((value) => ({ type: "certificate", value })),
-        ...facts.employment.records.map((value) => ({ type: "employment", value })),
-        ...facts.employment.duties.map((value) => ({ type: "duty_day", value })),
-        ...facts.interviews.map((value) => ({ type: "interview", value })),
-        ...facts.publicNotices.map((value) => ({ type: "public_notice", value })),
-    ];
-    const item = candidates.find(({ value }) => [
-        value.attemptId,
-        value.employmentId,
-        value.dutyId,
-        value.sourceAttemptId,
-        value.interviewId,
-        value.noticeId,
-        value.career && value.qualificationLevel
-            ? `${value.career}:${value.qualificationLevel}:${value.courseIndex ?? "certificate"}`
-            : null,
-    ].includes(reference));
-    if (!item)
-        throw new LingyeBusinessError("REFERENCE_NOT_FOUND", "没有找到这条职业学校记录。");
-    if (item.type === "course") {
+// Reference lookup goes straight to the owning table by ID instead of reading
+// every school history list. Match precedence mirrors the previous ordered
+// candidate search: course, exam, certificate, employment, duty, interview,
+// public notice.
+function schoolCertificateReference(database, residentId, certificate, now) {
+    return {
+        type: "certificate",
+        value: {
+            ...certificate,
+            canWork: certificate.status === "active" &&
+                (certificate.effectiveAt === null || certificate.effectiveAt <= now),
+            title: careerTitle(database, residentId, certificate.career, certificate.qualificationLevel, now, certificate.sourceAttemptId),
+        },
+    };
+}
+
+function schoolReference(database, backend, residentId, reference, core, now) {
+    const exam = mapRows(database.prepare(`
+      SELECT attempt.attempt_id, attempt.career, attempt.qualification_level,
+             attempt.scheduled_at, attempt.registration_status, attempt.correct_answers,
+             attempt.registered_at, attempt.started_at, attempt.ended_at,
+             attempt.missed_session_at,
+             reservation.reservation_id
+      FROM career_exam_attempts AS attempt
+      JOIN career_tracks AS track
+        ON track.resident_id = attempt.resident_id AND track.career = attempt.career
+       AND track.track_order IS NOT NULL AND track.generation = attempt.learning_generation
+      LEFT JOIN economy_system_gold_reservations AS reservation
+        ON reservation.reserve_journal_id = attempt.reservation_receipt_id
+      WHERE attempt.resident_id = ? AND attempt.attempt_id = ?
+    `).all(residentId, reference))[0];
+    if (exam) {
+        const value = exam.missedSessionAt === null
+            ? exam
+            : { ...exam, registrationStatus: "expired" };
         return {
-            ...item,
-            content: backend.trustedQueries.getCourseContent({
-                residentId,
-                career: item.value.career,
-                level: item.value.qualificationLevel,
-                courseIndex: item.value.courseIndex,
-            }),
+            type: "exam",
+            value,
+            ...(value.registrationStatus === "active"
+                ? { paper: backend.trustedQueries.getWrittenExamPaper(value.attemptId) }
+                : {}),
         };
     }
-    if (item.type === "exam" && item.value.registrationStatus === "active") {
+    const certificateByAttempt = mapRows(database.prepare(`
+      SELECT career, qualification_level, status, source_attempt_id, issued_at, effective_at
+      FROM career_certificates
+      WHERE resident_id = ? AND source_attempt_id = ?
+    `).all(residentId, reference))[0];
+    if (certificateByAttempt)
+        return schoolCertificateReference(database, residentId, certificateByAttempt, now);
+    const certificateComposite = /^(chef|agronomist|veterinarian|reporter|constable):([1-4]):certificate$/u.exec(reference);
+    if (certificateComposite) {
+        const certificate = mapRows(database.prepare(`
+          SELECT career, qualification_level, status, source_attempt_id, issued_at, effective_at
+          FROM career_certificates
+          WHERE resident_id = ? AND career = ? AND qualification_level = ?
+          ORDER BY career, qualification_level
+        `).all(residentId, certificateComposite[1], Number(certificateComposite[2])))[0];
+        if (certificate)
+            return schoolCertificateReference(database, residentId, certificate, now);
+    }
+    const employment = mapRows(database.prepare(`
+      SELECT employment_id, career, institution, seat_number, employment_class, status,
+             availability, hired_at, ended_at
+      FROM career_employments
+      WHERE resident_id = ? AND employment_id = ?
+    `).all(residentId, reference))[0];
+    if (employment) {
+        const activeLevel = Math.max(0, ...core.certificates
+            .filter((certificate) => certificate.career === employment.career && certificate.canWork)
+            .map((certificate) => certificate.qualificationLevel));
         return {
-            ...item,
-            paper: backend.trustedQueries.getWrittenExamPaper(item.value.attemptId),
+            type: "employment",
+            value: {
+                ...employment,
+                seatNumber: employment.employmentClass === "staff" ? employment.seatNumber : null,
+                title: careerTitle(database, residentId, employment.career, activeLevel, now),
+            },
         };
     }
-    return item;
+    const duty = mapRows(database.prepare(`
+      SELECT duty_id, employment_id, career, institution, duty_date,
+             qualification_level, base_wage_gold, status, performance_units,
+             performance_gold, performance_rate_bps, generated_at, settled_at
+      FROM career_duty_days
+      WHERE resident_id = ? AND duty_id = ?
+    `).all(residentId, reference))[0];
+    if (duty)
+        return { type: "duty_day", value: duty };
+    const interview = core.interviews.find((value) => value.interviewId === reference);
+    if (interview)
+        return { type: "interview", value: interview };
+    const publicNotice = core.publicNotices.find((value) => value.noticeId === reference);
+    if (publicNotice)
+        return { type: "public_notice", value: publicNotice };
+    throw new LingyeBusinessError("REFERENCE_NOT_FOUND", "没有找到这条职业学校记录。");
 }
 
 function schoolView(database, backend, residentId, now, args) {
-    let facts = readSchoolFacts(database, backend, residentId, now);
     if (args.reference) {
-        const reference = schoolReference(facts, backend, residentId, args.reference);
-        const refreshed = readSchoolFacts(database, backend, residentId, now);
+        const deliveredCourse = deliverReferenceCourse(database, backend, residentId, args.reference);
+        const optionRevision = schoolRevision(database, residentId);
+        const core = readSchoolFacts(database, backend, residentId, now, optionRevision, SCHOOL_VIEW_LEAN_DETAIL);
+        const reference = deliveredCourse ?? schoolReference(database, backend, residentId, args.reference, core, now);
         return success("已读取职业学校记录。", {
             reference,
-            options: refreshed.options,
-            examSchedule: refreshed.examSchedule,
-            ...(refreshed.workNotice ? { workNotice: refreshed.workNotice } : {}),
+            options: core.options,
+            examSchedule: core.examSchedule,
+            ...(core.workNotice ? { workNotice: core.workNotice } : {}),
         });
     }
     const section = args.section ?? null;
-    let currentCourses = [];
-    if (section === null || section === "courses") {
-        const resumable = resumableSchoolCourses(database, backend, residentId, now, facts);
-        facts = resumable.current;
-        currentCourses = resumable.currentCourses;
-    }
+    // Build options after delivering the courses this view displays.
+    const currentCourses = section === null || section === "courses"
+        ? deliverResumableCourses(database, backend, residentId)
+        : [];
+    const optionRevision = schoolRevision(database, residentId);
+    const detail = section === null
+        ? SCHOOL_VIEW_CERTIFICATE_DETAIL_WITH_EMPLOYMENT
+        : section === "employment"
+            ? SCHOOL_VIEW_EMPLOYMENT_DETAIL
+            : section === "certificates"
+                ? SCHOOL_VIEW_CERTIFICATE_DETAIL
+                : SCHOOL_VIEW_LEAN_DETAIL;
+    const facts = readSchoolFacts(database, backend, residentId, now, optionRevision, detail);
     const { duties: _duties, ...employmentSummary } = facts.employment;
-    facts = { ...facts, employment: employmentSummary };
+    const leanFacts = { ...facts, employment: employmentSummary };
     const value = section === "courses"
         ? {
-            catalog: selectedCourseCatalog(backend, residentId, facts.careers.map((track) => track.career)),
-            progress: facts.courses,
+            catalog: selectedCourseCatalog(backend, residentId, leanFacts.careers.map((track) => track.career)),
+            progress: leanFacts.courses,
         }
         : section === null
-            ? facts
-            : facts[section];
+            ? leanFacts
+            : leanFacts[section];
     return success("已读取职业学校当前事实。", section === null
-        ? { ...facts, currentCourses }
+        ? { ...leanFacts, currentCourses }
         : {
             section,
             value,
-            options: facts.options,
-            contentSources: facts.contentSources,
+            options: leanFacts.options,
+            contentSources: leanFacts.contentSources,
             currentCourses,
-            examSchedule: facts.examSchedule,
-            ...(facts.workNotice ? { workNotice: facts.workNotice } : {}),
+            examSchedule: leanFacts.examSchedule,
+            ...(leanFacts.workNotice ? { workNotice: leanFacts.workNotice } : {}),
         });
 }
 
@@ -1737,10 +2190,16 @@ function schoolChoose(database, backend, residentId, now, args) {
         else {
             throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", "这个职业学校 option 当前不可用。");
         }
+        // Deliver pending course content before projecting the receipt's
+        // facts, so course records, delivery ids and read-confirmation
+        // options come from the post-delivery state, never a stale snapshot.
+        const resumableCourses = courseReadMatch || courseMatch
+            ? deliverResumableCourses(database, backend, residentId)
+            : [];
         const nextRevision = schoolRevision(database, residentId) + 1;
         const nextFacts = readSchoolFacts(database, backend, residentId, now, nextRevision);
         const resumable = courseReadMatch || courseMatch
-            ? resumableSchoolCourses(database, backend, residentId, now, nextFacts, nextRevision)
+            ? { current: nextFacts, currentCourses: resumableCourses }
             : { current: nextFacts, currentCourses: [] };
         let responseText = "职业学校业务已办理。";
         if (resignationMatch) {

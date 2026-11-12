@@ -377,9 +377,28 @@ const LOUNGE_SCRATCHCARD_SCHEMA_SQL = `
   ) WITHOUT ROWID;
 `;
 
+const ECONOMY_FINANCIAL_RECEIPTS_SPEND_INDEX_SQL = `
+  CREATE INDEX IF NOT EXISTS economy_financial_receipts_resident_kind_created
+    ON economy_financial_receipts (resident_id, kind, created_at);
+`;
+
+const ECONOMY_FINANCIAL_RECEIPTS_GROUPED_SPEND_INDEX_SQL = `
+  CREATE INDEX IF NOT EXISTS economy_financial_receipts_kind_created_resident
+    ON economy_financial_receipts (kind, created_at, resident_id);
+`;
+
 export function installEconomySchema(database) {
     runImmediate(database, () => {
         installVersionedEconomySchema(database);
+        // 今日消费按 居民/凭证类型/日期 过滤；幂等补索引，让已存在的库在下次
+        // 打开时同样走 SEARCH 而不是随历史凭证增长的 SCAN。
+        database.exec(ECONOMY_FINANCIAL_RECEIPTS_SPEND_INDEX_SQL);
+        // 分组汇总（economyGoldSpentTodayByResident）按 kind+日期 过滤后 GROUP BY
+        // resident_id：没有 (kind, created_at, resident_id) 索引时查询规划器在无
+        // ANALYZE 统计的库上会退回 SCAN receipt（随历史凭证全表扫描）。逐户查询
+        // 与 resident_id+kind 过滤的查询仍由上一条索引服务，两条索引经
+        // EXPLAIN QUERY PLAN 实测各查询均选中最优计划，故并存。
+        database.exec(ECONOMY_FINANCIAL_RECEIPTS_GROUPED_SPEND_INDEX_SQL);
         database.exec(LOUNGE_SCRATCHCARD_SCHEMA_SQL);
     });
 }
