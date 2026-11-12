@@ -1,6 +1,6 @@
 import { MAX_BODY_BYTES } from "../../config.js";
 import { beijingDate, beijingTimestamp } from "../../career/persistence.js";
-import { beijingDayStart, natureSnapshot } from "../../nature.js";
+import { beijingDayIndex, beijingDayStart, FORECAST_FUTURE_DAYS, normalizeNatureWorld, plannedWeatherForDay } from "../../nature.js";
 import { PublicSyncError } from "../../public-sync.js";
 import { getNatureWorld } from "../../store.js";
 import { jsonOut, readJsonBody } from "../http.js";
@@ -13,12 +13,15 @@ const WEATHER_NAMES = Object.freeze({
 });
 
 export function dailyWeatherForecast(world, issueDate) {
-    const snapshot = natureSnapshot(world, beijingTimestamp(issueDate, 9));
-    if (snapshot.status !== "active")
+    const nature = normalizeNatureWorld(world);
+    if (nature.status !== "active")
         return null;
+    const issueDay = beijingDayIndex(beijingTimestamp(issueDate, 9));
+    const forecast = Array.from({ length: FORECAST_FUTURE_DAYS }, (_, offset) =>
+        plannedWeatherForDay(nature, issueDay + offset + 1));
     return {
         title: "未来三日天气预报",
-        body: snapshot.forecast.slice(1).map((entry) =>
+        body: forecast.map((entry) =>
             `${beijingDate(beijingDayStart(entry.dayIndex))}（${entry.season}季第 ${entry.seasonDay} 天）：${WEATHER_NAMES[entry.condition]}。`)
             .join("\n"),
     };
