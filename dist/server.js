@@ -848,9 +848,10 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         const buyer = getFarm(byId);
         advance(buyer, now);
         const r = buyPotionSet(f, buyer, now);
+        // An expired shelf refreshes even if this buyer cannot complete the sale.
+        saveKnownFarmChanges([f.id, buyer.id], now);
         if (!r.ok)
             return { status: 400, json: { ok: false, text: r.error, ...vf(buyer) } };
-        saveKnownFarmChanges([f.id, buyer.id], now);
         return { status: 200, json: { ok: true, text: `🎁 在「${f.name}」买下药水套装：+${r.qty} 瓶加速药水，-${r.cost}金。\n${statusFooter(buyer, now)}`, ...vf(buyer) } };
     }
     // 留言

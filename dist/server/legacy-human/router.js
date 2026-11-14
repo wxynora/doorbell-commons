@@ -733,19 +733,23 @@ export async function handleLegacyHumanRoute({
         res.writeHead(200, AGENT_HEADERS);
         return res.end(renderHuman(uiCodex(f, now, key, url.searchParams.get("flash") ?? undefined)));
     }
-    res.writeHead(200, AGENT_HEADERS);
     // 他的田/商店/原创已并进主页，连同乱填的 section 一律回落主页；排行榜仍占位。
-    if (section === "messages")
+    if (section === "messages") {
+        res.writeHead(200, AGENT_HEADERS);
         return res.end(renderHuman(uiMessages(f, now, key)));
+    }
     if (section === "leaderboard") {
         persistHumanReadFarm();
+        res.writeHead(200, AGENT_HEADERS);
         return res.end(renderHuman(uiLeaderboard(f, now, key)));
     }
     const quiet = settleQixi2026QuietTask(f, now);
-    if (quiet)
-        replaceFarm(f.id, f);
-    else
-        persistHumanReadFarm();
     const homeFlash = [url.searchParams.get("flash") ?? "", qixi2026CompletionText(quiet)].filter(Boolean).join("\n");
-    return res.end(renderHuman(uiHome(f, now, key, homeFlash || undefined)));
+    const html = uiHome(f, now, key, homeFlash || undefined);
+    // uiHome can refresh the shelf. POST fallbacks render the live farm.
+    if (quiet || method !== "GET")
+        replaceFarm(f.id, f);
+    const rendered = renderHuman(html);
+    res.writeHead(200, AGENT_HEADERS);
+    return res.end(rendered);
 }
