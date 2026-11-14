@@ -2,6 +2,8 @@ import { createMomentsPromotionService } from "../../domain/moments/promotion.js
 import { handleMomentsPromotion } from "../moments-promotion.js";
 import { createMomentsProgressionService } from "../../domain/moments/progression.js";
 import { handleMomentsProgression } from "../moments-progression.js";
+import { createLedgerExhibitionGrants } from "../../domain/moments/ledger-exhibition.js";
+import { handleLedgerExhibitionGrant } from "../moments-ledger-exhibition.js";
 import { handleMomentsRaffle } from "../moments-raffle.js";
 import { handleMomentsGifts } from "../moments-gifts.js";
 import { handleMomentsActivities } from "../moments-activities.js";
@@ -103,6 +105,9 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
     const halloweenHumanHandler = createDoorbellHalloweenHumanHandler(halloweenRuntime);
     const momentsPromotion = createMomentsPromotionService(constableInterviewRuntime);
     const momentsProgression=createMomentsProgressionService({database:momentsDatabase,economyRules:constableInterviewRuntime.economyRules});
+    const ledgerExhibition = createLedgerExhibitionGrants({
+        database: momentsDatabase, economyRules: constableInterviewRuntime.economyRules,
+    });
     const scratchcards = constableInterviewRuntime.database
         ? createDoorbellScratchcardRuntime(constableInterviewRuntime.database, constableInterviewRuntime.economyRules)
         : undefined;
@@ -114,6 +119,10 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
         }
         if (parts.join("/") === "internal/doorbell/moments/promotion") {
             await handleMomentsPromotion(req, res, method, momentsPromotion);
+            return true;
+        }
+        if (parts.join("/") === "internal/doorbell/moments/ledger-exhibition") {
+            await handleLedgerExhibitionGrant(req, res, method, ledgerExhibition);
             return true;
         }
         if(parts.join("/") === "internal/doorbell/moments/progression") {
