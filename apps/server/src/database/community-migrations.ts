@@ -20,7 +20,7 @@ import { tournamentEngine } from "../together/tournament/engine-adapter.js";
 import { validateSnowMatchRuntime } from "../together/tournament/match-host.js";
 import { readRoundRecovery } from "../together/tournament/relational-match-view.js";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 66;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 67;
 const DAILY_POLL_SCHEMA_SQL = `
   CREATE TABLE lingye_daily_polls (
     issue_date TEXT PRIMARY KEY,
@@ -3300,6 +3300,35 @@ CREATE TABLE lingye_daily_farm_question_citations (
         GROUP BY group_id;
     `);
     database.pragma('user_version = 66');
+  })();
+
+  if (databaseSchemaVersion < 67) database.transaction(() => {
+    database.exec(`
+      CREATE TABLE moments_ledger_exhibition_runs (
+        event_id TEXT PRIMARY KEY,
+        frozen_at INTEGER NOT NULL
+      );
+      CREATE TABLE moments_ledger_exhibition_entries (
+        event_id TEXT NOT NULL REFERENCES moments_ledger_exhibition_runs(event_id) ON DELETE CASCADE,
+        post_id TEXT NOT NULL,
+        home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+        short_ref TEXT,
+        likes INTEGER NOT NULL CHECK(likes >= 0),
+        PRIMARY KEY(event_id, post_id)
+      );
+      CREATE TABLE moments_ledger_exhibition_rewards (
+        event_id TEXT NOT NULL REFERENCES moments_ledger_exhibition_runs(event_id) ON DELETE CASCADE,
+        home_id TEXT NOT NULL REFERENCES homes(home_id) ON DELETE CASCADE,
+        resident_id TEXT NOT NULL REFERENCES residents(resident_id) ON DELETE CASCADE,
+        farm_doorplate TEXT NOT NULL,
+        tier TEXT NOT NULL CHECK(tier IN ('support', 'entry', 'winner')),
+        silver INTEGER NOT NULL CHECK(silver > 0),
+        title_id TEXT,
+        journal_id TEXT UNIQUE,
+        PRIMARY KEY(event_id, home_id, tier)
+      );
+    `);
+    database.pragma('user_version = 67');
   })();
 
 }

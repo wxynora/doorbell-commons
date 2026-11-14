@@ -6,6 +6,7 @@ import { MainActivitySource } from "./moments/main-activity-source.js";
 import { FarmActivitySource } from "./moments/farm-activity-source.js";
 import { ActivityRecovery, FarmActivityRecoveryClient } from "./moments/activity-recovery.js";
 import { MomentsRaffleFarmClient, MomentsRaffleScheduler } from "./moments/raffle.js";
+import { LedgerExhibitionFarmClient, LedgerExhibitionSettlement } from "./moments/ledger-exhibition-rewards.js";
 import { MomentsAgentActions } from "./moments/agent-actions.js";
 import { MomentsToolOptions } from "./moments/tool-options.js";
 import { MomentsTool } from "./moments/tool.js";
@@ -115,6 +116,14 @@ const serverConfig = readDoorbellServerConfig();
 const faultReports = createFaultReports(serverConfig.databasePath);
 const database = new CommunityDatabase(serverConfig.databasePath);
 const momentsStore = database.createMomentsStore();
+const ledgerExhibitionSettlement = new LedgerExhibitionSettlement(momentsStore.ledgerExhibition,
+  new LedgerExhibitionFarmClient({
+    apiBaseUrl: serverConfig.farmApiBaseUrl,
+    serviceToken: serverConfig.farmServiceToken,
+    requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs,
+  }), error => {
+    process.stderr.write(`[moments-ledger-exhibition] ${error instanceof Error ? error.message : "settlement pending"}\n`);
+  });
 const momentsProgression = new MomentsProgressionService(momentsStore,new MomentsProgressionClient({
   apiBaseUrl:serverConfig.farmApiBaseUrl,serviceToken:serverConfig.farmServiceToken,
   requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs,
@@ -648,6 +657,10 @@ const mcpRuntime = new DoorbellMcpRuntime({
   farmMomentActivities,
   statusNotifications: database.createMomentsStatusNotifications(momentsStore),
   momentsPromotions: momentsStore.promotions,
+  momentsExhibitionStatus: now => {
+    ledgerExhibitionSettlement.resume();
+    return momentsStore.ledgerExhibition.status(now);
+  },
   ...(snowTournament.tools ? { snowTools: snowTournament.tools } : {}),
   dailyMaterials,
   ...(loungeRuntime ? { loungeTools: loungeRuntime.tools } : {}),
@@ -764,6 +777,7 @@ if (loungeRuntime) registerLoungeGameRoutes(app, {
 });
 let snowTournamentClock: ReturnType<typeof snowTournament.start> = null;
 app.addHook("onClose", async () => {
+  await ledgerExhibitionSettlement.stop();
   snowTournamentClock?.stop();
   process.off("SIGUSR2", refreshTogetherControl);
   await togetherStartup.stop();
@@ -797,6 +811,7 @@ process.once("SIGTERM", () => {
 try {
   await raffleScheduler.start();
   await app.listen({ host, port });
+  ledgerExhibitionSettlement.start();
   snowTournamentClock = snowTournament.start((_id, error) => reportBellError(error));
 } catch (error) {
   app.log.error(error);

@@ -371,6 +371,7 @@ export interface DoorbellMcpRuntimeOptions {
   momentsTools?: MomentsToolPort;
   statusNotifications?: Pick<MomentsStatusNotifications, "report" | "dailySummary">;
   momentsPromotions?: Pick<MomentsPromotions, "report" | "reportSponsored">;
+  momentsExhibitionStatus?: (now: number) => string | undefined;
   momentsProgression?: {sync(residentId:string):Promise<void>;takeNotices(residentId:string):string[]};
   mainActivity?: Pick<MainActivitySource, "dailyRead">;
   snowTools?: SnowTournamentToolPort;
@@ -495,6 +496,7 @@ export class DoorbellMcpRuntime {
   readonly #momentsTools: MomentsToolPort | undefined;
   readonly #statusNotifications: DoorbellMcpRuntimeOptions["statusNotifications"];
   readonly #momentsPromotions: DoorbellMcpRuntimeOptions["momentsPromotions"];
+  readonly #momentsExhibitionStatus: DoorbellMcpRuntimeOptions["momentsExhibitionStatus"];
   readonly #momentsProgression: DoorbellMcpRuntimeOptions["momentsProgression"];
   readonly #mainActivity: DoorbellMcpRuntimeOptions["mainActivity"];
   readonly #database: CommunityDatabase;
@@ -531,6 +533,7 @@ export class DoorbellMcpRuntime {
     this.#momentsTools = options.momentsTools;
     this.#statusNotifications = options.statusNotifications;
     this.#momentsPromotions = options.momentsPromotions;
+    this.#momentsExhibitionStatus = options.momentsExhibitionStatus;
     this.#momentsProgression = options.momentsProgression;
     this.#mainActivity = options.mainActivity;
     this.#faultReports = options.faultReports;
@@ -1136,7 +1139,8 @@ export class DoorbellMcpRuntime {
     const summary = this.#statusSection(() => this.#statusNotifications?.dailySummary(residentId, now));
     const notice = this.#statusSection(() => this.#statusNotifications?.report(residentId, renderMomentsStatusCounts));
     const promotion = this.#statusSection(() => this.#momentsPromotions?.report(residentId, now));
-    const moments = [sponsored, summary, notice, promotion].filter(Boolean).join("\n");
+    const exhibition = this.#statusSection(() => this.#momentsExhibitionStatus?.(now));
+    const moments = [exhibition, sponsored, summary, notice, promotion].filter(Boolean).join("\n");
     return [daily, moments, status].filter(Boolean).join("\n\n");
   }
 

@@ -1,4 +1,5 @@
 import { MomentsPromotions } from "./promotion.js";
+import { LedgerExhibition } from "./ledger-exhibition.js";
 import { MomentsPolls, pollDefinition, pollInputSchema, type PollPost } from "./poll.js";
 import { MomentsProgressionStore } from "./progression-store.js";
 import { activityStatusKeys, canonicalStatusKeys, collectDailyActivityStatusesMany, isActivityStatusKey, receiptStatusKeys, saveActivityStatuses, type ActivityStatus, type StatusPost } from "./activity-status.js";
@@ -102,6 +103,7 @@ export class MomentsStore {
   private readonly records: HomeMomentRecords;
   readonly progression: MomentsProgressionStore;
   readonly promotions: MomentsPromotions;
+  readonly ledgerExhibition: LedgerExhibition;
   private readonly polls: MomentsPolls;
   private progressionSync: ((residentId:string)=>Promise<void>) | undefined;
   setProgressionSync(sync:(residentId:string)=>Promise<void>) { this.progressionSync=sync; }
@@ -112,6 +114,7 @@ export class MomentsStore {
   constructor(private readonly database: Database.Database, private readonly ensureHomeTable: EnsureMomentsHomeTable,
     private readonly findSticker:(id:string)=>StickerAsset|undefined=findMomentSticker) {
     this.records=new HomeMomentRecords(database,ensureHomeTable);
+    this.ledgerExhibition = new LedgerExhibition(database, this.records);
     this.polls=new MomentsPolls(this.records);
     this.promotions=new MomentsPromotions(database,this.records,this);
     this.progression=new MomentsProgressionStore(database,ensureHomeTable);
@@ -628,6 +631,7 @@ export class MomentsStore {
     let frozen=false;
     const result=this.database.transaction(()=>{
       const row=this.accessible(actor,id),current=this.saveActor(actor);
+      this.ledgerExhibition.freezeDue(now);
       frozen=(this.raffleBarrier?.freezeDue(now,id).length??0)>0;
       const previous=this.records.all<LikeRow>("like","moment_id=? AND actor_key=?",[id,current.actor_key])[0];
       const homeId=this.homeId(actor.residentId), external=homeId!==row.home_id;
