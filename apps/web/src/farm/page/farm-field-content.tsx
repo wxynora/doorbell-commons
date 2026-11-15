@@ -1453,7 +1453,7 @@ export function FarmFieldContent({
         <FarmToolBar
           activeScene={activeScene}
           bulletinUnread={bulletinUnread}
-          onOpenVillage={activeScene === "field" && !preview ? () => setVillageOpen(true) : undefined}
+          {...(activeScene === "field" && !preview ? { onOpenVillage: () => setVillageOpen(true) } : {})}
           onOpenBulletin={() => {
             if (activeScene === "cooking") {
               setCookingIngredientPickerOpen(false);
