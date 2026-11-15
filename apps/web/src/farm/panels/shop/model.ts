@@ -305,7 +305,7 @@ const FARM_SHOP_ICON_KEYS: Readonly<
   },
   recipe: {},
   decoration: {},
-  item: {},
+  item: { snow_shovel: "field.shop.snow-shovel" },
 };
 
 function getFarmShopIconKey(

@@ -1113,6 +1113,10 @@ export function FarmFieldContent({
             landTier={field.land.tier}
             seasonName={field.season.name}
           />
+          {field.ambience && !villageOpen && !decorationEditing &&
+          !activeSceneUiState.selectedTool && !activeSceneUiState.bulletinOpen ? (
+            <p className="farm-field-ambience">{field.ambience}</p>
+          ) : null}
           {!decorationEditing &&
           !activeSceneUiState.selectedTool &&
           !activeSceneUiState.bulletinOpen ? (

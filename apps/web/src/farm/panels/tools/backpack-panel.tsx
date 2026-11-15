@@ -1,4 +1,5 @@
 import { createFarmReceiptKey } from "../../receipt-key.js";
+import { getFarmAssetUrl } from "../../farm-asset-manifest";
 import {decorationLeaseLabel} from "../../scenes/field/decoration-leases.js";
 import { lazy, Suspense, useState } from "react";
 import type { BoundFarmCatalogRead } from "../../../auth/farm-catalog-client";
@@ -69,7 +70,12 @@ function CatalogInventoryRows({
     <ul className="farm-crop-codex__list" aria-label="真实库存">
       {items.map((item) => (
         <li key={`${item.kind}:${item.item_id}`}>
-          <span>{item.identity_state === "known" && item.name ? item.name : "身份不可用"}</span>
+          <span>
+            {item.identity_state === "known" && item.kind === "item" && item.item_id === "snow_shovel" && (
+              <img className="farm-inventory-item-icon" src={getFarmAssetUrl("field.shop.snow-shovel")} alt="" />
+            )}
+            {item.identity_state === "known" && item.name ? item.name : "身份不可用"}
+          </span>
           <small>{item.quantity}{item.durability ? ` · 耐久 ${item.durability.remaining}/${item.durability.maximum}` : ""}</small>
         </li>
       ))}

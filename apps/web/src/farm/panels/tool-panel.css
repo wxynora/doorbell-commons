@@ -234,6 +234,14 @@
   white-space: nowrap;
 }
 
+.farm-inventory-item-icon {
+  inline-size: 1.8em;
+  block-size: 1.8em;
+  margin-inline-end: 0.3em;
+  vertical-align: middle;
+  object-fit: contain;
+}
+
 .farm-crop-codex__list li > small {
   flex: 0 0 auto;
   color: #718746;

@@ -76,6 +76,20 @@
   transform-origin: center;
 }
 
+.ranch-shop__supply-image {
+  position: absolute;
+  inset: 2% 11% 18%;
+  width: 78%;
+  height: 80%;
+  object-fit: contain;
+}
+
+.ranch-shop__supplies-note {
+  margin: 0.4em 0;
+  color: #745634;
+  font-size: 0.8rem;
+}
+
 .ranch-shop__portrait > strong {
   position: absolute;
   right: 3%;

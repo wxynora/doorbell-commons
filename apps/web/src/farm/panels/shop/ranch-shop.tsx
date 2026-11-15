@@ -21,6 +21,11 @@ import {
   ShopCartShortcut,
 } from "./shared";
 
+const RANCH_SUPPLY_ART = {
+  dry_bedding: "ranch.shop.dry-bedding",
+  trough_cover: "ranch.shop.trough-cover",
+} as const;
+
 function RanchLiveShopPanelContent({
   cart,
   farmCheckoutFeedback,
@@ -36,9 +41,10 @@ function RanchLiveShopPanelContent({
   onRetryFarmCheckout?: (() => void) | undefined;
   ranch?: BoundRanchRead | null | undefined;
 }) {
-  const [shopSection, setShopSection] = useState<"animals" | "pets">("animals");
+  const [shopSection, setShopSection] = useState<"animals" | "pets" | "supplies">("animals");
   const [cartOpen, setCartOpen] = useState(false);
   const items = getLiveRanchShopItems(ranch).filter((item) => item.section === shopSection);
+  const supplies = ranch?.data.shop.supplies ?? [];
 
   if (cartOpen) {
     return (
@@ -57,7 +63,7 @@ function RanchLiveShopPanelContent({
 
   if (
     !ranch ||
-    (ranch.data.shop.animals.status !== "available" && ranch.data.shop.pets.status !== "available")
+    (ranch.data.shop.animals.status !== "available" && ranch.data.shop.pets.status !== "available" && !supplies.length)
   ) {
     return (
       <div className="farm-shop__unavailable">
@@ -75,8 +81,9 @@ function RanchLiveShopPanelContent({
           [
             ["animals", "动物"],
             ["pets", "宠物"],
+            ["supplies", "用品"],
           ] as const
-        ).map(([id, label]) => (
+        ).filter(([id]) => id !== "supplies" || supplies.length > 0).map(([id, label]) => (
           <button
             aria-pressed={shopSection === id}
             key={id}
@@ -87,7 +94,25 @@ function RanchLiveShopPanelContent({
           </button>
         ))}
       </nav>
-      <ul className="ranch-shop__grid">
+      {shopSection === "supplies" ? (
+        <>
+          <p className="ranch-shop__supplies-note">由小机购买</p>
+          <ul className="ranch-shop__grid">
+            {supplies.map((item) => (
+              <li key={item.item_id}>
+                <span className="ranch-shop__portrait">
+                  <img alt="" className="ranch-shop__supply-image"
+                    src={getFarmAssetUrl(RANCH_SUPPLY_ART[item.item_id])} />
+                  <strong>{item.name}</strong>
+                </span>
+                <span className="ranch-shop__price">
+                  {item.price.toLocaleString("zh-CN")} 金币
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : <ul className="ranch-shop__grid">
         {items.map((item) => {
           const cartKey = getShopCartKey("ranch", item.id);
           const quantity = cart[cartKey] ?? 0;
@@ -152,7 +177,7 @@ function RanchLiveShopPanelContent({
             </li>
           );
         })}
-      </ul>
+      </ul>}
       <ShopCartShortcut cart={cart} onOpen={() => setCartOpen(true)} />
     </section>
   );

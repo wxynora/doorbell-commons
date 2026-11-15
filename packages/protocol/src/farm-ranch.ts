@@ -446,6 +446,12 @@ export const farmRanchDataSchema = z
         skins: farmRanchShopSkinsSchema,
         accessories: farmRanchShopAccessoriesSchema,
         decorations: farmRanchShopDecorationsSchema,
+        supplies: z.array(z.object({
+          item_id: z.enum(["dry_bedding", "trough_cover"]),
+          name: ranchTextSchema,
+          price: z.number().int().positive(),
+          currency: z.literal("gold"),
+        }).strict()).optional(),
       })
       .strict(),
   })

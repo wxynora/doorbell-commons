@@ -92,6 +92,9 @@ export const FARM_ASSET_SOURCE_URLS = {
   "/farm/crops/limited-growing.png": new URL("./assets/crops/limited-growing.png", import.meta.url)
     .href,
   "/farm/crops/limited-ripe.png": new URL("./assets/crops/limited-ripe.png", import.meta.url).href,
+  "/farm/ui-icons/dry-bedding.webp": new URL("./assets/ui-icons/dry-bedding.webp", import.meta.url).href,
+  "/farm/ui-icons/trough-cover.webp": new URL("./assets/ui-icons/trough-cover.webp", import.meta.url).href,
+  "/farm/ui-icons/snow-shovel.webp": new URL("./assets/ui-icons/snow-shovel.webp", import.meta.url).href,
   "/farm/ui-icons/speed-potion.png": new URL("./assets/ui-icons/speed-potion.png", import.meta.url)
     .href,
   "/farm/ui-icons/potion-set.png": new URL("./assets/ui-icons/potion-set.png", import.meta.url)

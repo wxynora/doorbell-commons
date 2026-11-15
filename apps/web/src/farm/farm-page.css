@@ -292,6 +292,25 @@
   background: rgba(113, 81, 43, 0.4);
 }
 
+.farm-field-ambience {
+  position: absolute;
+  top: calc(var(--farm-control-size) * 4.85);
+  left: 50%;
+  z-index: 8;
+  width: max-content;
+  max-width: 68cqw;
+  margin: 0;
+  padding: 0.35em 0.7em;
+  border-radius: 0.7em;
+  background: rgba(56, 44, 32, 0.8);
+  color: #fff8e8;
+  font-size: calc(var(--farm-control-size) / 5.2);
+  line-height: 1.45;
+  text-align: center;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
 .farm-land-upgrade-control {
   position: absolute;
   top: calc(var(--farm-control-size) * 3.72);

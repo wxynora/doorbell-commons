@@ -61,7 +61,14 @@ export function VillageScene({environment,active,onClose,children}:{environment:
  },[needsDirectory,retry]);
  useEffect(()=>{setLayout(null);setError('');if(!selected)return;const controller=new AbortController();void read(`/api/farm/neighborhood/${encodeURIComponent(selected.residentId)}/layout`,controller.signal).then(p=>{if(!controller.signal.aborted){const data=neighborhoodLayoutSchema.parse(p);if(data.doorplate!==selected.doorplate)throw new Error('布置与所选门牌不匹配。');setLayout(data);}}).catch(e=>{if(!controller.signal.aborted)setError(e.message);});return()=>controller.abort();},[selected,retry]);
  return <section className="village-scene" data-night={environment.night>.5} aria-label="居民区">
-  {!selected&&homes?<Overview homes={homes} environment={environment} active={active} onSelect={setSelected}/>:selected&&layout&&layout.doorplate===selected.doorplate?<FarmView data={layout} active={active} environment={environment}/>:null}
+  {homes && (
+   <div className="village-overview" inert={selected !== null} data-covered={selected !== null}>
+    <Overview homes={homes} environment={environment} active={active && !selected} onSelect={setSelected}/>
+   </div>
+  )}
+  {selected && layout?.doorplate === selected.doorplate && (
+   <FarmView data={layout} active={active} environment={environment}/>
+  )}
   <header className="village-header">
    <button type="button" onClick={()=>selected?setSelected(null):onClose()} aria-label={selected?'返回居民区':'返回农场'}>
     <svg aria-hidden="true" viewBox="0 0 16 16" fill="none">

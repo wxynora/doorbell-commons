@@ -387,6 +387,7 @@ export const farmFieldLandUpgradeSchema = z
 
 export const farmFieldDataSchema = z
   .object({
+    ambience: z.string().min(1).optional(),
     farm: z
       .object({
         farm_doorplate: farmDoorplateSchema,
