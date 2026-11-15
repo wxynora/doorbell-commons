@@ -1,3 +1,4 @@
+import { farmAmbience } from "../domain/nature/farm-ambience.js";
 import { humanPlotWeather } from "./weather-human-projection.js";
 import { agronomyGrowthEffect } from "../career/p3-world.js";
 import { createHash } from "node:crypto";
@@ -145,6 +146,7 @@ export function projectHumanField(farm, now = Date.now()) {
     const landUpgradePreview = pendingLandUpgrade
         ? checkLandUpgrade(projectedFarm)
         : null;
+    const ambience = farmAmbience(projectedFarm, currentNature.weather?.condition);
     const welcome = typeof projectedFarm.welcome === "string" && projectedFarm.welcome.trim()
         ? projectedFarm.welcome.trim()
         : null;
@@ -155,6 +157,7 @@ export function projectHumanField(farm, now = Date.now()) {
             welcome_message: welcome,
             equipped_title: title ? { title_id: title.id, name: title.name } : null,
         },
+        ...(ambience ? { ambience } : {}),
         balance: { farm_coins: projectedFarm.coins },
         season,
         weather: currentNature.weather

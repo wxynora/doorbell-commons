@@ -1,3 +1,4 @@
+import { farmAmbience } from "../../domain/nature/farm-ambience.js";
 import { AGRONOMY_CONDITIONS, agronomyGrowthEffect, plotAgronomyIssues } from "../../career/p3-world.js";
 import { beijingDayIndex } from "../../nature.js";
 import { getNatureWorld } from "../../store.js";
@@ -131,6 +132,8 @@ export function describeFarmNature(farm, now) {
     const weather = currentWeather(now);
     const weatherName = weather && WEATHER_NAMES[weather.condition];
     if (weatherName) lines.push(`${WEATHER_ICONS[weather.condition]} 当前天气：${weatherName}。`);
+    const ambience = farmAmbience(farm, weather?.condition);
+    if (ambience) lines.push(ambience);
 
     // Read the persisted phase and farm impacts. Only the weather row uses the
     // existing currentWeather projection; it does not determine disaster phase.

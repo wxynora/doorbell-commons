@@ -26,27 +26,29 @@ function commitReceipt(farm, requestId, identity, result) {
 /** The caller authenticates the owner and commits the staged Farm atomically. */
 export function purchaseWeatherSupply(farm, input, catalog, now) {
     const identity = requestIdentity(farm, input, "buy");
+    if (input.currency === "gold") identity.currency = input.currency;
     const prior = replay(farm, input.requestId, identity);
     if (prior) return prior;
     const spec = catalog?.[input.itemId];
+    const currency = input.currency ?? spec?.currency;
     if (typeof input.itemId !== "string" || !input.itemId || !Number.isSafeInteger(input.quantity) || input.quantity < 1 ||
-        !Number.isSafeInteger(spec?.price) || spec.price < 0 || spec.currency !== "ranch_coins")
+        !Number.isSafeInteger(spec?.price) || spec.price < 0 || currency !== "gold" || currency !== spec.currency)
         throw new Error("weather_care_purchase_rule_unavailable");
     const price = spec.price * input.quantity;
-    if (!Number.isSafeInteger(price) || !Number.isSafeInteger(farm.ranch.coins) || farm.ranch.coins < 0)
+    if (!Number.isSafeInteger(price) || !Number.isSafeInteger(farm.coins) || farm.coins < 0)
         throw new Error("weather_care_balance_invalid");
-    if (farm.ranch.coins < price) return { ok: false, reason: "insufficient_funds", replayed: false };
+    if (farm.coins < price) return { ok: false, reason: "insufficient_funds", balance: farm.coins, replayed: false };
     const inventory = farm.lingyeWeatherUpgrade.inventory ??= {};
     const current = inventory[input.itemId] ?? 0;
     if (!Number.isSafeInteger(current) || current < 0 || !Number.isSafeInteger(current + input.quantity))
         throw new Error("weather_care_inventory_invalid");
-    farm.ranch.coins -= price;
+    farm.coins -= price;
     inventory[input.itemId] = current + input.quantity;
     const purchases = farm.lingyeWeatherUpgrade.supplyPurchases ??= {};
     purchases[input.itemId] = (purchases[input.itemId] ?? 0) + 1;
     bumpDaily(farm, now, "coinSpend", price);
     return commitReceipt(farm, input.requestId, identity,
-        { ok: true, itemId: input.itemId, quantity: input.quantity, price, balance: farm.ranch.coins });
+        { ok: true, itemId: input.itemId, quantity: input.quantity, price, balance: farm.coins });
 }
 
 /** Supplies and action effects are explicit policy, never silently defaulted. */

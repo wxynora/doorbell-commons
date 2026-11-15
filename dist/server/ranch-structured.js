@@ -1,4 +1,5 @@
 import { humanRanchWeather } from "./weather-human-projection.js";
+import { RANCH_WEATHER_SUPPLIES } from "../domain/nature/approved-weather-policy.js";
 import { createHash } from "node:crypto";
 import {
   accessoryById,
@@ -993,7 +994,14 @@ export function projectHumanRanch(farm, now = Date.now(), farms = [farm]) {
       stored: stored.items,
     },
     dispatch,
-    shop: projectShop(farm, ranch, residentArrays, now),
+    shop: {
+      ...projectShop(farm, ranch, residentArrays, now),
+      ...(ranch && farm.lingyeWeatherUpgrade ? {
+        supplies: Object.entries(RANCH_WEATHER_SUPPLIES).map(([item_id, spec]) => ({
+          item_id, name: spec.name, price: spec.price, currency: spec.currency,
+        })),
+      } : {}),
+    },
   };
   return {
     data,

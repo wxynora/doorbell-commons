@@ -1,5 +1,10 @@
 import { createApprovedWinterPolicy } from './winter-policy.js';
 
+export const RANCH_WEATHER_SUPPLIES = Object.freeze({
+    dry_bedding: { name: '干垫料', price: 10, currency: 'gold', description: '干垫料｜10金币／份' },
+    trough_cover: { name: '防冻套', price: 20, currency: 'gold', description: '防冻套｜20金币／个｜使用后保护3天' },
+});
+
 export function createApprovedWeatherPolicy({ startDay } = {}) {
     const winter = createApprovedWinterPolicy({ startDay });
     return {
@@ -14,10 +19,7 @@ export function createApprovedWeatherPolicy({ startDay } = {}) {
                     { conditions: ['dry_wind'], anyFlags: ['windy'], delta: -1 },
                 ] },
         },
-        catalog: {
-            dry_bedding: { name: '干垫料', price: 10, currency: 'ranch_coins', description: '干垫料｜10牧场金币／份' },
-            trough_cover: { name: '防冻套', price: 20, currency: 'ranch_coins', description: '防冻套｜20牧场金币／个｜使用后保护3天' },
-        },
+        catalog: RANCH_WEATHER_SUPPLIES,
         actions: { ...winter.actions, protect_trough: { itemId: 'trough_cover', protectionDays: 3 } },
     };
 }

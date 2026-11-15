@@ -6,6 +6,7 @@ import { lookupOptionHandle, optionHandles } from "../../server/doorbell/option-
 import { executeSnowClearing, executeWeatherCareAction } from "./care-action.js";
 import { appendVisitServiceProposalOptions } from "../../career/visit-service-options.js";
 import { hasSnowShovel } from "./snow-shovel.js";
+import { RANCH_WEATHER_SUPPLIES } from "./approved-weather-policy.js";
 
 const STALE = "当前选项已失效或不适用于这项业务；请重新查看当前事实与 option。";
 const NO_SHOVEL = "没有可用的雪铲，请先在商店购买。";
@@ -21,7 +22,7 @@ const call = (op, handle) => `doorbell(${JSON.stringify({ op, args: { option: ha
 const encoded = value => `weather:${JSON.stringify(value)}`;
 const version = value => JSON.stringify(value);
 
-// Only this new option branch has no balance-bearing inputs or output.
+// Gold-priced options synchronize only the requesting farm, immediately before purchase.
 export function isWeatherOptionAction(action, params) {
     return ["visit", "status"].includes(action) && !!params && Object.hasOwn(params, "option");
 }
@@ -124,14 +125,6 @@ export function appendOwnWeatherOptions({ database, farm, result, rules, now, re
         candidates.push({ placeholder, label: "铲雪", internal: encoded(fact) });
     }
     if (snowyPlots.length && !hasSnowShovel(farm)) lines.push(NO_SHOVEL);
-    for (const [itemId, spec] of Object.entries(rules.catalog ?? {})) {
-        if (!farm.ranch || !allowActions || !residentId ||
-            !["dry_bedding", "trough_cover"].includes(itemId) || spec.currency !== "ranch_coins") continue;
-        const placeholder = lines.length;
-        lines.push(null);
-        candidates.push({ placeholder, label: spec.description, internal: encoded({ kind: "supply", farmId: farm.id,
-            itemId, price: spec.price, currency: spec.currency, purchases: farm.lingyeWeatherUpgrade.supplyPurchases?.[itemId] ?? 0 }) });
-    }
     for (const [action, definition] of Object.entries(CARE)) {
         if (action !== "protect_trough" && farm.ranch?.lingyeWeatherUpgrade?.[definition.since] == null) continue;
         if (definition.fact) lines.push(definition.fact);
@@ -141,6 +134,26 @@ export function appendOwnWeatherOptions({ database, farm, result, rules, now, re
         lines.push(null);
         candidates.push({ placeholder, label: definition.label, internal: encoded(fact) });
     }
+    if (farm.ranch && allowActions && residentId && rules.catalog) {
+        lines.push("牧场商店");
+        const facility = farm.ranch.lingyeWeatherUpgrade;
+        const inventory = farm.lingyeWeatherUpgrade.inventory;
+        const needsBedding = facility?.wetSince != null && !(inventory?.dry_bedding > 0);
+        const needsCover = facility && !(facility.protectedThrough >= currentDayIndex(now)) &&
+            !(inventory?.trough_cover > 0) && (facility.frozenSince != null ||
+                facility.lastCondition === "cold_snap");
+        for (const itemId of Object.keys(RANCH_WEATHER_SUPPLIES)) {
+            const spec = rules.catalog[itemId];
+            if (!spec) continue;
+            if (itemId === "dry_bedding" && needsBedding) lines.push("缺少干垫料，可在牧场商店购买。");
+            if (itemId === "trough_cover" && needsCover) lines.push("缺少防冻套，可在牧场商店购买。");
+            const placeholder = lines.length;
+            lines.push(null);
+            candidates.push({ placeholder, label: spec.description,
+                internal: encoded({ kind: "supply", farmId: farm.id, itemId, price: spec.price,
+                    currency: spec.currency, purchases: farm.lingyeWeatherUpgrade.supplyPurchases?.[itemId] ?? 0 }) });
+        }
+    }
     const handles = optionHandles(database, residentId, "farm.status", candidates.map(entry => entry.internal), now);
     candidates.forEach((entry, index) => { const handle = handles[index];
         lines[entry.placeholder] = `${entry.label}：${handle}　→ ${call("farm.status", handle)}`;
@@ -149,7 +162,7 @@ export function appendOwnWeatherOptions({ database, farm, result, rules, now, re
     return result;
 }
 
-export function executeWeatherOption({ database, actor, action, params, rules, now, residentId }) {
+export function executeWeatherOption({ database, actor, action, params, rules, now, residentId, synchronizeGold }) {
     if (!rules || !database || !actor || Object.keys(params).length !== 1 || typeof params.option !== "string")
         return unavailable();
     const operation = action === "visit" ? "farm.visit" : action === "status" ? "farm.status" : null;
@@ -187,15 +200,21 @@ export function executeWeatherOption({ database, actor, action, params, rules, n
     }
     if (action === "status" && fact.kind === "supply" && fact.farmId === actor.id) {
         const spec = rules.catalog?.[fact.itemId];
-        if (!spec || !["dry_bedding", "trough_cover"].includes(fact.itemId) ||
-            spec.price !== fact.price || spec.currency !== fact.currency) return unavailable();
+        if (!spec || !Object.hasOwn(RANCH_WEATHER_SUPPLIES, fact.itemId) ||
+            spec.price !== fact.price) return unavailable();
+        // Completed legacy purchases can return their original receipt; an
+        // unused old ranch-coins option cannot start another purchase.
+        if (fact.currency !== spec.currency && !(prior && fact.currency === "ranch_coins"))
+            return unavailable();
         if (!prior && (owner.lingyeWeatherUpgrade.supplyPurchases?.[fact.itemId] ?? 0) !== fact.purchases)
             return unavailable();
+        if (!prior) synchronizeGold?.(residentId, owner.id);
         const result = executeWeatherCareAction({ farmId: owner.id, actorFarmId: actor.id,
-            requestId: params.option, operation: "buy", itemId: fact.itemId, quantity: 1 }, rules, now);
+            requestId: params.option, operation: "buy", itemId: fact.itemId, currency: fact.currency, quantity: 1 }, rules, now);
         if (!result.ok) return { status: 400, json: { ok: false, code: "INSUFFICIENT_FUNDS",
-            text: `牧场金币不足（${spec.name}要 ${spec.price}，现有 ${owner.ranch.coins}）。` } };
-        return { status: 200, json: { ok: true, text: spec.description } };
+            text: `金币不足（${spec.name}要 ${spec.price}，现有 ${result.balance}）。` } };
+        return { status: 200, json: { ok: true, text: fact.currency === "ranch_coins"
+            ? spec.description.replace("金币", "牧场金币") : spec.description } };
     }
     if (action === "status" && fact.kind === "care" && fact.farmId === actor.id && CARE[fact.action]) {
         if (!prior && (!careAvailable(owner, rules, fact.action, now) ||

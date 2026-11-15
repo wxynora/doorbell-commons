@@ -99,7 +99,16 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     if (action === 'decorate') return handleFarmDecorationAction(farm, params);
     if ((action === "visit" || action === "status") && Object.hasOwn(params, "option"))
         return executeWeatherOption({ database: activeLingyeWorldDatabase, actor: farm, action,
-            params, rules: activeWeatherUpgradeRuntime, now, residentId });
+            params, rules: activeWeatherUpgradeRuntime, now, residentId,
+            synchronizeGold: (id, farmId) => {
+                if (!activeLingyeWorldDatabase.prepare(
+                    "SELECT 1 FROM farm_balance_projection_pending WHERE resident_id = ?",
+                ).get(id)) return;
+                captureLiveFarmMutation(getFarm(farmId));
+                withWorldCommitContext({ balanceAuthority: "ledger", actor: "system", businessNow: now }, () =>
+                    save({ farmIds: [farmId], componentKeys: [], pendingBalanceProjection: true }));
+            },
+        });
     if (isNpcMotionChoice(action, params)) {
         captureLiveFarmMutation(farm);
         return npcMotionChoiceReceipt(farm, params.option, now, {save, view: farmView, detail});
