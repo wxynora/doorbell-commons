@@ -47,6 +47,7 @@ import type {
   RanchInteractionActionExecutor,
   SmeltingActionExecutor,
 } from "../panels/tool-panel";
+import "../scenes/village/village.css";
 import type { NeighborhoodMessageActionExecutor } from "../scenes/neighborhood/neighborhood-scene";
 import type { RanchSceneAnimalDefinition } from "../scenes/ranch/ranch-scene";
 import { getRanchSceneSpritePlacement } from "../scenes/ranch/ranch-sprite-scale";
