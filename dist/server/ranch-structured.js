@@ -1,3 +1,4 @@
+import { humanRanchWeather } from "./weather-human-projection.js";
 import { createHash } from "node:crypto";
 import {
   accessoryById,
@@ -962,6 +963,7 @@ export function projectHumanRanch(farm, now = Date.now(), farms = [farm]) {
   const stored = ranch ? projectOwnedDecorations(ranch.decorStore ?? []) : { status: "unavailable", items: [] };
   const decorationsStatus = placed.status === "available" && stored.status === "available" ? "available" : "unavailable";
   const data = {
+    ...humanRanchWeather(ranch),
     farm: {
       farm_doorplate: FARM_DOORPLATE_RE.test(String(farm?.id ?? "")) ? farm.id : null,
     },

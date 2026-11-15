@@ -9,7 +9,7 @@ import { internalServiceError, isPlainObject, requireDoorbellService } from "./c
 const WEATHER_NAMES = Object.freeze({
     sunny: "晴", cloudy: "多云", light_rain: "小雨", heavy_rain: "暴雨",
     thunderstorm: "雷暴", fog: "雾", hot: "高温", dry_wind: "干热风",
-    light_snow: "小雪", blizzard: "暴雪",
+    light_snow: "小雪", blizzard: "暴雪", cold_snap: "寒潮", freezing_rain: "冻雨",
 });
 
 export function dailyWeatherForecast(world, issueDate) {

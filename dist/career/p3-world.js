@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { currentSeason, currentWeather } from "../time.js";
+import { assertP3NatureDayReady } from "../domain/nature/p3-day-gate.js";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -404,10 +405,10 @@ function findAgronomyIssue(farm, sourceId) {
     return null;
 }
 
-function activeAnimalCase(farm) {
+function activeAnimalCase(farm, predicate = () => true) {
     for (const [index, animal] of (farm.ranch?.animals ?? []).entries()) {
         const health = animal.lingyeHealth;
-        if (health && health.status !== "healthy")
+        if (health && health.status !== "healthy" && predicate(health))
             return { animal, health, index };
     }
     return null;
@@ -498,6 +499,7 @@ function generateAnimalCase(farm, state, day, now) {
 
 export function advanceP3Farm(farm, now = Date.now(), options = {}) {
     const day = beijingDay(now);
+    if (options.natureCoordinator !== true) assertP3NatureDayReady(farm, day);
     const migrated = normalizeFarmAgronomyIssues(farm);
     const previous = farm.lingyeP3;
     // Empty actionReceipts live in their own SQLite table and are omitted on hydration.
@@ -506,6 +508,7 @@ export function advanceP3Farm(farm, now = Date.now(), options = {}) {
         || previous.lastAnimalRecoveryDay === undefined;
     const state = p3State(farm, day);
     const generated = [];
+    const deferredAnimalDays = [];
     let changed = migrated || initialized;
     for (let candidateDay = state.lastAdvancedDay + 1; candidateDay <= day; candidateDay += 1) {
         changed = advanceRecoveries(farm, state, candidateDay, now) || changed;
@@ -513,14 +516,26 @@ export function advanceP3Farm(farm, now = Date.now(), options = {}) {
             const agronomy = generateAgronomyIssue(farm, candidateDay, now);
             if (agronomy)
                 generated.push(agronomy);
-            const animal = generateAnimalCase(farm, state, candidateDay, now);
-            if (animal)
-                generated.push(animal);
+            if (options.deferAnimalCases === true) deferredAnimalDays.push(candidateDay);
+            else {
+                const animal = generateAnimalCase(farm, state, candidateDay, now);
+                if (animal)
+                    generated.push(animal);
+            }
         }
         state.lastAdvancedDay = candidateDay;
         changed = true;
     }
-    return { changed, generated, state };
+    return { changed, generated, state, ...(options.deferAnimalCases === true ? { deferredAnimalDays } : {}) };
+}
+
+// The nature day coordinator calls this once for a day returned above, after
+// all already-authoritative weather sources have had their chance.
+export function generateP3AnimalAfterWeather(farm, now) {
+    const day = beijingDay(now);
+    const state = p3State(farm, day);
+    if (state.lastAdvancedDay !== day) throw new Error("p3_weather_day_not_aligned");
+    return generateAnimalCase(farm, state, day, now);
 }
 
 export function agronomyGrowthEffect(plot) {
@@ -530,6 +545,12 @@ export function agronomyGrowthEffect(plot) {
             ? 'normal' : issue.natureRecovery?.progress === 1 &&
             ['drought', 'waterlogging'].includes(issue.condition)
             ? 'half' : AGRONOMY_CONDITIONS[issue.condition]?.growth ?? "normal");
+    const weatherEffect = plot?.lingyeWeatherUpgrade?.growthEffect;
+    if (weatherEffect !== undefined) {
+        if (!["normal", "half", "paused"].includes(weatherEffect))
+            throw new Error("weather_upgrade_growth_effect_invalid");
+        effects.push(weatherEffect);
+    }
     return effects.includes("paused") ? "paused" : effects.includes("half") ? "half" : "normal";
 }
 
@@ -607,8 +628,8 @@ function requireIssue(farm, sourceId) {
 }
 
 function requireCase(farm, sourceId) {
-    const entry = activeAnimalCase(farm);
-    if (!entry || entry.health.sourceId !== sourceId)
+    const entry = activeAnimalCase(farm, health => health.sourceId === sourceId);
+    if (!entry)
         throw new Error("animal_source_not_available");
     return entry;
 }
@@ -723,9 +744,24 @@ export function treatAnimalCase(farm, sourceId, materials, qualificationLevel, n
     };
 }
 
+export function currentAnimalSource(farm, sourceId) {
+    const animal = activeAnimalCase(farm, health => sourceId === undefined || health.sourceId === sourceId);
+    return animal ? {
+        sourceId: animal.health.sourceId,
+        animalIndex: animal.index,
+        animalKindId: animal.animal.kindId,
+        condition: animal.health.condition,
+        status: animal.health.status,
+        checks: [...animal.health.checks],
+        treatments: [...animal.health.treatments],
+        recoveryUntilDay: animal.health.recoveryUntilDay,
+        natureEventId: animal.health.natureEventId ?? null,
+        natureImpactId: animal.health.natureImpactId ?? null,
+    } : null;
+}
+
 export function currentP3Sources(farm) {
     const agronomy = activeAgronomyIssue(farm);
-    const animal = activeAnimalCase(farm);
     return {
         agronomy: agronomy ? {
             sourceId: agronomy.issue.sourceId,
@@ -738,18 +774,7 @@ export function currentP3Sources(farm) {
             natureEventId: agronomy.issue.natureEventId ?? null,
             natureImpactId: agronomy.issue.natureImpactId ?? null,
         } : null,
-        animal: animal ? {
-            sourceId: animal.health.sourceId,
-            animalIndex: animal.index,
-            animalKindId: animal.animal.kindId,
-            condition: animal.health.condition,
-            status: animal.health.status,
-            checks: [...animal.health.checks],
-            treatments: [...animal.health.treatments],
-            recoveryUntilDay: animal.health.recoveryUntilDay,
-            natureEventId: animal.health.natureEventId ?? null,
-            natureImpactId: animal.health.natureImpactId ?? null,
-        } : null,
+        animal: currentAnimalSource(farm),
     };
 }
 

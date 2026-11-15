@@ -5,6 +5,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const TTL_MS = 48 * 60 * 60 * 1000;
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
 const REPORTING_DAY_END_MS = 5 * 60 * 60 * 1000;
+const recordingStartedAtByDatabase = new WeakMap();
 
 // A source event belongs to the first 05:00 reporting boundary strictly after
 // its occurrence, including events recorded exactly at 05:00.
@@ -79,14 +80,22 @@ export function installReporterMaterialsSchema(database, now = Date.now()) {
     pruneExpiredReporterMaterialEvents(database, now);
 }
 
+function pruneExpiredEvents(database, now) {
+    return Number(database.prepare("DELETE FROM reporter_material_events WHERE expires_at <= ?").run(now).changes ?? 0);
+}
+
 export function pruneExpiredReporterMaterialEvents(database, now) {
-    const events = Number(database.prepare("DELETE FROM reporter_material_events WHERE expires_at <= ?").run(now).changes ?? 0);
-    return events + pruneExpiredReporterFarmFacts(database, now);
+    return pruneExpiredEvents(database, now) + pruneExpiredReporterFarmFacts(database, now);
 }
 
 // Start only when the instrumented world coordinator actually commits.
 export function markReporterMaterialsRecording(database, now) {
     database.prepare("INSERT OR IGNORE INTO reporter_material_recording_meta (singleton, recording_started_at) VALUES (1, ?)").run(now);
+}
+
+// A failed transaction must not publish its uncommitted recording start.
+export function confirmReporterMaterialsRecording(database, now) {
+    recordingStartedAtByDatabase.set(database, now);
 }
 
 function insertFeeding(database, event) {
@@ -120,6 +129,7 @@ function insertNpcSettlement(database, event) {
 export function flushReporterMaterialEvents(database, farm, now = Date.now()) {
     const pending = farm[PENDING_REPORTER_MATERIALS];
     if (!pending?.length) return false;
+    pruneExpiredEvents(database, now);
     const insert = database.prepare(`INSERT INTO reporter_material_events
         (event_id, farm_id, resident_id, farm_name, occurred_at, expires_at, event_type)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -151,6 +161,7 @@ function readUnknownEffects(database, eventId) {
 }
 
 export function readReporterMaterialEvents(database, type, startMs, endMs, now = Date.now()) {
+    pruneExpiredEvents(database, now);
     const rows = database.prepare(`SELECT event_id, farm_id, resident_id, farm_name, occurred_at, event_type
         FROM reporter_material_events
         WHERE event_type = ? AND occurred_at >= ? AND occurred_at < ? AND expires_at > ?
@@ -185,5 +196,9 @@ export function readReporterMaterialEvents(database, type, startMs, endMs, now =
 }
 
 export function reporterMaterialsRecordingStartedAt(database) {
-    return database.prepare("SELECT recording_started_at FROM reporter_material_recording_meta WHERE singleton = 1").get()?.recording_started_at ?? null;
+    if (!recordingStartedAtByDatabase.has(database)) {
+        const startedAt = database.prepare("SELECT recording_started_at FROM reporter_material_recording_meta WHERE singleton = 1").get()?.recording_started_at ?? null;
+        recordingStartedAtByDatabase.set(database, startedAt);
+    }
+    return recordingStartedAtByDatabase.get(database);
 }

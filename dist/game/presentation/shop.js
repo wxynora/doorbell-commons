@@ -26,6 +26,7 @@ export function shopBrief(f, now) {
         line += `\n📜 配方在售【${cropById.get(f.shop.recipe)?.name ?? f.shop.recipe}】（500金）→ doorbell({"op":"farm.buy","args":{"source":"shop","kind":"recipe"}})`;
     if (qixi.length)
         line += `\n🎋 七夕限定种子：${qixi.map((item) => `${item.name}(${item.price}金·今日剩${item.left})`).join("、")} → doorbell({"op":"farm.buy","args":{"source":"shop","kind":"seed","id":"作物名"}})`;
+    line += `\n${ITEMS.snow_shovel.desc} → doorbell({"op":"farm.buy","args":{"source":"shop","kind":"item","id":"snow_shovel"}})`;
     line += midAutumnShopText(f, now);
     return line + "（查看完整两层商店：doorbell({\"op\":\"farm.shop\",\"args\":{}})）";
 }
@@ -53,6 +54,7 @@ export function viewShop(f, now) {
         potionDailyLeft(f, now) > 0
             ? `🧪 ${potion.name} ${potion.price}金/瓶（官方店每天限 ${POTION_DAILY_CAP} 瓶/农场，今日已购 ${POTION_DAILY_CAP - potionDailyLeft(f, now)}/${POTION_DAILY_CAP}）`
             : `🧪 ${potion.name}：🌙 官方药水今日已购满 ${POTION_DAILY_CAP}/${POTION_DAILY_CAP}——${POTION_CAP_LINE}`,
+        `${ITEMS.snow_shovel.desc} → doorbell({"op":"farm.buy","args":{"source":"shop","kind":"item","id":"snow_shovel"}})`,
         setLine,
         recipeLine,
     ].join("\n");

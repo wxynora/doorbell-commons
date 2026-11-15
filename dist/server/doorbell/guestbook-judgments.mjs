@@ -35,24 +35,32 @@ export function enqueueGuestbookMessageChanges(db,farmId,beforeMessages,afterMes
 export function configureGuestbookJudgments(db,judge=configuredGuestbookJudge()){
   installGuestbookJudgments(db);
   activeDatabase=db;
-  runtimes.set(db,{judge,running:null});
+  runtimes.set(db,{judge,running:null,needsCheck:true,scheduled:false,queuedDuringRun:false});
   wakeGuestbookJudgments(db);
 }
 
-export function wakeGuestbookJudgments(db){
-  if(!runtimes.has(db))return;
+export function wakeGuestbookJudgments(db,{enqueued=false}={}){
+  const runtime=runtimes.get(db);
+  if(!runtime)return;
+  if(enqueued){
+    runtime.needsCheck=true;
+    if(runtime.running)runtime.queuedDuringRun=true;
+  }
+  if(!runtime.needsCheck||runtime.running||runtime.scheduled)return;
+  runtime.scheduled=true;
   // Run after the synchronous game transaction commits, never await a model inside it.
-  queueMicrotask(()=>{void drainGuestbookJudgments(db).catch(()=>{});});
+  queueMicrotask(()=>{runtime.scheduled=false;void drainGuestbookJudgments(db).catch(()=>{});});
 }
 
 export function drainGuestbookJudgments(db){
   const runtime=runtimes.get(db);
   if(!runtime)return Promise.resolve();
   if(runtime.running)return runtime.running;
+  let drained=false;
   runtime.running=(async()=>{
     for(;;){
       const job=db.prepare("SELECT * FROM guestbook_similarity_jobs WHERE status='queued' ORDER BY rowid LIMIT 1").get();
-      if(!job)return;
+      if(!job){runtime.needsCheck=false;drained=true;return;}
       const claimed=db.prepare("UPDATE guestbook_similarity_jobs SET status='started' WHERE farm_id=? AND message_id=? AND message_at=? AND status='queued'").run(job.farm_id,job.message_id,job.message_at);
       if(!claimed.changes)continue;
       try{
@@ -75,7 +83,12 @@ export function drainGuestbookJudgments(db){
         db.prepare("UPDATE guestbook_similarity_jobs SET status='failed',payload=NULL WHERE farm_id=? AND message_id=? AND message_at=?").run(job.farm_id,job.message_id,job.message_at);
       }
     }
-  })().finally(()=>{runtime.running=null;});
+  })().catch(error=>{runtime.needsCheck=true;throw error;}).finally(()=>{
+    runtime.running=null;
+    const queuedDuringRun=runtime.queuedDuringRun;
+    runtime.queuedDuringRun=false;
+    if(drained&&queuedDuringRun&&runtime.needsCheck)wakeGuestbookJudgments(db);
+  });
   return runtime.running;
 }
 

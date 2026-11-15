@@ -1,0 +1,246 @@
+{
+  "4ZSDR3": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "slope",
+    "neighbors": [
+      "6PSHGT"
+    ],
+    "arrivals": {
+      "DQVQ8R": "river_slope",
+      "MVEC6P": "river_slope",
+      "C6QMCE": "river_slope",
+      "8TJEM4": "river_slope",
+      "4XYJGE": "river_slope",
+      "3ET3FE": "river_slope",
+      "ZMQAFB": "river_slope",
+      "YX5AWC": "river_slope"
+    }
+  },
+  "6PSHGT": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "slope",
+    "neighbors": [
+      "4ZSDR3"
+    ],
+    "arrivals": {
+      "DQVQ8R": "river_slope",
+      "MVEC6P": "river_slope",
+      "C6QMCE": "river_slope",
+      "8TJEM4": "river_slope",
+      "4XYJGE": "river_slope",
+      "3ET3FE": "river_slope",
+      "ZMQAFB": "river_slope",
+      "YX5AWC": "river_slope"
+    }
+  },
+  "ESS94P": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "slope",
+    "neighbors": [],
+    "arrivals": {
+      "DQVQ8R": "river_slope",
+      "MVEC6P": "river_slope",
+      "C6QMCE": "river_slope",
+      "8TJEM4": "river_slope",
+      "4XYJGE": "river_slope",
+      "3ET3FE": "river_slope",
+      "ZMQAFB": "river_slope",
+      "YX5AWC": "river_slope"
+    }
+  },
+  "4BU2PV": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "slope",
+    "neighbors": [],
+    "arrivals": {
+      "DQVQ8R": "river_slope",
+      "MVEC6P": "river_slope",
+      "C6QMCE": "river_slope",
+      "8TJEM4": "river_slope",
+      "4XYJGE": "river_slope",
+      "3ET3FE": "river_slope",
+      "ZMQAFB": "river_slope",
+      "YX5AWC": "river_slope"
+    }
+  },
+  "DQVQ8R": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "river",
+    "neighbors": [
+      "S7H2VK",
+      "MVEC6P"
+    ],
+    "arrivals": {
+      "4ZSDR3": "bridge_river",
+      "6PSHGT": "bridge_river",
+      "ESS94P": "bridge_river",
+      "4BU2PV": "bridge_river",
+      "TX5278": "bridge_river",
+      "8TJEM4": "bridge_river",
+      "4XYJGE": "bridge_river",
+      "3ET3FE": "bridge_river"
+    }
+  },
+  "S7H2VK": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "slope",
+    "neighbors": [
+      "DQVQ8R",
+      "MVEC6P"
+    ],
+    "arrivals": {
+      "C6QMCE": "river_slope",
+      "8TJEM4": "river_slope",
+      "4XYJGE": "river_slope",
+      "3ET3FE": "river_slope",
+      "ZMQAFB": "river_slope",
+      "YX5AWC": "river_slope"
+    }
+  },
+  "MVEC6P": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "river",
+    "neighbors": [
+      "DQVQ8R",
+      "S7H2VK"
+    ],
+    "arrivals": {
+      "4ZSDR3": "bridge_river",
+      "6PSHGT": "bridge_river",
+      "ESS94P": "bridge_river",
+      "4BU2PV": "bridge_river",
+      "TX5278": "bridge_river",
+      "8TJEM4": "bridge_river",
+      "4XYJGE": "bridge_river",
+      "3ET3FE": "bridge_river"
+    }
+  },
+  "CD3NZK": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "bridge",
+    "neighbors": [],
+    "arrivals": {}
+  },
+  "TX5278": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "slope",
+    "neighbors": [],
+    "arrivals": {
+      "C6QMCE": "river_slope",
+      "8TJEM4": "river_slope",
+      "4XYJGE": "river_slope",
+      "3ET3FE": "river_slope",
+      "ZMQAFB": "river_slope",
+      "YX5AWC": "river_slope"
+    }
+  },
+  "C6QMCE": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "river",
+    "neighbors": [],
+    "arrivals": {
+      "4ZSDR3": "bridge_river",
+      "6PSHGT": "bridge_river",
+      "ESS94P": "bridge_river",
+      "4BU2PV": "bridge_river",
+      "TX5278": "bridge_river",
+      "8TJEM4": "bridge_river",
+      "4XYJGE": "bridge_river",
+      "3ET3FE": "bridge_river"
+    }
+  },
+  "8TJEM4": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "river",
+    "neighbors": [],
+    "arrivals": {
+      "DQVQ8R": "bridge_river",
+      "S7H2VK": "bridge_river",
+      "MVEC6P": "bridge_river",
+      "CD3NZK": "bridge_river",
+      "C6QMCE": "bridge_river",
+      "352HQ6": "bridge_river",
+      "S7FWP7": "bridge_river",
+      "ZMQAFB": "bridge_river",
+      "YX5AWC": "bridge_river"
+    }
+  },
+  "352HQ6": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "bridge",
+    "neighbors": [],
+    "arrivals": {}
+  },
+  "4XYJGE": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "river",
+    "neighbors": [
+      "3ET3FE"
+    ],
+    "arrivals": {
+      "DQVQ8R": "bridge_river",
+      "S7H2VK": "bridge_river",
+      "MVEC6P": "bridge_river",
+      "CD3NZK": "bridge_river",
+      "C6QMCE": "bridge_river",
+      "352HQ6": "bridge_river",
+      "S7FWP7": "bridge_river",
+      "ZMQAFB": "bridge_river",
+      "YX5AWC": "bridge_river"
+    }
+  },
+  "3ET3FE": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "river",
+    "neighbors": [
+      "4XYJGE"
+    ],
+    "arrivals": {
+      "DQVQ8R": "bridge_river",
+      "S7H2VK": "bridge_river",
+      "MVEC6P": "bridge_river",
+      "CD3NZK": "bridge_river",
+      "C6QMCE": "bridge_river",
+      "352HQ6": "bridge_river",
+      "S7FWP7": "bridge_river",
+      "ZMQAFB": "bridge_river",
+      "YX5AWC": "bridge_river"
+    }
+  },
+  "S7FWP7": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "bridge",
+    "neighbors": [],
+    "arrivals": {}
+  },
+  "ZMQAFB": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "river",
+    "neighbors": [],
+    "arrivals": {
+      "4ZSDR3": "bridge_river",
+      "6PSHGT": "bridge_river",
+      "ESS94P": "bridge_river",
+      "4BU2PV": "bridge_river",
+      "TX5278": "bridge_river",
+      "8TJEM4": "bridge_river",
+      "4XYJGE": "bridge_river",
+      "3ET3FE": "bridge_river"
+    }
+  },
+  "YX5AWC": {
+    "planId": "lingye-neighborhood-20261115",
+    "region": "river",
+    "neighbors": [],
+    "arrivals": {
+      "4ZSDR3": "bridge_river",
+      "6PSHGT": "bridge_river",
+      "ESS94P": "bridge_river",
+      "4BU2PV": "bridge_river",
+      "TX5278": "bridge_river",
+      "8TJEM4": "bridge_river",
+      "4XYJGE": "bridge_river",
+      "3ET3FE": "bridge_river"
+    }
+  }
+}

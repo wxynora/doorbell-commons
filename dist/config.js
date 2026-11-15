@@ -24,6 +24,7 @@ export const STARTING_COINS = 200;
 export const STARTER_POTIONS = 6; // 新农场赠送的加速药水（够开局两轮，缓解早期等待）
 // —— 道具（最小消耗品系统，将来可扩展）——
 export const ITEMS = {
+    snow_shovel: { name: "雪铲", price: 200, durability: 10, desc: "雪铲｜200金币／把｜耐久10次" },
     speed_potion: { name: "加速药水", price: 50, desc: "浇下去，作物像被催熟般立刻成熟，省去等待。" },
 };
 // 加速药水稀缺化（防"无限催熟、停不下来"）：官方店每天每农场限购 + 随机刷新的套装 + 浇水/收获掉落。

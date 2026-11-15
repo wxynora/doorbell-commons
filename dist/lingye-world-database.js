@@ -7,7 +7,8 @@ import { manualPerformanceWorkflow, registerManualPublication } from "./career/r
 import { installAnnualStatisticsSchema } from "./annual-statistics/schema.js";
 import { PENDING_COUNTERS, flushAnnualCounters } from "./annual-statistics/world-buffer.js";
 import { PENDING_REPORTER_MATERIALS } from "./reporter-materials/observations.js";
-import { installReporterMaterialsSchema, markReporterMaterialsRecording, flushReporterMaterialEvents, pruneExpiredReporterMaterialEvents } from "./reporter-materials/store.js";
+import { farmCommitDomains } from "./farm-commit-scope.js";
+import { installReporterMaterialsSchema, markReporterMaterialsRecording, confirmReporterMaterialsRecording, reporterMaterialsRecordingStartedAt, flushReporterMaterialEvents } from "./reporter-materials/store.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -20,6 +21,7 @@ import { CareerDomainError } from "./career/contracts.js";
 import { CareerJobService } from "./career/job-service.js";
 import { beijingDate, EXAM_SESSION_DURATION_MS } from "./career/persistence.js";
 import { installCareerSchema } from "./career/schema.js";
+import { installServiceProposalSchema } from "./career/service-proposal-schema.js";
 import { settleConstableRetryFees } from "./career/constable-interview-review.js";
 import { CareerSchoolService } from "./career/school-service.js";
 import { CareerResignationService } from "./career/resignation-service.js";
@@ -170,6 +172,17 @@ const DEFAULT_DATA_DIR = process.env.AIFARM_DATA_DIR
 export const DEFAULT_LINGYE_WORLD_DATABASE_PATH = resolve(DEFAULT_DATA_DIR, "lingye-world.sqlite");
 
 let lingyeWorldTransactionSequence = 0;
+const serviceProposalPublications = new WeakSet();
+
+// Only the existing proposal transaction's fee reservation and job creation
+// enter this scope; neither changes the farm counters used by the board.
+export function withServiceProposalPublication(database, operation) {
+    if (!database.isTransaction) throw new Error("proposal_publication_transaction_required");
+    const nested = serviceProposalPublications.has(database);
+    serviceProposalPublications.add(database);
+    try { return operation(); }
+    finally { if (!nested) serviceProposalPublications.delete(database); }
+}
 
 export function runLingyeWorldTransaction(database, operation) {
     const nested = database.isTransaction;
@@ -325,6 +338,7 @@ export function installLingyeWorldSchema(database) {
     installFarmBalanceProjectionTracking(database);
     installLoungePetSchema(database);
     installCareerSchema(database);
+    installServiceProposalSchema(database);
     installSecuritySchema(database);
     ensureChefRecipeSchema(database);
     ensureChefCommerceSchema(database);
@@ -383,26 +397,55 @@ export function registerLingyeResidentReference(database, input) {
 
 export function createLingyeFarmBalanceCoordinator(database, backend, options = {}) {
     const generateOperationId = options.generateOperationId ?? randomUUID;
+    reporterMaterialsRecordingStartedAt(database);
     return (world, context, writeWorld, persistenceHints = null) => {
         const ownsDurableTransaction = !database.isTransaction;
+        const hintedFarmIds = Array.isArray(persistenceHints?.farmIds) ? new Set(persistenceHints.farmIds) : null;
+        const farmAfter = persistenceHints?.farmAfter instanceof Map ? persistenceHints.farmAfter : null;
+        const selectedFarms = ids => !ids ? world.farms : farmAfter
+            ? [...ids].map(id => farmAfter.get(id)).filter(Boolean)
+            : world.farms.filter(farm => ids.has(farm.id));
+        const forceBalance = context?.balanceAuthority === "ledger" || persistenceHints?.pendingBalanceProjection === true ||
+            persistenceHints?.forceFarmCoordinator === true;
+        const initiallyNeedsBalance = !hintedFarmIds || selectedFarms(hintedFarmIds).some(farm =>
+            farmCommitDomains(farm, persistenceHints?.farmBefore?.get(farm.id), { forceBalance }).balance);
+        const hookMayChangeBalance = options.beforeFarmBalanceProjection &&
+            (typeof options.beforeFarmBalanceProjectionNeedsBalance !== "function" ||
+                options.beforeFarmBalanceProjectionNeedsBalance({ world, persistenceHints }) === true);
         // Read before starting our transaction: entries visible here came from
         // a completed transaction, not this farm's balance update below.
-        const priorPendingResidents = ownsDurableTransaction && context?.balanceAuthority !== "ledger"
-            ? new Set(database.prepare("SELECT resident_id FROM farm_balance_projection_pending").all().map(row => row.resident_id))
-            : new Set();
+        let readPriorPending = ownsDurableTransaction && context?.balanceAuthority !== "ledger" &&
+            (initiallyNeedsBalance || hookMayChangeBalance);
+        let priorPendingResidents = readPriorPending
+            ? new Set(database.prepare("SELECT resident_id FROM farm_balance_projection_pending").all().map(row => row.resident_id)) : new Set();
         const publications = [];
+        let recordingStartedAt;
         const result = runLingyeWorldTransaction(database, () => {
-            const now = options.now?.() ?? Date.now();
-            advanceReporterBoardSnapshotDay(database, now);
+            const now = Number.isSafeInteger(context?.businessNow) ? context.businessNow : options.now?.() ?? Date.now();
             const candidateFarmIds = Array.isArray(persistenceHints?.farmIds)
                 ? new Set(persistenceHints.farmIds)
                 : null;
+            const hookFarmIds = new Set();
+            const balanceChanged = farm => !candidateFarmIds || hookFarmIds.has(farm.id) || farmCommitDomains(farm,
+                persistenceHints?.farmBefore?.get(farm.id), { forceBalance }).balance;
+            const boardChanged = farm => !candidateFarmIds || farmCommitDomains(farm,
+                persistenceHints?.farmBefore?.get(farm.id),
+                { forceBoard: persistenceHints?.forceFarmCoordinator === true }).board;
+            const needsBoard = () => selectedFarms(candidateFarmIds).some(boardChanged);
+            let boardPrepared = false;
+            const prepareBoard = () => {
+                if (boardPrepared) return;
+                advanceReporterBoardSnapshotDay(database, now);
+                boardPrepared = true;
+            };
+            if (needsBoard()) prepareBoard();
             world.farms = world.farms.map((farm) => {
                 if ((!farm?.doorbellMcpMigration?.migrationId && !farm?.[PENDING_COUNTERS] && !farm?.[PENDING_REPORTER_MATERIALS]) ||
                     (candidateFarmIds && !candidateFarmIds.has(farm.id)))
                     return farm;
                 const staged = cloneFarmForMutation(farm);
                 publications.push({ target: farm, staged });
+                farmAfter?.set(farm.id, staged);
                 return staged;
             });
             let migrated = world.farms.filter((farm) => farm?.doorbellMcpMigration?.migrationId);
@@ -416,6 +459,7 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 byResident.add(residentId);
                 if (candidateFarmIds && !candidateFarmIds.has(farm.id))
                     continue;
+                if (!balanceChanged(farm)) continue;
                 const registeredAt = Number.isFinite(Date.parse(migration.revokedAt))
                     ? Date.parse(migration.revokedAt)
                     : Date.now();
@@ -431,7 +475,6 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                     });
                 }
             }
-            const hookFarmIds = new Set();
             const stageFarm = (farmId) => {
                 const index = world.farms.findIndex(farm => farm.id === farmId);
                 if (index < 0) return null;
@@ -441,6 +484,7 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 const staged = cloneFarmForMutation(target);
                 publications.push({target, staged});
                 world.farms[index] = staged;
+                farmAfter?.set(farmId, staged);
                 candidateFarmIds?.add(farmId);
                 hookFarmIds.add(farmId);
                 return staged;
@@ -448,15 +492,25 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
             // Cross-farm settlement hooks must stage their affected farm before
             // changing its balance; it joins this transaction and its rollback.
             options.beforeFarmBalanceProjection?.({ world, context, now, stageFarm, persistenceHints });
+            if (!boardPrepared && needsBoard()) prepareBoard();
             migrated = world.farms.filter(farm => farm?.doorbellMcpMigration?.migrationId);
             const ledgerAuthority = context?.balanceAuthority === "ledger";
+            if (!readPriorPending && ownsDurableTransaction && !ledgerAuthority &&
+                selectedFarms(candidateFarmIds).some(farm => farm?.doorbellMcpMigration?.migrationId && balanceChanged(farm))) {
+                priorPendingResidents = new Set(database.prepare("SELECT resident_id FROM farm_balance_projection_pending").all()
+                    .map(row => row.resident_id));
+                readPriorPending = true;
+            }
             let balanceOperation = null;
             const changes = [];
             const farmChanges = [];
             const persistenceFarmIds = new Set(hookFarmIds);
+            const reconciledFarmIds = new Set();
             for (const farm of migrated) {
                 if (candidateFarmIds && !candidateFarmIds.has(farm.id))
                     continue;
+                if (!balanceChanged(farm)) continue;
+                reconciledFarmIds.add(farm.id);
                 const migration = farm.doorbellMcpMigration;
                 const residentId = migration.residentId;
                 const accountRow = database.prepare(
@@ -540,8 +594,10 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 }
             }
             if (ownsDurableTransaction) {
-                pruneExpiredReporterMaterialEvents(database, now);
-                markReporterMaterialsRecording(database, now);
+                if (reporterMaterialsRecordingStartedAt(database) === null) {
+                    markReporterMaterialsRecording(database, now);
+                    recordingStartedAt = now;
+                }
                 for (const farm of world.farms) {
                     if (candidateFarmIds && !candidateFarmIds.has(farm.id)) continue;
                     if (flushAnnualCounters(database, farm)) persistenceFarmIds.add(farm.id);
@@ -549,21 +605,22 @@ export function createLingyeFarmBalanceCoordinator(database, backend, options = 
                 }
             }
             options.beforeWorldWrite?.({ world, context, balanceOperation });
+            if (!boardPrepared && needsBoard()) prepareBoard();
             const written = writeWorld({
                 farmIds: [...persistenceFarmIds],
                 componentKeys: [],
                 durableBoundary: ownsDurableTransaction,
             });
             const committedFarmIds = new Set(written?.farms ?? []);
-            amendReporterBoardSnapshotsForCommittedFarms(
-                database,
-                world.farms.filter(farm => committedFarmIds.has(farm.id)),
-                now,
+            if (boardPrepared) amendReporterBoardSnapshotsForCommittedFarms(
+                database, selectedFarms(committedFarmIds).filter(boardChanged), now,
             );
-            if (ownsDurableTransaction)
-                clearCommittedFarmBalanceProjections(database, world.farms, committedFarmIds);
+            if (ownsDurableTransaction && reconciledFarmIds.size > 0)
+                clearCommittedFarmBalanceProjections(database, selectedFarms(reconciledFarmIds),
+                    new Set([...committedFarmIds].filter(id => reconciledFarmIds.has(id))));
             return written;
         });
+        if (recordingStartedAt !== undefined) confirmReporterMaterialsRecording(database, recordingStartedAt);
         for (const { target, staged } of publications) {
             for (const key of Object.keys(target))
                 delete target[key];
@@ -754,7 +811,8 @@ export function createLingyeWorldBackend(database, options) {
     const atomic = (operation) => {
         return runLingyeWorldTransaction(database, () => {
             // Also runs inside the existing midnight employment transaction.
-            advanceReporterBoardSnapshotDay(database, options.now?.() ?? Date.now());
+            if (!serviceProposalPublications.has(database))
+                advanceReporterBoardSnapshotDay(database, options.now?.() ?? Date.now());
             return operation();
         });
     };

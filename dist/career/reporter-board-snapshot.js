@@ -4,6 +4,7 @@ import { economyGoldSpentToday } from "../daily-spend.js";
 import { buildLeaderboards } from "../leaderboard.js";
 import { currentDayIndex } from "../time.js";
 import { equippedTitle } from "../titles.js";
+import { runInTransaction } from "./persistence.js";
 
 const DAILY_KEYS = ["tasks", "logins", "messages", "events", "stolen", "watered", "coinSpend", "oddDishes"];
 const VALUE_KEYS = [...DAILY_KEYS, "raidIncome", "raidLoss"];
@@ -101,6 +102,8 @@ export function amendReporterBoardSnapshotsForCommittedFarms(database, farms, no
 export function readReporterBoardSnapshot(database, day, now) {
     const today = currentDayIndex(now);
     if (day < today - 2 || day >= today) return {};
+    return runInTransaction(database, () => {
+    advanceReporterBoardSnapshotDay(database, now);
     const rows = database.prepare("SELECT * FROM career_reporter_board_snapshots WHERE day_index = ? ORDER BY farm_order").all(day);
     const instant = day * 86_400_000 - 8 * 3_600_000;
     const farms = rows.map(row => ({
@@ -121,4 +124,5 @@ export function readReporterBoardSnapshot(database, day, now) {
         entry.titleColor = stored?.title_color ?? undefined;
     }
     return boards;
+    });
 }

@@ -1,3 +1,4 @@
+import {handleFarmNeighborhood} from "./farm-neighborhood.js";
 import { createMomentsPromotionService } from "../../domain/moments/promotion.js";
 import { handleMomentsPromotion } from "../moments-promotion.js";
 import { createMomentsProgressionService } from "../../domain/moments/progression.js";
@@ -180,6 +181,10 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
         }
         if(parts.length===5 && parts[0]==="internal" && parts[1]==="doorbell" && parts[2]==="security" && parts[3]==="patrol" && ["pending","ack"].includes(parts[4])) {
             await handleDoorbellSecurityPatrol(req,res,method,constableInterviewRuntime,parts[4]);
+            return true;
+        }
+        if (parts.length === 4 && parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "human" && parts[3] === "farm-neighborhood") {
+            await handleFarmNeighborhood(req, res, method);
             return true;
         }
         if (parts.length === 4 && parts[0] === 'internal' && parts[1] === 'doorbell' && parts[2] === 'mid-autumn' && ['ai', 'human'].includes(parts[3])) {
@@ -509,7 +514,7 @@ export function createDoorbellInternalHandler(executeFarmAction, lingyeActionExe
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "farm-actions" && parts[3] === "execute" && parts.length === 4) {
-            await handleDoorbellFarmExecution(req, res, method, executeFarmAction);
+            await handleDoorbellFarmExecution(req, res, method, executeFarmAction, constableInterviewRuntime.beforeFarmAction);
             return true;
         }
         if (parts[0] === "internal" && parts[1] === "doorbell" && parts[2] === "lingye-actions" && parts[3] === "execute" && parts.length === 4) {

@@ -26,7 +26,7 @@ import {
     animalTreatmentCandidates,
     checkAgronomyIssue,
     checkAnimalCase,
-    currentP3Sources,
+    currentAnimalSource,
     runP3WorldAction,
     treatAgronomyIssue,
     treatAnimalCase,
@@ -303,10 +303,12 @@ export function startRegisteredP3Scheduler(database, options = {}) {
         if (stopped)
             return;
         const current = now();
-        timer = setTimer(() => {
+        timer = setTimer(async () => {
             if (stopped)
                 return;
             try {
+                if (options.beforeAdvance) await options.beforeAdvance(now());
+                if (stopped) return;
                 advanceRegisteredP3Farms(database, now());
             }
             catch (error) {
@@ -389,6 +391,32 @@ function animalSource(farm, ownerResidentId, source) {
     };
 }
 
+// Project only the loaded household's current service sources. This does not
+// advance the world, persist source facts or inspect unrelated security data.
+export function serviceProposalSources(farm, ownerResidentId, { includeActive = false } = {}) {
+    const agronomy = agronomyIssuesForFarm(farm)
+        .filter(({ issue }) => includeActive
+            ? ["open", "stabilized", "treating"].includes(issue?.status) : issue?.status === "open")
+        .map(({ plot, issue }) => agronomySource(farm, ownerResidentId, {
+            ...issue,
+            plotId: plot.id,
+            requiredTreatment: issue.requiredTreatment ?? AGRONOMY_CONDITIONS[issue.condition]?.material,
+        }));
+    const animals = (farm.ranch?.animals ?? []).flatMap((animal, animalIndex) => {
+        const health = animal?.lingyeHealth;
+        return health && (includeActive ? health.status !== "healthy" : health.status === "open") ? [animalSource(farm, ownerResidentId, {
+            ...health, animalIndex, animalKindId: animal.kindId,
+        })] : [];
+    });
+    return [...agronomy, ...animals].filter(Boolean);
+}
+
+export function recordServiceProposalSource(database, source, now) {
+    database.prepare(`INSERT OR IGNORE INTO career_commission_source_facts
+      (source_id,source_type,fact_json,recorded_at) VALUES (?,?,?,?)`)
+        .run(source.sourceId, source.sourceType, JSON.stringify(source.fact), now);
+}
+
 export function securityTrailSources(database, farm, ownerResidentId, entries = farm.trail ?? []) {
     return entries
         .filter((entry) => entry?.kind === "stolen" &&
@@ -424,18 +452,20 @@ export function boundFarmSources(database, farm, ownerResidentId, now = Date.now
     if (authoritativeOwner !== ownerResidentId)
         return [];
     const currentFarm = saveAdvancedFarm(farm, now);
-    const sources = currentP3Sources(currentFarm);
     const candidates = [
-        agronomySource(currentFarm, ownerResidentId, sources.agronomy),
-        animalSource(currentFarm, ownerResidentId, sources.animal),
+        ...serviceProposalSources(currentFarm, ownerResidentId, { includeActive: true }),
         ...securityTrailSources(database, currentFarm, ownerResidentId),
     ].filter(Boolean);
-    for (const source of candidates) {
-        database.prepare(`
-          INSERT OR IGNORE INTO career_commission_source_facts (
-            source_id, source_type, fact_json, recorded_at
-          ) VALUES (?, ?, ?, ?)
-        `).run(source.sourceId, source.sourceType, JSON.stringify(source.fact), now);
+    if (candidates.length) {
+        const existing = new Set(database.prepare(`SELECT source_id FROM career_commission_source_facts
+          WHERE source_id IN (SELECT value FROM json_each(?))`)
+            .all(JSON.stringify(candidates.map(source => source.sourceId))).map(row => row.source_id));
+        const missing = candidates.filter(source => !existing.has(source.sourceId))
+            .map(source => [source.sourceId, source.sourceType, JSON.stringify(source.fact)]);
+        if (missing.length) database.prepare(`INSERT OR IGNORE INTO career_commission_source_facts
+          (source_id,source_type,fact_json,recorded_at)
+          SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]'),json_extract(value,'$[2]'),?
+          FROM json_each(?)`).run(now, JSON.stringify(missing));
     }
     return candidates;
 }
@@ -705,7 +735,6 @@ function sourceState(job) {
     const farm = targetFarm(job);
     if (!farm)
         return null;
-    const sources = currentP3Sources(farm);
     if (job.career === "agronomist") {
         const plotId = Number(job.objectId.slice(job.objectId.lastIndexOf(":plot:") + 6));
         const entry = agronomyIssuesForFarm(farm)
@@ -726,8 +755,8 @@ function sourceState(job) {
             };
         }
     }
-    if (job.career === "veterinarian" && sources.animal?.sourceId === job.sourceId)
-        return { farm, source: sources.animal };
+    const animal = job.career === "veterinarian" ? currentAnimalSource(farm, job.sourceId) : null;
+    if (animal) return { farm, source: animal };
     if (job.career === "constable")
         return { farm, source: { sourceId: job.sourceId, status: "open" } };
     throw new Error("commission_source_not_available");

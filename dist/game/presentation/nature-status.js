@@ -6,12 +6,12 @@ import { currentWeather } from "../../time.js";
 const WEATHER_NAMES = Object.freeze({
     sunny: "晴", cloudy: "多云", light_rain: "小雨", heavy_rain: "暴雨",
     thunderstorm: "雷暴", fog: "雾", hot: "高温", dry_wind: "干热风",
-    light_snow: "小雪", blizzard: "暴雪",
+    light_snow: "小雪", blizzard: "暴雪", cold_snap: "寒潮", freezing_rain: "冻雨",
 });
 const WEATHER_ICONS = Object.freeze({
     sunny: "☀️", cloudy: "☁️", light_rain: "🌦️", heavy_rain: "🌧️",
     thunderstorm: "⛈️", fog: "🌫️", hot: "🌡️", dry_wind: "💨",
-    light_snow: "🌨️", blizzard: "❄️",
+    light_snow: "🌨️", blizzard: "❄️", cold_snap: "❄️", freezing_rain: "🌧️",
 });
 const DISASTER_NAMES = Object.freeze({ flood: "洪水", drought: "干旱", pest: "虫灾" });
 const DISASTER_ICONS = Object.freeze({ flood: "🌊", drought: "☀️", pest: "🐛" });

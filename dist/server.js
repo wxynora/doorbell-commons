@@ -1,7 +1,9 @@
+import { areNearNeighbors, neighborhoodArrival } from "./domain/nature/neighborhood.js";
 import { ownFarmPersistenceScope } from "./server/farm-persistence-scope.js";
 import { withFarmMutationScope, currentFarmMutationScope, captureComponentMutation, cloneFarmForMutation, snapshotFarmMutation, farmMutationChanged } from "./farm-mutation-scope.js";
+import { hasNewPatrolTheft } from "./farm-commit-scope.js";
 import { encodeStateRecords, stateRecordChanges } from "./farm-state-records.js";
-import {configureGuestbookJudgments} from './server/doorbell/guestbook-judgments.mjs';
+import {configureGuestbookJudgments,wakeGuestbookJudgments} from './server/doorbell/guestbook-judgments.mjs';
 import { createTogetherDecorationRewards } from "./server/doorbell/together-decoration.js";
 import { handleFarmDecorationAction } from './server/farm-decoration-agent-action.js';
 import { captureCommittedPlayerPatrolThefts } from "./security/player-patrol-runtime.js";
@@ -19,7 +21,7 @@ import { existsSync } from "node:fs";
 import { advance, projectFarmGrowth, steal, visitorWater, tryWaterReward, buyPotionSet, ensureHumanKey, pushSocialInbox, pushLog, craft, cookingDebuffReason, cookingDebuffStatusText, bribeGuardDog } from "./engine.js";
 import { dispatch, farmView, viewShop, viewBag, viewEncyclopedia, shopBrief, viewMarket, buyFromMarket, visitView, tendNpc, hasDamagedPublicName, viewKitchen } from "./game.js";
 import { harvestText, stealThiefText, statusFooter, waterText } from "./flavor.js";
-import { createFarm, getFarm, readFarm, sweepExpiredFarmReceipts, allFarms, playerFarms, captureLiveFarmMutation, replaceFarm, replaceFarmAndMysteryMerchantAtomic, save, getGlimmerWorld, getNatureWorld, getMysteryMerchantWorld, getPublicExpeditionWorld, readPublicExpeditionWorld, getQixiLantern2026World, restoreCommittedWorldInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, withWorldCommitContext, advanceStoredMysteryMerchantWorld } from "./store.js";
+import { createFarm, getFarm, readFarm, sweepExpiredFarmReceipts, allFarms, playerFarms, captureLiveFarmMutation, replaceFarm, replaceFarmAndMysteryMerchantAtomic, save, getGlimmerWorld, getNatureWorld, readNatureWorld, getMysteryMerchantWorld, getPublicExpeditionWorld, readPublicExpeditionWorld, getQixiLantern2026World, restoreCommittedWorldInMemory, setWorldCommitCoordinator, setWorldPersistenceAdapter, settleLoadedWorld, withWorldCommitContext, advanceStoredMysteryMerchantWorld } from "./store.js";
 import { MAX_FARMS, MESSAGE_TEXT_MAX, MESSAGES_MAX, NPC_ID, GROW_TICKS, BASE, REGISTRATION_OPEN, REGISTRATION_CLOSED_TEXT, REGISTRATION_CAP, REGISTRATION_FULL_TEXT, SHOW_MIGRATION_NOTICE, MIGRATION_NOTICE_TEXT, MIGRATION_NOTICE_HTML } from "./config.js";
 import { allowRequest, allowCreate, sweepGuard } from "./guard.js";
 import { sweepNonces, htmlReadme, htmlGuide } from "./agent.js";
@@ -57,14 +59,17 @@ import { allowsSocial, farmByNumber, farmLabel, reachable, resolveNumberedTarget
 import { createLegacyAgentHandler } from "./server/legacy-agent/runtime.js";
 import { createLingyeFarmBalanceCoordinator, createLingyeWorldBackend, openLingyeWorldDatabase, runLingyeWorldTransaction } from "./lingye-world-database.js";
 import { synchronizeFarmBalanceProjections } from "./farm-balance-projection.js";
-import { createLingyeActionExecutor } from "./server/doorbell/lingye.js";
+import { createLingyeActionExecutor, serviceProposalOutcome } from "./server/doorbell/lingye.js";
 import { resolveChefOriginalCookingReceipt } from "./domain/kitchen/original.js";
 import { farmCareerBenefits, farmDoorbellKitchenCareerBenefits, farmResidentId } from "./career/farm-benefits.js";
 import { constableExamTheftEligibility, farmActionTouchesLockedCareerObject, lockedCareerObjectText, startRegisteredP3Scheduler } from "./career/p3-commission-runtime.js";
 import { startConstableInterviewScheduler } from "./career/constable-interview-scheduler.js";
 import { startRanchRaidScheduler } from "./server/ranch-raid-scheduler.js";
 import { loadConstableInterviewBank } from "./career/constable-interview-bank.js";
-import { applyDroughtWatering, collectFloodFishForFarm, commitNatureFarmReconciliation, commitNatureRemovedPlot, startNatureRuntimeScheduler } from "./nature-runtime.js";
+import { applyDroughtWatering, collectFloodFishForFarm, commitNatureFarmReconciliation, commitNatureRemovedPlot, preflightNatureWeatherActivation, prepareP3ForNewBinding, startNatureRuntimeScheduler } from "./nature-runtime.js";
+import { bindP3NatureDayGate } from "./domain/nature/p3-day-gate.js";
+import { setNewRanchWeatherPolicy } from "./domain/nature/new-ranch.js";
+import { appendOwnWeatherOptions, appendVisitWeatherOptions, executeWeatherOption, isWeatherOptionAction, isWeatherOptionRequest } from "./domain/nature/weather-options.js";
 import { setDailySpendEconomyDatabase } from "./daily-spend.js";
 import { activeMysteryMerchantEvent, buyMysteryMerchantOffers, projectMysteryMerchant, renderMysteryMerchantMarket } from "./mystery-merchant.js";
 import { discoverAndBroadcastMysteryMerchant } from "./server/market-action.js";
@@ -80,14 +85,21 @@ import { withHalloweenFarmAction, currentHalloweenFarmAction } from "./halloween
 let activeLingyeWorldDatabase = null;
 let activeLingyeWorldBackend = null;
 let activeMysteryMerchantRuntime = null;
+let activeWeatherUpgradeRuntime = null;
 let activeHalloweenFarmRuntime = null;
 let activeHalloweenCandyTool = null;
 configureTogetherSeason3Authority({getDatabase:()=>activeLingyeWorldDatabase,getBackend:()=>activeLingyeWorldBackend});
 function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
-    const detention = activeDetentionForFarm(farm, now);
-    if (detention && !detentionAllowsFarmAction(action))
+    const residentId = activeLingyeWorldDatabase && activeLingyeWorldBackend
+        ? farmResidentId(activeLingyeWorldDatabase, farm) : null;
+    const detention = activeDetentionForFarm(farm, now, residentId);
+    if (detention && (!detentionAllowsFarmAction(action) ||
+        (action === "status" && Object.hasOwn(params, "option"))))
         return { status: 400, json: { ok: false, code: "RESIDENT_DETAINED", text: detentionBlockedFarmActionText(detention) } };
     if (action === 'decorate') return handleFarmDecorationAction(farm, params);
+    if ((action === "visit" || action === "status") && Object.hasOwn(params, "option"))
+        return executeWeatherOption({ database: activeLingyeWorldDatabase, actor: farm, action,
+            params, rules: activeWeatherUpgradeRuntime, now, residentId });
     if (isNpcMotionChoice(action, params)) {
         captureLiveFarmMutation(farm);
         return npcMotionChoiceReceipt(farm, params.option, now, {save, view: farmView, detail});
@@ -138,6 +150,9 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     const suppressTogetherNotices = ["bag", "status", "visit"].includes(action);
     const result = runFarm(target, action, injected, social ? farm.id : body.id, now,
         { detail, careerBenefits, suppressTogetherNotices, captureMoments: true });
+    if (action === "visit" && social && result.json?.ok === true)
+        appendVisitWeatherOptions({ database: activeLingyeWorldDatabase, actor: readFarm(farm.id),
+            target: readFarm(target), result, rules: activeWeatherUpgradeRuntime, now, residentId });
     if (action === "bag" && result.status === 200 &&
         result.json?.ok === true && typeof result.json.text === "string") {
         const entry = activeHalloweenCandyTool?.bagEntry({ farmId: farm.id });
@@ -149,6 +164,8 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
     }
     if (action === "status" && result.json?.ok === true) {
         appendCareerStatusNotices(activeLingyeWorldDatabase, activeLingyeWorldBackend, farm, result);
+        appendOwnWeatherOptions({ database: activeLingyeWorldDatabase, farm: readFarm(farm.id),
+            result, rules: activeWeatherUpgradeRuntime, now, residentId, allowActions: !detention });
         const entry = midAutumnActivityStatusText(now);
         if (entry) result.json.text = `${result.json.text}\n\n${entry}`;
     }
@@ -156,11 +173,13 @@ function executeDoorbellFarmActionCore(farm, action, params, detail, now) {
 }
 function executeDoorbellFarmAction(farm, action, params, detail, now, sourceOp) {
     const halloweenCandyEat = action === "together" && isHalloweenCandyEatOption(params.option);
+    const weatherOption = isWeatherOptionAction(action, params);
     const execute = () => {
         try {
-            return withWorldCommitContext({ balanceAuthority: "farm", actor: "agent" }, () => {
+            return withWorldCommitContext({ balanceAuthority: "farm", actor: "agent",
+                ...(activeWeatherUpgradeRuntime ? { businessNow: now } : {}) }, () => {
                 const out = executeDoorbellFarmActionCore(farm, action, params, detail, now);
-                return halloweenCandyEat ? out : appendNpcMotionReceipt(farm, out,
+                return halloweenCandyEat || weatherOption ? out : appendNpcMotionReceipt(farm, out,
                     isNpcMotionChoice(action, params) ? undefined : sourceOp, now,
                     { motions: glimmerContentEditor.motions, save, restore: restoreCommittedWorldInMemory, getFarm, view: farmView, context:{args:params,residentId:farm.doorbellMcpMigration?.residentId ?? farm.id} });
             });
@@ -241,10 +260,10 @@ function caughtCropTheftFact(database, input) {
         occurredAt: entry.t,
     };
 }
-function activeDetentionForFarm(farm, now) {
+function activeDetentionForFarm(farm, now, knownResidentId = undefined) {
     if (!activeLingyeWorldDatabase || !activeLingyeWorldBackend)
         return null;
-    const residentId = farmResidentId(activeLingyeWorldDatabase, farm);
+    const residentId = knownResidentId === undefined ? farmResidentId(activeLingyeWorldDatabase, farm) : knownResidentId;
     if (!residentId)
         return null;
     return activeLingyeWorldBackend.trustedQueries.isResidentDetained(residentId, { at: now })
@@ -418,7 +437,8 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
                 name: f.name,
                 plots: farmView(f, now).plots,
             } } : {};
-        const text = visitView(f, now, visitorId ? readFarm(visitorId) : undefined, targetRef);
+        const arrival = neighborhoodArrival(visitorId ? readFarm(visitorId) : undefined, f);
+        const text = [arrival, visitView(f, now, visitorId ? readFarm(visitorId) : undefined, targetRef)].filter(Boolean).join("\n");
         persistProjectedRead();
         return { status: 200, json: { ok: true, text, ...publicDetail, ...(moments.length ? {moment_activities:moments} : {}) } };
     }
@@ -579,7 +599,7 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             const allowed = checkPublicContribution(publicWorld, principal, "water", { targetFarmId: f.id }, now, publicFarms);
             if (!allowed.ok)
                 return { status: 400, json: { ok: false, text: allowed.text, ...vf(principal) } };
-            const watered = visitorWater(f, principal.id, target.plot.id, principal.name, now);
+            const watered = visitorWater(f, principal.id, target.plot.id, principal.name, now, activeWeatherUpgradeRuntime?.plot?.moisture);
             if (!watered.ok)
                 return { status: 400, json: { ok: false, text: watered.error, ...vf(principal) } };
             // 这条铃野共行专用路径历史上不累计 lifetime watered；只新增今日榜计数。
@@ -827,10 +847,10 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
             return { status: 400, json: { ok: false, text: reachable(visitor) ? `你关闭了浇水开关——先让 ${visitor.humanName || "伴侣"} 帮你打开才能帮别人浇。` : `你设了谢绝来访（闭门状态），不能出门浇水——先让 ${visitor.humanName || "伴侣"} 帮你打开『访问』。` } };
         advance(visitor, now);
         // 串门浇水＝帮对方加速 30 分钟（默认浇剩余时间最短的那块；不再提升稀有度；1 家 1 天 1 次）
-        const r = visitorWater(f, byId, b.plotId != null ? Number(b.plotId) : undefined, visitor.name, now);
+        const r = visitorWater(f, byId, b.plotId != null ? Number(b.plotId) : undefined, visitor.name, now, activeWeatherUpgradeRuntime?.plot?.moisture, areNearNeighbors(visitor, f));
         if (!r.ok)
             return { status: 400, json: { ok: false, text: r.error } };
-        applyDroughtWatering(f, [r.plotId], now);
+        applyDroughtWatering(f, (r.plots ?? [r]).map(p => p.plotId), now);
         recordSuccessfulWatering(visitor, now);
         onTaskEvent(visitor, "help_water", now); // 随机任务：帮邻居浇水（浇水者）
         const qixi = recordQixi2026Progress(visitor, "water", 1, now);
@@ -841,17 +861,16 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
         pushSocialInbox(f, `💧 「${visitor.name}」给你浇了水`, now);
         const moments = options.captureMoments ? recordMomentsActivities(visitor, [visitorWaterActivity(r, f.name), ...titleActivities(freshTitles)], now) : [];
         saveKnownFarmChanges([f.id, visitor.id], now);
-        return { status: 200, json: { ok: true, text: [`${waterText(false, visitor.name)}（帮「${f.name}」${r.plotId} 号地加速 30 分钟${r.ripened ? "，正好催熟啦" : ""}）${got ? "\n🧪 浇水有回报——掉了 1 瓶加速药水！" : ""}`, qixi2026CompletionText(qixi), midAutumnSeedCompletionText(autumn), statusFooter(visitor, now)].filter(Boolean).join("\n"), ...vf(visitor), ...(moments.length ? {moment_activities:moments} : {}) } };
+        return { status: 200, json: { ok: true, text: [`${(r.plots ?? [r]).map(p => `${waterText(false, visitor.name)}（帮「${f.name}」${p.plotId} 号地加速 30 分钟${p.ripened ? "，正好催熟啦" : ""}）`).join("\n")}${got ? "\n🧪 浇水有回报——掉了 1 瓶加速药水！" : ""}`, qixi2026CompletionText(qixi), midAutumnSeedCompletionText(autumn), statusFooter(visitor, now)].filter(Boolean).join("\n"), ...vf(visitor), ...(moments.length ? {moment_activities:moments} : {}) } };
     }
     // 串门买别家商店随机刷出的「药水套装」（钱由买家=by 出，每份每人限购 1）
     if (action === "buy-potion-set" && b.by) {
         const buyer = getFarm(byId);
         advance(buyer, now);
         const r = buyPotionSet(f, buyer, now);
-        // An expired shelf refreshes even if this buyer cannot complete the sale.
-        saveKnownFarmChanges([f.id, buyer.id], now);
         if (!r.ok)
             return { status: 400, json: { ok: false, text: r.error, ...vf(buyer) } };
+        saveKnownFarmChanges([f.id, buyer.id], now);
         return { status: 200, json: { ok: true, text: `🎁 在「${f.name}」买下药水套装：+${r.qty} 瓶加速药水，-${r.cost}金。\n${statusFooter(buyer, now)}`, ...vf(buyer) } };
     }
     // 留言
@@ -909,7 +928,8 @@ function runFarmCore(farmId, action, b, encArg, now, options = {}) {
     const season3Harvest = action === "harvest" || action === "run"
         ? captureStoredTogetherSeason3Harvest(f,now) : null;
     const r = dispatch(f, { ...b, action }, now, action === "ranch-harvest"
-        ? { ...careerBenefits, ranchFarms: publicFarms, captureMoments: options.captureMoments } : { ...careerBenefits, captureMoments: options.captureMoments });
+        ? { ...careerBenefits, ranchFarms: publicFarms, captureMoments: options.captureMoments, weatherUpgrade: activeWeatherUpgradeRuntime }
+        : { ...careerBenefits, captureMoments: options.captureMoments, weatherUpgrade: activeWeatherUpgradeRuntime });
     if(r?.ok && season3Harvest) attachStoredTogetherSeason3Harvest(f,season3Harvest,now);
     if (r?.ok && action === "water") {
         const plotIds = b.plotId != null ? [Number(b.plotId)] : f.plots.map((plot) => plot.id);
@@ -1046,6 +1066,9 @@ function maintenanceOut(req, res, parts, method) {
     return jsonOut(res, 503, { ok: false, text: MAINTENANCE_API_TEXT });
 }
 export function startServer(port, host = "127.0.0.1", options = {}) {
+    const weatherEnablePreflight = options.weatherUpgrade ? preflightNatureWeatherActivation({
+        now: (options.natureScheduler?.now ?? Date.now)(), config: options.natureScheduler?.config,
+    }) : null;
     const togetherStorySelection = options.togetherStorySelection === null ? null
         : readTogetherSeason3StartupSelection(options.togetherStorySelection === undefined
             ? process.env : {[TOGETHER_STORY_ENV]:options.togetherStorySelection});
@@ -1079,6 +1102,8 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
     if (lingyeWorldDatabase) configureGuestbookJudgments(lingyeWorldDatabase);
     setDailySpendEconomyDatabase(lingyeWorldDatabase);
     activeMysteryMerchantRuntime = mysteryMerchantConfig;
+    activeWeatherUpgradeRuntime = options.weatherUpgrade ?? null;
+    setNewRanchWeatherPolicy(activeWeatherUpgradeRuntime);
     const lingyeEconomyRules = Object.freeze({
         minimumSystemLoanCreditDays: 7,
         restrictedDailyGoldLimit: 200000,
@@ -1121,9 +1146,18 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             cookingRecipes,
         },
     });
+    const hasPendingPatrolTheft = persistenceHints => {
+            if (!Array.isArray(persistenceHints?.farmIds) || !(persistenceHints?.farmBefore instanceof Map) ||
+                !(persistenceHints?.farmAfter instanceof Map)) return true;
+            return persistenceHints.farmIds.some(id => hasNewPatrolTheft(
+                persistenceHints.farmAfter.get(id), persistenceHints.farmBefore.get(id)));
+    };
     const balanceCoordinator = createLingyeFarmBalanceCoordinator(lingyeWorldDatabase, lingyeWorldBackend, {
+        beforeFarmBalanceProjectionNeedsBalance: ({ persistenceHints }) => hasPendingPatrolTheft(persistenceHints) ||
+            !!currentHalloweenFarmAction()?.pending?.some(entry => entry.kind === "theft"),
         beforeFarmBalanceProjection: ({ world, now, stageFarm, persistenceHints }) => {
-            const capturedPlayerThefts = captureCommittedPlayerPatrolThefts(lingyeWorldDatabase, lingyeWorldBackend, world, persistenceHints);
+            const capturedPlayerThefts = hasPendingPatrolTheft(persistenceHints)
+                ? captureCommittedPlayerPatrolThefts(lingyeWorldDatabase, lingyeWorldBackend, world, persistenceHints) : [];
             for (const capture of capturedPlayerThefts) stageFarm(capture.actorFarmId);
             halloweenRuntime.effectHooks.beforeFarmBalanceProjection({ world, now, capturedPlayerThefts });
         },
@@ -1131,6 +1165,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
     });
     setWorldCommitCoordinator((world, ...args) => {
         const result = balanceCoordinator(world, ...args);
+        wakeGuestbookJudgments(lingyeWorldDatabase, {enqueued:result?.guestbookEnqueued === true});
         if (result?.ranchRaidsChanged ?? true)
             ranchRaidScheduler?.reschedule(world.farms);
         return result;
@@ -1169,6 +1204,8 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         activeLingyeWorldDatabase = null;
         activeLingyeWorldBackend = null;
         activeMysteryMerchantRuntime = null;
+        activeWeatherUpgradeRuntime = null;
+        setNewRanchWeatherPolicy(null);
         setDailySpendEconomyDatabase(null);
         throw error;
     }
@@ -1187,14 +1224,30 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
     const lingyeActionExecutor = Object.freeze({
         npc: rawLingyeActionExecutor.npc,
         execute(input) {
+            const preparedOption = rawLingyeActionExecutor.prepareProposalInput(input);
+            if (!preparedOption?.isProposal)
+                withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, syncLedgerProjection);
             const operation = () => withWorldCommitContext(
                 { balanceAuthority: "ledger", actor: "human" },
-                () => rawLingyeActionExecutor.execute({...input,deferNpcGreeting:true}),
+                () => rawLingyeActionExecutor.execute({...input,deferNpcGreeting:true}, preparedOption),
             );
-            const result = !rawLingyeActionExecutor.npc.isAction(input) &&
+            const result = !preparedOption?.isProposal && !rawLingyeActionExecutor.npc.isAction(input) &&
                 (input.op.startsWith("go.bank.") || input.op.startsWith("go.school."))
                 ? runLingyeWorldTransaction(lingyeWorldDatabase, operation)
                 : operation();
+            const proposal = serviceProposalOutcome(result);
+            if (preparedOption?.isProposal) {
+                if (proposal?.synchronizeOwner && input.farm && lingyeWorldDatabase.prepare(
+                    "SELECT 1 FROM farm_balance_projection_pending WHERE resident_id = ?",
+                ).get(input.residentId)) {
+                    withFarmMutationScope(() => {
+                        captureLiveFarmMutation(getFarm(input.farm.id));
+                        withWorldCommitContext({ balanceAuthority: "ledger", actor: "human" }, () =>
+                            save({ farmIds: [input.farm.id], componentKeys: [], pendingBalanceProjection: true }));
+                    });
+                }
+                return result;
+            }
             // The ledger transaction is already committed. Project it into the
             // farm in a new durable transaction instead of a nested savepoint.
             withWorldCommitContext({ balanceAuthority: "ledger", actor: "human" }, () => {
@@ -1336,12 +1389,27 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             database: lingyeWorldDatabase, backend: lingyeWorldBackend, economyRules: lingyeEconomyRules,
             decorationRewards: createTogetherDecorationRewards(),
             syncTogetherBalances: () => withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, syncLedgerProjection),
+            ...(options.weatherUpgrade ? { prepareFarmMigration: (farm, now) => prepareP3ForNewBinding(farm, now, options.weatherUpgrade) } : {}),
+            ...(options.weatherUpgrade ? { beforeFarmAction: async (at, body) => {
+                await stopNatureScheduler.whenCurrent(at);
+                if (!isWeatherOptionRequest(body))
+                    withWorldCommitContext({ balanceAuthority: "ledger", actor: "system", businessNow: at }, syncLedgerProjection);
+            } } : {}),
         },
         gachaRuntime,
         halloweenRuntime,
         lingyeWorldDatabase,
-    );    const stopP3Scheduler = startRegisteredP3Scheduler(lingyeWorldDatabase);
-    const stopNatureScheduler = startNatureRuntimeScheduler();
+    );
+    let stopNatureScheduler, stopP3Scheduler, unbindP3NatureDayGate;
+    if (options.weatherUpgrade) {
+        stopNatureScheduler = startNatureRuntimeScheduler({ ...options.natureScheduler, weatherUpgrade: options.weatherUpgrade, weatherEnablePreflight });
+        unbindP3NatureDayGate = bindP3NatureDayGate(readNatureWorld);
+        stopP3Scheduler = startRegisteredP3Scheduler(lingyeWorldDatabase,
+            { beforeAdvance: at => stopNatureScheduler.whenCurrent(at) });
+    } else {
+        stopP3Scheduler = startRegisteredP3Scheduler(lingyeWorldDatabase);
+        stopNatureScheduler = startNatureRuntimeScheduler();
+    }
     const stopConstableInterviewScheduler = startConstableInterviewScheduler(lingyeWorldDatabase, lingyeWorldBackend);
     ranchRaidScheduler = startRanchRaidScheduler();
     const server = createServer((req, res) => withFarmMutationScope(async () => {
@@ -1354,7 +1422,13 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         if (tryServeAsset(method, parts, res))
             return;
         try {
-            withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, syncLedgerProjection);
+            if (options.weatherUpgrade) await stopNatureScheduler.whenCurrent(Date.now());
+            const path = parts.join("/");
+            const deferFarmActionBalanceSync = options.weatherUpgrade &&
+                path === "internal/doorbell/farm-actions/execute";
+            const deferLingyeBalanceSync = path === "internal/doorbell/lingye-actions/execute";
+            if (!deferFarmActionBalanceSync && !deferLingyeBalanceSync)
+                withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, syncLedgerProjection);
             if (await handleDoorbellInternal(req, res, parts, method))
                 return;
             const now = Date.now();
@@ -1591,6 +1665,7 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
         if (activeHalloweenFarmRuntime === halloweenRuntime) activeHalloweenFarmRuntime = null;
         if (activeHalloweenCandyTool) activeHalloweenCandyTool = null;
         stopP3Scheduler();
+        unbindP3NatureDayGate?.();
         stopNatureScheduler();
         stopConstableInterviewScheduler();
         ranchRaidScheduler.stop();
@@ -1612,6 +1687,10 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             activeLingyeWorldBackend = null;
         if (activeMysteryMerchantRuntime === mysteryMerchantConfig)
             activeMysteryMerchantRuntime = null;
+        if (activeWeatherUpgradeRuntime === (options.weatherUpgrade ?? null)) {
+            activeWeatherUpgradeRuntime = null;
+            setNewRanchWeatherPolicy(null);
+        }
         setDailySpendEconomyDatabase(null);
         if (closeLingyeWorldDatabaseOnClose && lingyeWorldDatabase.isOpen)
             lingyeWorldDatabase.close();

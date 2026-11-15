@@ -1,3 +1,4 @@
+import { humanPlotWeather } from "./weather-human-projection.js";
 import { agronomyGrowthEffect } from "../career/p3-world.js";
 import { createHash } from "node:crypto";
 import { HUMAN_HARVEST_DAILY_CAP } from "../config.js";
@@ -5,7 +6,7 @@ import { getCrop, landTierByLevel } from "../content.js";
 import { humanHarvestLeft, nextUpgradeReq, petBuffs, plotRemainMs, projectFarmGrowth } from "../engine.js";
 import { checkLandUpgrade } from "../domain/field/land.js";
 import { championCropBonus } from "../domain/champion-harvest.js";
-import { natureSnapshot } from "../nature.js";
+import { natureSceneWeather } from "../nature.js";
 import { readNatureWorld } from "../store.js";
 import { currentDayIndex, currentSeason } from "../time.js";
 import { equippedTitle } from "../titles.js";
@@ -52,6 +53,7 @@ function projectPlot(plot, farm, now, elapsedTicks) {
     if (!crop) {
         return {
             plot_id: plot.id,
+            ...humanPlotWeather(plot),
             state: "empty",
             growth_effect: "normal",
             seed_type: null,
@@ -71,6 +73,7 @@ function projectPlot(plot, farm, now, elapsedTicks) {
     const growthEffect = ripe ? "normal" : agronomyGrowthEffect(plot);
     return {
         plot_id: plot.id,
+        ...humanPlotWeather(plot),
         state: ripe ? "ripe" : "growing",
         growth_effect: growthEffect,
         seed_type: crop.seedType,
@@ -119,7 +122,7 @@ function readRevision(projectedFarm, data, dayIndex, now) {
  */
 export function projectHumanField(farm, now = Date.now()) {
     const dayIndex = currentDayIndex(now);
-    const currentNature = natureSnapshot(readNatureWorld(), now);
+    const currentNature = natureSceneWeather(readNatureWorld(), now);
     const legacySeason = currentSeason(now);
     const season = currentNature.season
         ? { id: currentNature.season.id, name: currentNature.season.name }

@@ -15,6 +15,7 @@ import {
     grantDoorbellWelcomeReward,
     getFarm,
     playerFarms,
+    replaceFarmsAndNatureAtomic,
     save,
     withWorldCommitContext,
 } from "../../store.js";
@@ -181,7 +182,15 @@ export async function handleDoorbellMcpMigration(req, res, method, runtime) {
             legacyMcpRevoked: true,
         };
         try {
-            withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () => save({ farmIds: [farm.id], componentKeys: [], forceFarmCoordinator: true }));
+            const coordinated = runtime.prepareFarmMigration?.(farm, runtime.now?.() ?? Date.now());
+            if (coordinated) {
+                withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () =>
+                    replaceFarmsAndNatureAtomic({ replacements: [{ id: farm.id, farm: coordinated.farm }],
+                        nextNatureWorld: coordinated.nature }));
+            } else {
+                withWorldCommitContext({ balanceAuthority: "ledger", actor: "system" }, () =>
+                    save({ farmIds: [farm.id], componentKeys: [], forceFarmCoordinator: true }));
+            }
         }
         catch (error) {
             if (hadPreviousAgentKey)
@@ -201,13 +210,13 @@ export async function handleDoorbellMcpMigration(req, res, method, runtime) {
     }
 }
 
-export function handleDoorbellFarmExecution(req, res, method, executeFarmAction) {
+export function handleDoorbellFarmExecution(req, res, method, executeFarmAction, beforeFarmAction) {
     return withFarmRequestTiming(
-        details => executeDoorbellFarmRequest(req, res, method, executeFarmAction, details),
+        details => executeDoorbellFarmRequest(req, res, method, executeFarmAction, details, beforeFarmAction),
         row => console.info(JSON.stringify({ ...row, status: res.statusCode })),
     );
 }
-async function executeDoorbellFarmRequest(req, res, method, executeFarmAction, timing) {
+async function executeDoorbellFarmRequest(req, res, method, executeFarmAction, timing, beforeFarmAction) {
     if (!requireDoorbellService(req, res, method))
         return;
     try {
@@ -223,13 +232,18 @@ async function executeDoorbellFarmRequest(req, res, method, executeFarmAction, t
         const forbidden = Object.keys(body.params).find((key) => DOORBELL_EXECUTION_RESERVED_PARAMS.has(key));
         if (forbidden)
             return internalServiceError(res, 400, "invalid_request", `params.${forbidden} is reserved`);
+        let actionAt;
+        if (beforeFarmAction) {
+            actionAt = Date.now();
+            await beforeFarmAction(actionAt, body);
+        }
         const binding = validateFarmBinding(body);
         if (binding.error)
             return internalServiceError(res, binding.error.status, binding.error.code, binding.error.message);
         if (!legacyAgentAccessRevoked(binding.farm))
             return internalServiceError(res, 409, "farm_migration_required", "Legacy farm access must be revoked before Doorbell execution is enabled");
         timing.op = body.source_op ?? (body.action === "status" ? "farm.status" : undefined);
-        const out = measureFarmPhase("action", () => executeFarmAction(binding.farm, body.action, body.params, body.detail === true, Date.now(), body.source_op));
+        const out = measureFarmPhase("action", () => executeFarmAction(binding.farm, body.action, body.params, body.detail === true, actionAt ?? Date.now(), body.source_op));
         if (typeof out.json?.code === "string")
             timing.resultCode = out.json.code;
         const publicResult = {
@@ -251,7 +265,7 @@ async function executeDoorbellFarmRequest(req, res, method, executeFarmAction, t
         if (body.include_status === true && body.action !== "status") {
             try {
                 const currentFarm = getFarm(binding.farm.id);
-                const status = measureFarmPhase("optionalStatus", () => executeFarmAction(currentFarm, "status", {}, false, Date.now()));
+                const status = measureFarmPhase("optionalStatus", () => executeFarmAction(currentFarm, "status", {}, false, actionAt ?? Date.now()));
                 if (status.json?.ok === true && typeof status.json.text === "string")
                     publicResult.status_text = status.json.text;
             }

@@ -5,6 +5,8 @@ import { playerPatrolView,playerPatrolAction,PATROL_SELECTION_INSTRUCTION } from
 import { expireNatureRecoveredCommissions } from "../../career/nature-commission-recovery.js";
 import { readCareerPaySummary } from "../../career/pay-summary.js";
 import { createHash } from "node:crypto";
+import { PUBLIC_OPTION_HANDLE_RE, lookupOptionHandle, optionHandle, optionHandles } from "./option-handles.js";
+import { reachable } from "../farm/social.js";
 import { publicCommissionActivity } from "../../domain/moments/activity.js";
 import {
     CareerDomainError,
@@ -75,12 +77,14 @@ import { EconomyError } from "../../economy/economy-errors.js";
 import { SecurityDomainError } from "../../security/index.js";
 import { rewardSuccessfulTheftReport } from "../../security/theft-report-reward.js";
 import { CareerJobService } from "../../career/job-service.js";
+import { createServiceProposalRuntime } from "../../career/service-proposals.js";
 import { CHEF_ORIGINAL_RECIPE_SILVER_PRICE } from "../../career/chef-commerce-service.js";
 import { CHEF_STORE_LISTINGS_FIELD } from "../../career/chef-store-farm-adapter.js";
 import {
     createLingyeWorldBackend,
     openLingyeWorldDatabase,
     runLingyeWorldTransaction,
+    withServiceProposalPublication,
 } from "../../lingye-world-database.js";
 import {
     BEIJING_EXAM_WEEKDAYS,
@@ -93,7 +97,7 @@ import {
 import { MAX_BODY_BYTES } from "../../config.js";
 import { PublicSyncError } from "../../public-sync.js";
 import { natureRuntimeReadiness } from "../../nature-runtime.js";
-import { allFarms, getFarm } from "../../store.js";
+import { allFarms, getFarm, readFarm } from "../../store.js";
 import { p3CheckFindingText } from "../../career/p3-world.js";
 import { jsonOut, readJsonBody } from "../http.js";
 import {
@@ -409,7 +413,6 @@ function option(option, requires = []) {
     return requires.length === 0 ? { option } : { option, requires };
 }
 
-const PUBLIC_OPTION_HANDLE_RE = /^opt_[A-Za-z0-9_-]{12}$/u;
 const CAREER_LABELS = Object.freeze({
     chef: "料理师",
     agronomist: "农艺师",
@@ -573,33 +576,6 @@ function internalOptionLabel(internalOption) {
     return "办理当前业务";
 }
 
-function optionHandle(database, residentId, operation, internalOption, now) {
-    const existing = database.prepare(`
-      SELECT handle FROM lingye_option_handles
-      WHERE resident_id = ? AND operation = ? AND internal_option = ?
-    `).get(residentId, operation, internalOption);
-    if (existing)
-        return existing.handle;
-    const digest = createHash("sha256")
-        .update(JSON.stringify([residentId, operation, internalOption]), "utf8")
-        .digest("base64url")
-        .slice(0, 12);
-    const handle = `opt_${digest}`;
-    const collision = database.prepare(`
-      SELECT resident_id, operation, internal_option FROM lingye_option_handles WHERE handle = ?
-    `).get(handle);
-    if (collision && (collision.resident_id !== residentId || collision.operation !== operation ||
-        collision.internal_option !== internalOption)) {
-        throw new Error("Lingye option handle collision");
-    }
-    database.prepare(`
-      INSERT OR IGNORE INTO lingye_option_handles (
-        handle, resident_id, operation, internal_option, issued_at
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run(handle, residentId, operation, internalOption, now);
-    return handle;
-}
-
 function exposeOptionHandles(database, residentId, op, value, now) {
     const operation = optionOperation(op);
     const expose = (candidate) => {
@@ -645,15 +621,10 @@ function selectedCourseCatalog(backend, residentId, careers) {
 function resolveOptionHandle(database, residentId, op, args) {
     if (!Object.hasOwn(args, "option"))
         return args;
-    if (typeof args.option !== "string" || !PUBLIC_OPTION_HANDLE_RE.test(args.option))
+    const internalOption = lookupOptionHandle(database, residentId, optionOperation(op), args.option);
+    if (internalOption === null)
         throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.OPTION_IDENTITY);
-    const row = database.prepare(`
-      SELECT internal_option FROM lingye_option_handles
-      WHERE handle = ? AND resident_id = ? AND operation = ?
-    `).get(args.option, residentId, optionOperation(op));
-    if (!row)
-        throw new LingyeBusinessError("OPTION_NOT_AVAILABLE", LINGYE_ACTION_MESSAGES.OPTION_IDENTITY);
-    return { ...args, option: row.internal_option };
+    return { ...args, option: internalOption };
 }
 
 function publicLingyeResult(database, residentId, op, result, now) {
@@ -4461,6 +4432,89 @@ function mapDomainError(error) {
     return null;
 }
 
+export function createWeatherServiceProposalRuntime({ database, backend, authorizeVisit }) {
+    return createServiceProposalRuntime({ database, authorizeVisit,
+        transaction: operation => runLingyeWorldTransaction(database, operation),
+        qualified: (residentId, career, now, requiredLevel = 1) =>
+            qualificationLevel(database, residentId, career, now) >= requiredLevel,
+        quote: (source, now) => quotedPlayerServiceCommissionPrice(database, source, now),
+        publish: (source, publication, actionKey, now) => withServiceProposalPublication(database, () =>
+            publishPlayerServiceCommission(database, backend, source, publication, actionKey, now)),
+    });
+}
+
+const proposalOutcome = Symbol("service proposal outcome");
+export function serviceProposalOutcome(result) { return result?.[proposalOutcome] ?? null; }
+function proposalResponse(result, synchronizeOwner = false) {
+    Object.defineProperty(result, proposalOutcome, { value: { synchronizeOwner } });
+    return result;
+}
+
+function proposalAction(database, backend, residentId, farm, career, args, now) {
+    const stale = "当前选项已失效，请重新查看。";
+    const unauthorized = "当前来访许可或职业资格不满足提出条件。";
+    const missing = "当前没有这项异常或它已被处理，请重新查看。";
+    try {
+        assertExactKeys(args, [["option"]]);
+        const runtime = createWeatherServiceProposalRuntime({ database, backend,
+            authorizeVisit: (actor, owner) => actor.id !== owner.id && reachable(actor) && reachable(owner) });
+        const create = /^service-proposal:create:([A-Za-z0-9_-]+)$/u.exec(args.option);
+        if (create) {
+            const facts = JSON.parse(Buffer.from(create[1], "base64url").toString("utf8"));
+            if (!facts || facts.career !== career || !farm) return proposalResponse(failure("OPTION_NOT_AVAILABLE", stale));
+            const owner = readFarm(facts.ownerFarmId);
+            const ownerResidentId = owner?.doorbellMcpMigration?.residentId;
+            if (!ownerResidentId) return proposalResponse(failure("OPTION_NOT_AVAILABLE", missing));
+            const proposal = runtime.create({ ...facts, actorFarmId: farm.id,
+                actorResidentId: residentId, ownerResidentId }, now);
+            if (proposal.status === "accepted") return proposalResponse(success("委托已登记。", {}));
+            if (proposal.status === "rejected") return proposalResponse(success("", {
+                service_proposal: { kind: "rejected", actor_resident_id: proposal.actorResidentId },
+            }));
+            if (proposal.status === "expired") return proposalResponse(success(proposal.statusReason === "quote_changed"
+                ? "费用已变化，这次提议未成立、没有扣款；如仍需要，请重新确认新的费用。"
+                : "异常已解除或已有委托，这次提议已失效，没有扣款。", {}));
+            const op = career === "agronomist" ? "go.farm.commission" : "go.hospital.commission";
+            const [accept, reject] = optionHandles(database, ownerResidentId, op, [
+                `service-proposal:accept:${proposal.proposalId}`,
+                `service-proposal:reject:${proposal.proposalId}`,
+            ], now);
+            return proposalResponse(success("", { service_proposal: { kind: "offered",
+                owner_resident_id: ownerResidentId, career } }, [{
+                notification_id: `proposal:${proposal.proposalId}:offer:${ownerResidentId}`,
+                kind: "service_proposal_offer", recipient_resident_id: ownerResidentId, career,
+                subject_text: proposal.subjectText, observation_text: proposal.observationText,
+                amount: proposal.amount, currency: proposal.currency, decision_options: { accept, reject },
+            }]));
+        }
+        const decision = /^service-proposal:(accept|reject):(.+)$/u.exec(args.option);
+        if (!decision) return proposalResponse(failure("OPTION_NOT_AVAILABLE", stale));
+        const proposal = runtime.decide({ proposalId: decision[2], residentId, career, decision: decision[1] }, now);
+        if (proposal.status === "rejected")
+            return proposalResponse(success("", { service_proposal: {
+                kind: "rejected", actor_resident_id: proposal.actorResidentId,
+            } }));
+        if (proposal.status === "expired") return proposalResponse(success(proposal.statusReason === "quote_changed"
+            ? "费用已变化，这次提议未成立、没有扣款；如仍需要，请重新确认新的费用。"
+            : "异常已解除或已有委托，这次提议已失效，没有扣款。", {}));
+        if (proposal.status !== "accepted") return proposalResponse(failure("OPTION_NOT_AVAILABLE", stale));
+        return proposalResponse(success("委托已登记。", {}, commissionNotifications("commission_targeted",
+            { targetResidentId: proposal.actorResidentId }, `proposal:${proposal.proposalId}:accepted`, career, residentId)), true);
+    } catch (error) {
+        if (error instanceof EconomyError && ["BALANCE_INSUFFICIENT", "SILVER_LOCKED"].includes(error.code))
+            return proposalResponse(failure("INSUFFICIENT_FUNDS", "余额不足，委托没有成立，也没有扣款。"));
+        if (error instanceof Error && error.message === "proposal_actor_not_authorized")
+            return proposalResponse(failure("OPTION_NOT_AVAILABLE", unauthorized));
+        if (error instanceof Error && error.message === "proposal_source_unavailable")
+            return proposalResponse(failure("OPTION_NOT_AVAILABLE", missing));
+        if (error instanceof Error && /^proposal_(not_available|identity_conflict)/u.test(error.message))
+            return proposalResponse(failure("OPTION_NOT_AVAILABLE", stale));
+        const mapped = mapDomainError(error);
+        if (mapped) return proposalResponse(mapped);
+        throw error;
+    }
+}
+
 export function createLingyeActionExecutor(options) {
     const { database, backend } = options;
     const economyRules = options.economyRules ?? DEFAULT_ECONOMY_RULES;
@@ -4474,7 +4528,13 @@ export function createLingyeActionExecutor(options) {
     });
     return Object.freeze({
         npc,
-        execute(input) {
+        prepareProposalInput(input) {
+            if (!["go.farm.commission", "go.hospital.commission"].includes(input.op) ||
+                typeof input.args?.option !== "string") return null;
+            const internalOption = lookupOptionHandle(database, input.residentId, input.op, input.args.option);
+            return { internalOption, isProposal: internalOption?.startsWith("service-proposal:") === true };
+        },
+        execute(input, preparedOption = null) {
             try {
                 validateArgs(input.op, input.args);
                 const identity = database.prepare(`
@@ -4482,15 +4542,24 @@ export function createLingyeActionExecutor(options) {
                 `).get(input.residentId);
                 if (!identity || identity.binding_reference !== input.bindingReference)
                     return failure("LINGYE_NOT_READY", "铃野居民身份或经济账户尚未完成迁移。");
-                backend.forResident(input.residentId).getOwnAccount();
                 const actionNow = now();
                 if (input.op === "go.newsroom.like") {
+                    backend.forResident(input.residentId).getOwnAccount();
                     const result = recordPublishedDailyLike(database, backend, input.residentId, input.args.issueDate, actionNow);
                     return success("已为这篇日报稿件点赞。", {accepted:result.accepted,duplicate:result.duplicate});
                 }
-                const args = resolveOptionHandle(database, input.residentId, input.op, input.args);
+                const args = preparedOption?.internalOption
+                    ? { ...input.args, option: preparedOption.internalOption }
+                    : resolveOptionHandle(database, input.residentId, input.op, input.args);
                 const detentions = activeResidentDetentions(backend, input.residentId, actionNow);
                 const detained = detentions.length > 0;
+                const proposalCareer = input.op === "go.farm.commission" ? "agronomist"
+                    : input.op === "go.hospital.commission" ? "veterinarian" : null;
+                if (proposalCareer && typeof args.option === "string" && args.option.startsWith("service-proposal:")) {
+                    if (detained) return proposalResponse(detainedFailure(detentions));
+                    return proposalAction(database, backend, input.residentId, input.farm, proposalCareer, args, actionNow);
+                }
+                backend.forResident(input.residentId).getOwnAccount();
                 if (isLingyeNpcInternalOption(args.option)) {
                     assertExactKeys(args, [["option"]]);
                     if (detained) return detainedFailure(detentions);

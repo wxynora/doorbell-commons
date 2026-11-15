@@ -312,6 +312,7 @@ export function createFarmWorldSqlitePersistence(database) {
                 fail("farm_durable_checkpoint_nested_forbidden","Only a receipt-only Chef completion may run inside an older outer transaction");
             const farmPlans=new Map(),componentPlans=new Map();
             let ranchRaidsChanged = false;
+            let guestbookEnqueued = false;
             for (const entry of farms) {
                 const residentId=entry.state.doorbellMcpMigration?.residentId??null;
                 if (!entry.position.exists)
@@ -321,7 +322,8 @@ export function createFarmWorldSqlitePersistence(database) {
                 if (entry.position.exists && entry.recordChanges.some(change=>change.path==="/messages"||change.path.startsWith("/messages/"))) {
                     const beforeMessages=entry.messagesBefore ??
                         (entry.beforeRecords.has("/messages") ? decodeStateRecords(entry.beforeRecords,"/messages") : []);
-                    enqueueGuestbookMessageChanges(database,entry.id,beforeMessages,entry.state.messages??[]);
+                    const queued=enqueueGuestbookMessageChanges(database,entry.id,beforeMessages,entry.state.messages??[]);
+                    if (Number(queued?.changes??0)>0) guestbookEnqueued=true;
                 }
                 writeRecordChanges(database,"farm",entry.id,entry.recordChanges);
                 ranchRaidsChanged ||= entry.recordChanges.some(({path}) => path.startsWith("/ranch/raids/"));
@@ -338,7 +340,7 @@ export function createFarmWorldSqlitePersistence(database) {
                 }
                 componentPlans.set(entry.key,entry.records);
             }
-            return {farms:farms.map(entry=>entry.id),components:components.map(entry=>entry.key),durableBoundary,farmPlans,componentPlans,ranchRaidsChanged};
+            return {farms:farms.map(entry=>entry.id),components:components.map(entry=>entry.key),durableBoundary,farmPlans,componentPlans,ranchRaidsChanged,guestbookEnqueued};
         });
     };
     return Object.freeze({
@@ -360,7 +362,7 @@ export function createFarmWorldSqlitePersistence(database) {
         },
         commitMutation(input) {
             const result=commitEntries(input);
-            wakeGuestbookJudgments(database);
+            if (!database.isTransaction) wakeGuestbookJudgments(database,{enqueued:result.guestbookEnqueued});
             return result;
         },
         commitLegacySnapshot(world,hints) {
@@ -381,7 +383,7 @@ export function createFarmWorldSqlitePersistence(database) {
                 return {key,value:world[key],before:hints.componentBefore.get(key)};
             });
             const result=commitEntries({farms,components,allowCrossDomain:hints.allowCrossDomain,durableBoundary:hints.durableBoundary});
-            wakeGuestbookJudgments(database);
+            if (!database.isTransaction) wakeGuestbookJudgments(database,{enqueued:result.guestbookEnqueued});
             return result;
         },
     });

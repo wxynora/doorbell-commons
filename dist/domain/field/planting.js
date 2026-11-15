@@ -8,6 +8,7 @@ import { bumpDaily } from "../../daily.js";
 import { stageAnnualCounters } from "../../annual-statistics/world-buffer.js";
 import { pushLog, pushTrail } from "../shared/notifications.js";
 import { halloweenPlantGrowTicks } from "../../halloween/action-effects.mjs";
+import { applyRealWaterToSoil } from "../nature/day-transition.js";
 
 /** 把"限定/自创种子"的引用解析成作物 id：接受 id 或中文名（背包/熔炼都给中文名，玩家自然照着填）。
  *  重名时优先用玩家背包里已有的那颗；官方限定（条件/金币种）按名字全库找。 */
@@ -95,10 +96,11 @@ export function plant(farm, plotId, seedType, limitedId, now) {
 // —— 主人浇水（提升稀有概率，封顶；只用于自家地）——
 const WATER_CAP_COUNT = Math.round(WATER_LUCK_CAP / WATER_LUCK_PER);
 
-export function water(farm, plotId, by, isOwner, now = Date.now()) {
+export function water(farm, plotId, by, isOwner, now = Date.now(), weatherRule) {
     const plot = farm.plots.find((p) => p.id === plotId);
     if (!plot || !plot.crop)
         return { ok: false, error: `${plotId} 号地没有作物` };
+    applyRealWaterToSoil(farm, plot, currentDayIndex(now), weatherRule);
     const capped = plot.crop.waterCount >= WATER_CAP_COUNT;
     if (!capped)
         plot.crop.waterCount += 1;
@@ -113,7 +115,7 @@ export function water(farm, plotId, by, isOwner, now = Date.now()) {
 // 防互刷：同一访客对同一农场每天只能帮浇 1 次（已浇过当天再来 → 提示明天再来）。
 const remainingTicks = (c) => c.growTicks - c.progress;
 
-export function visitorWater(farm, visitorId, plotId, by, now) {
+export function visitorWater(farm, visitorId, plotId, by, now, weatherRule, nearNeighbor = false) {
     const day = currentDayIndex(now);
     if (farm.waterVisits?.[visitorId] === day)
         return { ok: false, error: "已浇过水，明天再来吧。" };
@@ -131,14 +133,30 @@ export function visitorWater(farm, visitorId, plotId, by, now) {
             return { ok: false, error: "对方没有可浇水的作物" };
         plot = growing.reduce((best, p) => remainingTicks(p.crop) < remainingTicks(best.crop) ? p : best);
     }
-    const crop = plot.crop;
-    crop.progress = Math.min(crop.growTicks, crop.progress + 1); // +1 tick = 30 分钟
-    const ripened = crop.progress >= crop.growTicks;
-    if (ripened)
-        crop.ripe = true;
-    (farm.waterVisits ??= {})[visitorId] = day; // 标记今天已帮这家浇过（每家每天 1 次）
-    pushLog(farm, `${by}帮 ${plot.id} 号地浇水，加速 30 分钟${ripened ? "，正好催熟" : ""}`);
-    stageAnnualCounters(farm, "watering", {actor_id:visitorId,target_id:farm.id}, {actions:1,plots:1}, now);
-    pushTrail(farm, { t: now, kind: "watered", by, plotId: plot.id }); // 足迹：谁帮浇了水
-    return { ok: true, plotId: plot.id, ripened };
+    const selected = [plot];
+    if (nearNeighbor) {
+        const other = farm.plots.filter(p => p !== plot && p.crop && !p.crop.ripe)
+            .reduce((best, p) => !best || remainingTicks(p.crop) < remainingTicks(best.crop) ? p : best, null);
+        if (other) selected.push(other);
+    }
+    // Validate both soil updates before touching either actual plot.
+    const prepared = selected.map(p => {
+        const draft = { ...p, crop: { ...p.crop },
+            ...(p.lingyeWeatherUpgrade ? { lingyeWeatherUpgrade: { ...p.lingyeWeatherUpgrade } } : {}) };
+        applyRealWaterToSoil(farm, draft, day, weatherRule);
+        draft.crop.progress = Math.min(draft.crop.growTicks, draft.crop.progress + 1);
+        const ripened = draft.crop.progress >= draft.crop.growTicks;
+        if (ripened) draft.crop.ripe = true;
+        return { plot: p, draft, result: { plotId: p.id, ripened } };
+    });
+    for (const { plot: p, draft, result } of prepared) {
+        p.crop = draft.crop;
+        if (draft.lingyeWeatherUpgrade) p.lingyeWeatherUpgrade = draft.lingyeWeatherUpgrade;
+        pushLog(farm, `${by}帮 ${p.id} 号地浇水，加速 30 分钟${result.ripened ? "，正好催熟" : ""}`);
+        pushTrail(farm, { t: now, kind: "watered", by, plotId: p.id });
+    }
+    (farm.waterVisits ??= {})[visitorId] = day;
+    stageAnnualCounters(farm, "watering", {actor_id:visitorId,target_id:farm.id}, {actions:1,plots:prepared.length}, now);
+    return { ok: true, ...prepared[0].result, ...(nearNeighbor ? { plots: prepared.map(p => p.result) } : {}) };
+
 }

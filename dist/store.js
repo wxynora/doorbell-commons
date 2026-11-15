@@ -19,6 +19,7 @@ import { setNatureWorldProvider } from "./time.js";
 import { crops, ranchSkinById } from "./content.js";
 import { normalizeQixi2026Farm, settleQixi2026SeedPriceRefund } from "./qixi-2026.js";
 import { normalizeQixiLantern2026Farm, normalizeQixiLantern2026World } from "./qixi-lantern-2026.js";
+import { isNewWeatherRanch, prepareNewRanchWeather } from "./domain/nature/new-ranch.js";
 import { normalizeWelfareWeekFarm } from "./welfare-week.js";
 import {
     advanceMysteryMerchantWorld,
@@ -571,13 +572,25 @@ function mergePersistenceHints(base, additional) {
     };
 }
 function commitWorld(world, hints = null) {
-    const context = worldCommitContext.getStore() ?? null;
+    let context = worldCommitContext.getStore() ?? null;
     const scope = currentFarmMutationScope();
     if (worldPersistenceAdapter && !scope)
         throw new Error("farm_mutation_scope_missing");
     let effectiveHints = hints;
     if (scope) {
         const byId = new Map(world.farms.map(farm => [farm.id, farm]));
+        const newRanches = [...scope.farms].filter(([id, before]) => isNewWeatherRanch(byId.get(id), before));
+        if (newRanches.length) {
+            const now = Number.isSafeInteger(context?.businessNow) ? context.businessNow : Date.now();
+            let nature = world.nature;
+            for (const [id, before] of newRanches)
+                nature = prepareNewRanchWeather({ farm: byId.get(id), before, nature, now }).nature;
+            if (nature !== world.nature) {
+                captureComponentMutation("nature", natureWorld);
+                world.nature.winterEvent = nature.winterEvent;
+            }
+            context = { ...context, businessNow: now };
+        }
         const farmIds = new Set(hints?.pendingBalanceProjection === true || hints?.forceFarmCoordinator === true
             ? hints.farmIds ?? [] : []);
         const componentKeys = new Set();
@@ -595,7 +608,7 @@ function commitWorld(world, hints = null) {
         for (const key of componentKeys)
             if (!scope.components.has(key)) throw new Error(`farm_component_before_missing:${key}`);
         effectiveHints = { ...hints, farmIds: [...farmIds], componentKeys: [...componentKeys],
-            farmBefore: scope.farms, componentBefore: scope.components };
+            farmBefore: scope.farms, farmAfter: byId, componentBefore: scope.components };
         if (worldPersistenceAdapter && !farmIds.size && !componentKeys.size)
             return { farms: [], components: [], durableBoundary: true, farmPlans: new Map(), componentPlans: new Map() };
     }
@@ -725,13 +738,13 @@ export function replaceFarmsAtomic(replacements, ugcValues = dumpUgc()) {
  * Commit farm replacements, the shared UGC catalog, and nature authority in
  * the same world-file rename. Live state is published only after that rename.
  */
-export function replaceFarmsAndNatureAtomic({ replacements, nextNatureWorld, ugc = dumpUgc() }) {
+export function replaceFarmsAndNatureAtomic({ replacements, nextNatureWorld, ugc }) {
     return withFarmMutationScope(() => {
     if (!Array.isArray(replacements) || replacements.length === 0)
         throw new TypeError("farm replacements must be a non-empty array");
     if (nextNatureWorld == null)
         throw new TypeError("next nature world is required");
-    if (!Array.isArray(ugc))
+    if (ugc !== undefined && !Array.isArray(ugc))
         throw new TypeError("UGC catalog must be an array");
     const staged = new Map();
     for (const entry of replacements) {
@@ -748,19 +761,20 @@ export function replaceFarmsAndNatureAtomic({ replacements, nextNatureWorld, ugc
         farm.id = id;
         staged.set(id, normalizeFarm(farm));
     }
-    const nextUgc = structuredClone(ugc);
+    const replacesUgc = ugc !== undefined;
+    const nextUgc = replacesUgc ? structuredClone(ugc) : dumpUgc();
     const stagedNature = normalizeNatureWorld(nextNatureWorld);
-    captureComponentMutation("ugc", dumpUgc());
+    if (replacesUgc) captureComponentMutation("ugc", dumpUgc());
     captureComponentMutation("nature", natureWorld);
     const nextFarms = [...farms.values()].map((farm) => staged.get(farm.id) ?? farm);
     commitWorld(worldSnapshot(nextFarms, nextUgc, stagedNature), {
         farmIds: [...staged.keys()],
-        componentKeys: ["ugc", "nature"],
+        componentKeys: replacesUgc ? ["ugc", "nature"] : ["nature"],
         receiptKeysByFarm: Object.fromEntries(replacements.filter(entry => entry.receiptKeys !== undefined)
             .map(entry => [String(entry.id ?? entry.farm.id), entry.receiptKeys])),
         allowCrossDomain: true,
     });
-    loadUgc(nextUgc);
+    if (replacesUgc) loadUgc(nextUgc);
     for (const [id, farm] of staged)
         farms.set(id, farm);
     natureWorld = stagedNature;

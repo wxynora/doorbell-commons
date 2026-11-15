@@ -1,3 +1,4 @@
+import { projectWeatherNotices } from "../domain/nature/weather-notices.js";
 import { animalById } from "../content.js";
 import { recoveredPlotNotices } from "../nature/recovery.js";
 import { plotAgronomyIssues, agronomyObservationsFor, animalObservationsFor } from "../career/p3-world.js";
@@ -32,14 +33,14 @@ const OBSERVATION_TEXT = {
     abnormal_breathing: "呼吸不太顺畅",
     dehydration_sign: "有脱水迹象",
 };
-function observationText(observations) {
+export function observationText(observations) {
     const visible = (observations ?? []).map((key) => OBSERVATION_TEXT[key]).filter(Boolean);
     return visible.length ? `（${visible.join("、")}）` : "";
 }
 
 /** Read existing cases only; do not advance, diagnose, treat or persist them. */
 export function projectHealthBulletinNotices(farm) {
-    const notices = recoveredPlotNotices(farm);
+    const notices = [...recoveredPlotNotices(farm), ...projectWeatherNotices(farm)];
     for (const plot of Array.isArray(farm.plots) ? farm.plots : []) {
         if (!Number.isSafeInteger(plot?.id) || plot.id <= 0)
             continue;

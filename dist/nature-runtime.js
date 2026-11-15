@@ -3,6 +3,15 @@ import {cloneFarmForMutation} from "./farm-mutation-scope.js";
 import { createHash } from "node:crypto";
 import { advancePlotRecovery } from './nature/recovery.js';
 import { advanceFarmGrowth } from './domain/field/progression.js';
+import { advanceWeatherForFarm } from './domain/nature/day-transition.js';
+import { initializeFarmWeather } from './domain/nature/initialize-farm-weather.js';
+import { neighborhoodWeatherTerrain } from './domain/nature/neighborhood.js';
+import { advanceWinterAnimalCases, advanceWinterEvent, finishWinterEvent } from './domain/nature/winter-event.js';
+import { reconcileWinterFarmImpacts, reconcileWinterFarmsImpacts } from './domain/nature/winter-impacts.js';
+import { advanceFloodWaterline } from './domain/nature/flood-waterline.js';
+import { floodedPlotIds } from './domain/nature/weather-upgrade.js';
+import { recordWinterNoticeFacts, snapshotWinterNoticeState } from './domain/nature/notification-facts.js';
+import { preflightP3WeatherEnable } from './domain/nature/p3-enable-preflight.js';
 import { fishingFish } from "./content.js";
 import { FLOOD_FISH_COLLECTED_TEXT, grantFloodFish } from "./fishing.js";
 import {
@@ -12,6 +21,7 @@ import {
     beijingDayIndex,
     beijingDayStart,
     ecologicalSeasonForDay,
+    enableWeatherGeneration,
     plannedWeatherForDay,
     markNatureEventReadyForSettlement,
     normalizeNatureWorld,
@@ -23,7 +33,9 @@ import {
 import {
     commitNatureWorld,
     getNatureWorld,
+    readNatureWorld,
     getPublicExpeditionWorld,
+    readPublicExpeditionWorld,
     playerFarms,
     replaceFarmsAndNatureAtomic,
 } from "./store.js";
@@ -31,6 +43,7 @@ import {
     addNatureAgronomyIssue,
     addNatureAnimalCase,
     advanceP3Farm,
+    generateP3AnimalAfterWeather,
     agronomyIssuesForFarm,
     currentP3Sources,
 } from "./career/p3-world.js";
@@ -237,12 +250,16 @@ function isFirstTogetherFlood(publicExpedition, event) {
         event?.type === "flood";
 }
 
-function applyFlood(world, farm, event, day, now, firstTogetherFlood = false) {
+function applyFlood(world, farm, event, day, now, firstTogetherFlood = false, floodPolicy) {
     const state = eventState(farm, event);
-    if (!state.initialApplied) {
+    const terrain = farm.lingyeWeatherUpgrade?.terrain;
+    const reached = !event.floodWaterline || floodedPlotIds(event,
+        { eventId: event.eventId, height: event.floodWaterline.height }, terrain, [{ id: 0 }]).length > 0;
+    if (!state.initialApplied && reached) {
         state.initialApplied = true;
         if (!farmExistedWhenEventStarted(farm, event))
             return world;
+        if (event.floodWaterline) state.floodExposed = true;
         const plots = occupiedPlots(farm);
         if (firstTogetherFlood) {
             if (plots.length > 0) {
@@ -256,6 +273,9 @@ function applyFlood(world, farm, event, day, now, firstTogetherFlood = false) {
         }
         world = generateFloodFish(world, farm, event, state, now);
     }
+    if (event.floodWaterline && !reached && floodPolicy?.fishForUnflooded === true &&
+        farmExistedWhenEventStarted(farm, event))
+        world = generateFloodFish(world, farm, event, state, now);
     if (firstTogetherFlood && !state.firstTogetherAnimalChanceChecked && farmExistedWhenEventStarted(farm, event)) {
         // Reuse the original stable roll at the approved threshold, once per household.
         // An old case remains authoritative even after treatment or transfer.
@@ -271,12 +291,14 @@ function applyFlood(world, farm, event, day, now, firstTogetherFlood = false) {
     return world;
 }
 
-function applyDrought(world, farm, event, day, now) {
+function applyDrought(world, farm, event, day, now, weatherUpgrade) {
     const state = eventState(farm, event);
     if (state.activeDaysApplied.includes(day))
         return world;
     state.activeDaysApplied.push(day);
     for (const plot of growingPlots(farm)) {
+        if (weatherUpgrade?.plot?.moisture?.protectDrought === true &&
+            Number(plot.lingyeWeatherUpgrade?.moisture) > 0) continue;
         const protectedIssue = agronomyIssuesForFarm(farm).find(({ plot: candidate, issue }) =>
             candidate.id === plot.id && issue.natureEventId === event.eventId && issue.protectedForEvent);
         if (protectedIssue)
@@ -361,11 +383,11 @@ function maybeCreateAnimalImpact(world, farm, event, condition, kind, chance, da
     }).world;
 }
 
-function applyActiveEvent(world, farm, event, day, now, publicExpedition) {
+function applyActiveEvent(world, farm, event, day, now, publicExpedition, weatherUpgrade) {
     if (event.type === "flood")
-        return applyFlood(world, farm, event, day, now, isFirstTogetherFlood(publicExpedition, event));
+        return applyFlood(world, farm, event, day, now, isFirstTogetherFlood(publicExpedition, event), weatherUpgrade?.flood);
     if (event.type === "drought")
-        return applyDrought(world, farm, event, day, now);
+        return applyDrought(world, farm, event, day, now, weatherUpgrade);
     return applyPest(world, farm, event, day, now);
 }
 
@@ -408,15 +430,17 @@ function markIssueResolved(entry, now, reason) {
     entry.issue.natureRecoveryNoticeEligible = true;
 }
 
-function recoverFlood(world, farm, event, day, now, firstTogetherFlood = false) {
+function recoverFlood(world, farm, event, day, now, firstTogetherFlood = false, floodPolicy) {
     const state = eventState(farm, event);
     if (!state.floodAnimalChecked) {
         state.floodAnimalChecked = true;
-        const stillFlooded = event.impacts.some((impact) => impact.farmId === farm.id &&
-            impact.kind === "plot_flooded" && impact.resolvedAtDay == null);
-        world = maybeCreateAnimalImpact(world, farm, event, "wet_cold", "animal_wet_cold",
-            stillFlooded ? P4_ANIMAL_EVENT_CHANCES.floodWithUndrainedPlots : P4_ANIMAL_EVENT_CHANCES.floodAfterManualDrainage,
-            day, now);
+        if (!(event.floodWaterline && floodPolicy?.animalCasesRequireFloodExposure === true && !state.floodExposed)) {
+            const stillFlooded = event.impacts.some((impact) => impact.farmId === farm.id &&
+                impact.kind === "plot_flooded" && impact.resolvedAtDay == null);
+            world = maybeCreateAnimalImpact(world, farm, event, "wet_cold", "animal_wet_cold",
+                stillFlooded ? P4_ANIMAL_EVENT_CHANCES.floodWithUndrainedPlots : P4_ANIMAL_EVENT_CHANCES.floodAfterManualDrainage,
+                day, now);
+        }
     }
     const weather = plannedWeatherForDay(world, day)?.condition;
     for (const impact of event.impacts.filter((entry) => entry.farmId === farm.id &&
@@ -461,12 +485,12 @@ function recoverPest(world, farm, event, day, now) {
     return world;
 }
 
-function applyRecovery(world, farm, event, day, now, publicExpedition) {
+function applyRecovery(world, farm, event, day, now, publicExpedition, weatherUpgrade) {
     const state = eventState(farm, event);
     if (!state.recoveryProcessedDays.includes(day))
         state.recoveryProcessedDays.push(day);
     if (event.type === "flood")
-        return recoverFlood(world, farm, event, day, now, isFirstTogetherFlood(publicExpedition, event));
+        return recoverFlood(world, farm, event, day, now, isFirstTogetherFlood(publicExpedition, event), weatherUpgrade?.flood);
     if (event.type === "drought")
         return recoverDrought(world, farm, event, day, now);
     return recoverPest(world, farm, event, day, now);
@@ -510,11 +534,31 @@ function activateConfiguredWorld(world, config, now) {
     return activateNatureWorld(world, { now: config.activationAt, seed: config.seed });
 }
 
+// A server checks before startup writes; a standalone scheduler checks at its
+// own first activation. The one-use result avoids repeating the whole scan.
+const checkedWeatherPreflights = new WeakSet();
+export function preflightNatureWeatherActivation({ now, config, world = readNatureWorld(), getFarms = playerFarms }) {
+    if (!Number.isSafeInteger(now) || typeof getFarms !== "function") throw new TypeError("weather preflight context required");
+    const runtimeConfig = config === undefined ? readNatureRuntimeConfig() : config;
+    const candidate = activateConfiguredWorld(normalizeNatureWorld(world), runtimeConfig, now);
+    if (candidate.status !== "active") return { canEnable: false, deferred: true };
+    const result = preflightP3WeatherEnable({ world: candidate, farms: getFarms(), now });
+    if (!result.canEnable) {
+        const error = new NatureContractError("p3_weather_enable_blocked", "P3 weather enable preflight did not pass");
+        error.report = result;
+        throw error;
+    }
+    checkedWeatherPreflights.add(result);
+    return result;
+}
+
 export function advanceNatureGameplay(now = Date.now(), options = {}) {
     const config = options.config === undefined ? readNatureRuntimeConfig() : options.config;
     let world = activateConfiguredWorld(normalizeNatureWorld(options.world ?? getNatureWorld()), config, now);
     if (world.status !== "active")
         return { active: false, nature: world, farms: [] };
+    if (options.weatherUpgrade?.forecast)
+        world = enableWeatherGeneration(world, { ...options.weatherUpgrade.forecast, now });
     const today = beijingDayIndex(now);
     const firstDay = Math.max(world.activationDay, world.lastAdvancedDay + 1);
     const processDays = firstDay <= today ? Array.from({ length: today - firstDay + 1 }, (_, index) => firstDay + index) : [today];
@@ -522,28 +566,76 @@ export function advanceNatureGameplay(now = Date.now(), options = {}) {
     const publicExpedition = options.publicExpedition === undefined ? getPublicExpeditionWorld() : options.publicExpedition;
     let sourceFarms = options.farms ? options.farms.map((farm) => cloneFarmForMutation(farm)) : null;
     for (const day of processDays) {
-        const dayNow = beijingDayStart(day) + 12 * 3_600_000;
+        const dayNow = beijingDayStart(day) + (options.weatherUpgrade ? 0 : 12 * 3_600_000);
         const farms = (sourceFarms ?? playerFarms()).map((farm) => cloneFarmForMutation(farm));
         for (const farm of farms) advanceFarmGrowth(farm, beijingDayStart(day));
         const firstTogetherFlood = ongoingNatureEvents(world).some(event => isFirstTogetherFlood(publicExpedition, event));
+        const deferredAnimals = new Set();
         for (const farm of farms) {
-            if (farm.doorbellMcpMigration?.migrationId)
-                advanceP3Farm(farm, dayNow, { generateNewCases: !firstTogetherFlood });
+            if (farm.doorbellMcpMigration?.migrationId) {
+                // The first together flood suppresses case generation, so the
+                // deferred-day list cannot establish cursor alignment there.
+                if (options.weatherUpgrade && (!Number.isSafeInteger(farm.lingyeP3?.lastAdvancedDay) ||
+                    farm.lingyeP3.lastAdvancedDay < day - 1 || farm.lingyeP3.lastAdvancedDay > day))
+                    throw new Error("p3_weather_history_not_aligned");
+                const advanced = advanceP3Farm(farm, dayNow, { generateNewCases: !firstTogetherFlood,
+                    deferAnimalCases: options.weatherUpgrade != null, natureCoordinator: true });
+                if (advanced.deferredAnimalDays?.some(deferredDay => deferredDay !== day))
+                    throw new Error("p3_weather_history_not_aligned");
+                if (advanced.deferredAnimalDays?.includes(day)) deferredAnimals.add(farm.id);
+            }
         }
         world = advanceNatureWorld(world, dayNow);
+        if (world.currentEvent?.floodWaterline && !options.weatherUpgrade?.flood)
+            throw new NatureContractError("flood_waterline_policy_unavailable", "existing flood waterline requires its configured policy");
+        if (options.weatherUpgrade?.flood) world = advanceFloodWaterline(world, day, options.weatherUpgrade.flood);
+        if (!options.weatherUpgrade && (world.winterEvent || farms.some(farm => farm.lingyeWeatherUpgrade)))
+            throw new NatureContractError("weather_upgrade_policy_unavailable", "existing weather state requires its configured policy");
+        if (world.winterEvent && !options.weatherUpgrade?.winterEvent)
+            throw new NatureContractError("winter_event_policy_unavailable", "existing winter event requires its configured policy");
+        if (options.weatherUpgrade?.winterEvent)
+            world = advanceWinterEvent(world, day, options.weatherUpgrade.winterEvent);
+        // Finish the preceding exposure at the actual day boundary before
+        // today's weather can thaw or dry the source. P3 recovery above has
+        // already resolved any case that ends at this boundary.
+        if (options.weatherUpgrade?.winterEvent?.exposures)
+            world = advanceWinterAnimalCases(world, farms, day, dayNow,
+                options.weatherUpgrade.winterEvent.exposures, { beforeWeather: true }).world;
+        if (options.weatherUpgrade) {
+            const weather = world.weatherPlan.find(entry => entry.dayIndex === day);
+            if (!weather) throw new NatureContractError("weather_upgrade_forecast_unavailable", "authoritative weather day is unavailable");
+            const advancedFarms = [];
+            for (const farm of farms) {
+                if (!farm.lingyeWeatherUpgrade) continue;
+                const before = snapshotWinterNoticeState(farm);
+                if (!advanceWeatherForFarm(farm, weather, options.weatherUpgrade)) continue;
+                recordWinterNoticeFacts(farm, world.winterEvent, day, before, world.weatherPlan);
+                advancedFarms.push(farm);
+            }
+            world = reconcileWinterFarmsImpacts(world, advancedFarms, dayNow);
+            if (world.winterEvent && ["active", "recovery"].includes(world.winterEvent.phase))
+                world.winterEvent.impactTrackingComplete = true;
+            if (options.weatherUpgrade.winterEvent?.exposures)
+                world = advanceWinterAnimalCases(world, farms, day, dayNow,
+                    options.weatherUpgrade.winterEvent.exposures).world;
+        }
         for (const { eventId } of ongoingNatureEvents(world)) {
+            if (findNatureEvent(world, eventId)?.type === "winter") continue;
             if (findNatureEvent(world, eventId)?.phase === "active") {
                 for (const farm of farms)
-                    world = applyActiveEvent(world, farm, findNatureEvent(world, eventId), day, dayNow, publicExpedition);
+                    world = applyActiveEvent(world, farm, findNatureEvent(world, eventId), day, dayNow, publicExpedition, options.weatherUpgrade);
             }
             for (const farm of farms)
                 world = reconcileFarmResolutions(world, farm, findNatureEvent(world, eventId), dayNow);
             if (findNatureEvent(world, eventId)?.phase === "recovery") {
                 for (const farm of farms)
-                    world = applyRecovery(world, farm, findNatureEvent(world, eventId), day, dayNow, publicExpedition);
+                    world = applyRecovery(world, farm, findNatureEvent(world, eventId), day, dayNow, publicExpedition, options.weatherUpgrade);
                 world = finalizeEvent(world, day, dayNow, eventId);
             }
         }
+        for (const farm of farms)
+            if (deferredAnimals.has(farm.id)) generateP3AnimalAfterWeather(farm, dayNow);
+        if (options.weatherUpgrade?.winterEvent) world = finishWinterEvent(world, farms, dayNow);
         if (options.commit === false) {
             world = normalizeNatureWorld(world);
             committedFarms = farms;
@@ -558,6 +650,46 @@ export function advanceNatureGameplay(now = Date.now(), options = {}) {
     return { active: true, nature: world, farms: committedFarms };
 }
 
+// A new resident can bind after the scheduled day has already run. Coordinate
+// only that farm against today's saved event; the caller commits the returned
+// farm and nature facts together with the binding transaction.
+export function prepareP3ForNewBinding(farm, now, weatherUpgrade) {
+    const worldAtStart = normalizeNatureWorld(readNatureWorld());
+    if (!weatherUpgrade || worldAtStart.status !== "active") return null;
+    const day = beijingDayIndex(now);
+    if (worldAtStart.lastAdvancedDay !== day) throw new Error("p3_nature_day_pending");
+    const lastP3Day = farm.lingyeP3?.lastAdvancedDay;
+    if (lastP3Day !== undefined && (!Number.isSafeInteger(lastP3Day) || lastP3Day < day - 1 || lastP3Day > day))
+        throw new Error("p3_weather_history_not_aligned");
+    let world = worldAtStart;
+    let staged = cloneFarmForMutation(farm);
+    if (staged.lingyeWeatherUpgrade == null && weatherUpgrade.plot?.snow && weatherUpgrade.ranch) {
+        const weather = world.weatherPlan.find(entry => entry.dayIndex === day);
+        initializeFarmWeather(staged, weather, neighborhoodWeatherTerrain(staged.id), weatherUpgrade, now);
+        world = reconcileWinterFarmImpacts(world, staged, now);
+    }
+    const publicExpedition = readPublicExpeditionWorld();
+    const firstTogetherFlood = ongoingNatureEvents(world).some(event => isFirstTogetherFlood(publicExpedition, event));
+    const p3 = advanceP3Farm(staged, now, { generateNewCases: !firstTogetherFlood,
+        deferAnimalCases: true, natureCoordinator: true });
+    if (p3.deferredAnimalDays.some(candidate => candidate !== day)) throw new Error("p3_weather_history_not_aligned");
+    if (weatherUpgrade.winterEvent?.exposures) {
+        const result = advanceWinterAnimalCases(world, [staged], day, now, weatherUpgrade.winterEvent.exposures);
+        world = result.world;
+        staged = result.farms[0];
+    }
+    for (const { eventId } of ongoingNatureEvents(world)) {
+        const event = findNatureEvent(world, eventId);
+        if (event?.type === "winter") continue;
+        if (event?.phase === "active")
+            world = applyActiveEvent(world, staged, event, day, now, publicExpedition, weatherUpgrade);
+        if (findNatureEvent(world, eventId)?.phase === "recovery")
+            world = applyRecovery(world, staged, findNatureEvent(world, eventId), day, now, publicExpedition, weatherUpgrade);
+    }
+    if (p3.deferredAnimalDays.includes(day)) generateP3AnimalAfterWeather(staged, now);
+    return { farm: staged, nature: world };
+}
+
 function nextBeijingDayBoundary(now) {
     return beijingDayStart(beijingDayIndex(now) + 1);
 }
@@ -567,20 +699,41 @@ export function startNatureRuntimeScheduler(options = {}) {
     const setTimer = options.setTimer ?? setTimeout;
     const clearTimer = options.clearTimer ?? clearTimeout;
     const config = options.config === undefined ? readNatureRuntimeConfig() : options.config;
-    advanceNatureGameplay(now(), { config });
+    let preflightComplete = checkedWeatherPreflights.delete(options.weatherEnablePreflight);
+    const advance = at => {
+        if (options.weatherUpgrade && !preflightComplete) {
+            const report = preflightNatureWeatherActivation({ now: at, config });
+            if (report.canEnable) {
+                checkedWeatherPreflights.delete(report);
+                preflightComplete = true;
+            }
+        }
+        return advanceNatureGameplay(at, { config, weatherUpgrade: options.weatherUpgrade });
+    };
+    advance(now());
     let stopped = false;
     let timer;
+    let pending;
+    let failed = null;
     const schedule = () => {
         if (stopped)
             return;
         const current = now();
+        let resolvePending, rejectPending;
+        const promise = new Promise((resolve, reject) => { resolvePending = resolve; rejectPending = reject; });
+        promise.catch(() => {});
+        pending = { promise, resolve: resolvePending, reject: rejectPending };
         timer = setTimer(() => {
             if (stopped)
                 return;
             try {
-                advanceNatureGameplay(now(), { config });
+                advance(now());
+                failed = null;
+                pending.resolve();
             }
             catch (error) {
+                failed = error;
+                pending.reject(error);
                 console.error("[lingye-nature] daily world advancement failed", error);
             }
             finally {
@@ -590,11 +743,26 @@ export function startNatureRuntimeScheduler(options = {}) {
         timer?.unref?.();
     };
     schedule();
-    return () => {
+    const stop = () => {
         stopped = true;
+        pending?.reject(new Error("nature_scheduler_stopped"));
         if (timer)
             clearTimer(timer);
     };
+    stop.whenCurrent = async (at = now()) => {
+        const world = readNatureWorld();
+        if (world.status !== "active") {
+            if (failed && options.weatherUpgrade && config && at >= config.activationAt) throw failed;
+            return;
+        }
+        if (world.lastAdvancedDay >= beijingDayIndex(at)) return;
+        if (failed) throw failed;
+        await pending.promise;
+        const advanced = readNatureWorld();
+        if (advanced.status === "active" && advanced.lastAdvancedDay < beijingDayIndex(at))
+            throw new Error("nature_day_not_current");
+    };
+    return stop;
 }
 
 export function applyDroughtWatering(farm, plotIds, now = Date.now(), rawWorld = getNatureWorld()) {

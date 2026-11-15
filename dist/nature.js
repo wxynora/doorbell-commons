@@ -1,13 +1,16 @@
 // 铃野权威自然时间线：14 日生态季、稳定每日天气、三日预报与公共灾害事实。
 // 本模块只持有世界事实。作物、牧场、钓鱼、病例与职业的真实结算由各自权威入口接线。
 import { createHash, randomBytes } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { seasons } from "./content.js";
+import { normalizeForecastPolicy, selectForecastCondition } from "./domain/nature/forecast-policy.js";
 
 export const NATURE_WORLD_VERSION = 1;
-export const WEATHER_CONDITIONS = [
+const LEGACY_WEATHER_CONDITIONS = [
     "sunny", "cloudy", "light_rain", "heavy_rain", "thunderstorm",
     "fog", "hot", "dry_wind", "light_snow", "blizzard",
 ];
+export const WEATHER_CONDITIONS = [...LEGACY_WEATHER_CONDITIONS, "cold_snap", "freezing_rain"];
 export const DISASTER_TYPES = ["flood", "drought", "pest"];
 export const DISASTER_PHASES = ["forecast", "active", "recovery"];
 export const ECO_SEASON_DAYS = 14;
@@ -31,12 +34,15 @@ const PEST_WARM_WEATHER = new Set([
 const PEST_MOIST_WEATHER = new Set(["light_rain", "cloudy", "fog"]);
 const DROUGHT_RECOVERY_WEATHER = new Set(["light_rain", "heavy_rain", "thunderstorm"]);
 const IMPACT_KINDS = new Set([
-    "plot_pest", "plot_flooded", "plot_drought", "flood_fish", "animal_wet_cold", "animal_indigestion", "animal_dehydration",
+    "plot_pest", "plot_flooded", "plot_drought", "flood_fish", "animal_wet_cold", "animal_indigestion", "animal_dehydration", "animal_minor_injury",
+    "plot_snow", "ranch_trough_frozen", "ranch_ground_ice", "ranch_bedding_wet",
 ]);
 const IMPACT_KINDS_BY_DISASTER = {
     flood: new Set(["plot_flooded", "plot_pest", "flood_fish", "animal_wet_cold", "animal_indigestion"]),
     drought: new Set(["plot_drought", "animal_dehydration"]),
     pest: new Set(["plot_pest"]),
+    winter: new Set(["animal_wet_cold", "animal_dehydration", "animal_minor_injury",
+        "plot_snow", "ranch_trough_frozen", "ranch_ground_ice", "ranch_bedding_wet"]),
 };
 const IMPACT_RESOLUTION_KINDS = new Set(["owner", "visitor", "career", "natural", "transferred"]);
 
@@ -131,9 +137,9 @@ function weightedWeather(seed, dayIndex, seasonName) {
     for (let i = 0; i < weights.length; i++) {
         needle -= weights[i];
         if (needle < 0)
-            return WEATHER_CONDITIONS[i];
+            return LEGACY_WEATHER_CONDITIONS[i];
     }
-    return WEATHER_CONDITIONS[WEATHER_CONDITIONS.length - 1];
+    return LEGACY_WEATHER_CONDITIONS[LEGACY_WEATHER_CONDITIONS.length - 1];
 }
 
 export function plannedWeatherForDay(world, dayIndex) {
@@ -142,12 +148,23 @@ export function plannedWeatherForDay(world, dayIndex) {
     const season = ecologicalSeasonForDay(world, dayIndex);
     if (!season)
         return null;
+    const revision = world.weatherRevisions?.find((entry) => entry.dayIndex === dayIndex);
+    let condition = revision?.condition;
+    if (!condition && world.weatherGeneration && dayIndex >= world.weatherGeneration.startDay &&
+        world.weatherGeneration.policy.seasonWeights[season.id]) {
+        const needsPrevious = world.weatherGeneration.policy.transitions.some(rule => rule.seasons.includes(season.id));
+        const previous = needsPrevious
+            ? world.weatherPlan?.find(entry => entry.dayIndex === dayIndex - 1) ?? plannedWeatherForDay(world, dayIndex - 1)
+            : null;
+        condition = selectForecastCondition(world.weatherGeneration.policy, WEATHER_CONDITIONS,
+            world.seed, dayIndex, season.id, previous?.condition ?? null);
+    }
+    condition ??= weightedWeather(world.seed, dayIndex, season.name);
     return {
         dayIndex,
         season: season.name,
         seasonDay: season.day,
-        condition: world.weatherRevisions?.find((entry) => entry.dayIndex === dayIndex)?.condition
-            ?? weightedWeather(world.seed, dayIndex, season.name),
+        condition,
     };
 }
 
@@ -195,7 +212,7 @@ function normalizeEvent(event) {
     const eventId = String(event.eventId ?? "").trim();
     const type = String(event.type ?? "").trim();
     const phase = String(event.phase ?? "").trim();
-    if (!eventId || !DISASTER_TYPES.includes(type) || !DISASTER_PHASES.includes(phase))
+    if (!eventId || !(DISASTER_TYPES.includes(type) || type === "winter") || !DISASTER_PHASES.includes(phase))
         throw new NatureContractError("invalid_nature_state", "current disaster identity or phase is invalid");
     const triggerDays = Array.isArray(event.triggerDays)
         ? event.triggerDays.map((day) => assertDay(day, "event.triggerDays"))
@@ -203,12 +220,12 @@ function normalizeEvent(event) {
     const storyId = event.storyId;
     if (storyId !== undefined && (storyId !== "rain_not_yet" || type !== "flood"))
         throw new NatureContractError("invalid_nature_state", "unsupported story disaster");
-    if (triggerDays.length < (storyId === "rain_not_yet" ? 1 : 2))
+    if (triggerDays.length < (storyId === "rain_not_yet" || type === "winter" ? 1 : 2))
         throw new NatureContractError("invalid_nature_state", "current disaster must retain its trigger days");
     const impacts = Array.isArray(event.impacts) ? event.impacts.map(normalizeImpact) : [];
     if (impacts.some((impact) => !IMPACT_KINDS_BY_DISASTER[type].has(impact.kind)))
         throw new NatureContractError("invalid_nature_state", `${type} disaster contains an impact from another disaster contract`);
-    return {
+    const normalized = {
         eventId,
         type,
         ...(storyId ? { storyId } : {}),
@@ -224,6 +241,18 @@ function normalizeEvent(event) {
             : assertDay(event.readyForSettlementAtDay, "event.readyForSettlementAtDay"),
         impacts,
     };
+    if (event.floodWaterline !== undefined) {
+        if (type !== "flood" || !Number.isSafeInteger(event.floodWaterline?.day) ||
+            !Number.isFinite(event.floodWaterline?.height))
+            throw new NatureContractError("invalid_nature_state", "invalid flood waterline");
+        normalized.floodWaterline = { day: event.floodWaterline.day, height: event.floodWaterline.height };
+    }
+    if (event.impactTrackingComplete !== undefined) {
+        if (type !== "winter" || event.impactTrackingComplete !== true)
+            throw new NatureContractError("invalid_nature_state", "invalid winter impact tracking marker");
+        normalized.impactTrackingComplete = true;
+    }
+    return normalized;
 }
 
 function normalizeSettledEvent(event) {
@@ -275,15 +304,27 @@ export function normalizeNatureWorld(raw) {
             return { dayIndex, condition: entry.condition, recordedAt: entry.recordedAt };
         }).sort((a, b) => a.dayIndex - b.dayIndex);
     }
+    if (raw.weatherGeneration !== undefined) {
+        const startDay = assertDay(raw.weatherGeneration?.startDay, "weatherGeneration.startDay");
+        if (startDay <= world.activationDay)
+            throw new NatureContractError("invalid_nature_state", "weather generation must start after activation");
+        world.weatherGeneration = { startDay,
+            policy: normalizeForecastPolicy(raw.weatherGeneration?.policy, WEATHER_CONDITIONS) };
+    }
     const seenDays = new Set();
-    world.weatherPlan = (Array.isArray(raw.weatherPlan) ? raw.weatherPlan : []).map((entry) => {
+    const rawPlan = [...(Array.isArray(raw.weatherPlan) ? raw.weatherPlan : [])]
+        .sort((a, b) => (a?.dayIndex ?? Infinity) - (b?.dayIndex ?? Infinity));
+    world.weatherPlan = [];
+    for (const entry of rawPlan) {
         const normalized = normalizeWeatherEntry(entry, world);
         if (seenDays.has(normalized.dayIndex))
             throw new NatureContractError("invalid_nature_state", `duplicate weather day ${normalized.dayIndex}`);
         seenDays.add(normalized.dayIndex);
-        return normalized;
-    }).sort((a, b) => a.dayIndex - b.dayIndex);
+        world.weatherPlan.push(normalized);
+    }
     world.currentEvent = raw.currentEvent == null ? null : normalizeEvent(raw.currentEvent);
+    if (world.currentEvent?.type === "winter")
+        throw new NatureContractError("invalid_nature_state", "winter event requires its own source slot");
     world.settledEvents = (Array.isArray(raw.settledEvents) ? raw.settledEvents : []).map(normalizeSettledEvent);
     if (raw.storyEvent !== undefined) {
         world.storyEvent = raw.storyEvent == null ? null : normalizeEvent(raw.storyEvent);
@@ -292,11 +333,19 @@ export function normalizeNatureWorld(raw) {
             world.settledEvents.some(event => event.eventId === world.storyEvent.eventId)))
             throw new NatureContractError("invalid_nature_state", "invalid story disaster binding");
     }
+    if (raw.winterEvent !== undefined) {
+        world.winterEvent = raw.winterEvent == null ? null : normalizeEvent(raw.winterEvent);
+        if (world.winterEvent && (world.winterEvent.type !== "winter" ||
+            world.winterEvent.eventId === world.currentEvent?.eventId ||
+            world.winterEvent.eventId === world.storyEvent?.eventId ||
+            world.settledEvents.some(event => event.eventId === world.winterEvent.eventId)))
+            throw new NatureContractError("invalid_nature_state", "invalid winter disaster binding");
+    }
     return world;
 }
 
 export function ongoingNatureEvents(world) {
-    return [world?.currentEvent, world?.storyEvent].filter(Boolean);
+    return [world?.currentEvent, world?.storyEvent, world?.winterEvent].filter(Boolean);
 }
 
 export function findNatureEvent(world, eventId) {
@@ -328,6 +377,25 @@ export function createNatureSeed() {
     return randomBytes(16).toString("hex");
 }
 
+/** Bind reviewed rules only after the last already published weather day. */
+export function enableWeatherGeneration(raw, { startDay, policy, now }) {
+    const world = normalizeNatureWorld(raw);
+    assertDay(startDay, "weatherGeneration.startDay");
+    if (world.status !== "active" || !Number.isSafeInteger(now) || now < 0)
+        throw new NatureContractError("invalid_weather_generation", "weather generation requires an active authority and time");
+    const normalized = { startDay, policy: normalizeForecastPolicy(policy, WEATHER_CONDITIONS) };
+    if (world.weatherGeneration) {
+        if (!isDeepStrictEqual(world.weatherGeneration, normalized))
+            throw new NatureContractError("weather_generation_conflict", "weather generation is already bound to another policy");
+        return world;
+    }
+    const lastPublishedDay = world.weatherPlan.at(-1)?.dayIndex ?? world.activationDay - 1;
+    if (startDay <= lastPublishedDay || startDay <= beijingDayIndex(now))
+        throw new NatureContractError("weather_generation_published", "weather generation cannot change an already published day");
+    world.weatherGeneration = normalized;
+    return normalizeNatureWorld(world);
+}
+
 /** Trusted future-day adjustment; the seed, calendar and disaster history stay intact. */
 export function reviseNatureWeather(raw, { dayIndex, condition, now }) {
     const world = normalizeNatureWorld(raw);
@@ -343,6 +411,9 @@ export function reviseNatureWeather(raw, { dayIndex, condition, now }) {
     }
     if (dayIndex <= beijingDayIndex(now) || dayIndex <= world.lastAdvancedDay)
         throw new NatureContractError("weather_revision_not_future", "only future weather may be revised");
+    if (world.weatherGeneration && dayIndex >= world.weatherGeneration.startDay - 1 &&
+        world.weatherPlan.some(entry => entry.dayIndex >= world.weatherGeneration.startDay))
+        throw new NatureContractError("weather_generation_published", "an already published generated forecast cannot be revised");
     world.weatherRevisions = [...(world.weatherRevisions ?? []), { dayIndex, condition, recordedAt: now }]
         .sort((a, b) => a.dayIndex - b.dayIndex);
     world.weatherPlan = world.weatherPlan.map((entry) => entry.dayIndex === dayIndex
@@ -383,8 +454,11 @@ export function ensureWeatherPlan(raw, now, futureDays = FORECAST_FUTURE_DAYS) {
     const lastStored = world.weatherPlan.at(-1)?.dayIndex ?? (world.activationDay - 1);
     const start = Math.max(world.activationDay, lastStored + 1);
     const end = today + futureDays;
-    for (let day = start; day <= end; day++)
-        byDay.set(day, plannedWeatherForDay(world, day));
+    for (let day = start; day <= end; day++) {
+        const entry = plannedWeatherForDay(world, day);
+        byDay.set(day, entry);
+        world.weatherPlan.push(entry);
+    }
     world.weatherPlan = [...byDay.values()].sort((a, b) => a.dayIndex - b.dayIndex);
     return world;
 }
@@ -501,6 +575,7 @@ function advanceEventDay(world, day, slot) {
 function advanceNatureDay(world, day) {
     advanceEventDay(world, day, "currentEvent");
     advanceEventDay(world, day, "storyEvent");
+    advanceEventDay(world, day, "winterEvent");
     if (world.currentEvent == null && !world.storyEvent && (world.cooldownUntilDay == null || day >= world.cooldownUntilDay)) {
         const candidate = findForecastCandidate(world, day);
         if (candidate) {
@@ -548,9 +623,7 @@ function requireCurrentEvent(world, eventId) {
     return event;
 }
 
-export function registerNatureImpact(raw, { eventId, farmId, objectId, kind, now }) {
-    const world = normalizeNatureWorld(raw);
-    const event = requireCurrentEvent(world, String(eventId ?? "").trim());
+function registerImpact(event, { farmId, objectId, kind, now }, indexed) {
     if (event.phase !== "active" && event.phase !== "recovery")
         throw new NatureContractError("nature_event_not_active", "only active or recovering disaster events can create gameplay impacts");
     const normalizedFarmId = String(farmId ?? "").trim();
@@ -564,9 +637,9 @@ export function registerNatureImpact(raw, { eventId, farmId, objectId, kind, now
         .update(`${event.eventId}\u0000${normalizedFarmId}\u0000${normalizedObjectId}\u0000${normalizedKind}`, "utf8")
         .digest("hex")
         .slice(0, 24);
-    const existing = event.impacts.find((impact) => impact.impactId === impactId);
+    const existing = indexed ? indexed.get(impactId) : event.impacts.find(impact => impact.impactId === impactId);
     if (existing)
-        return { world, impact: existing, created: false };
+        return { impact: existing, created: false };
     const impact = {
         impactId,
         farmId: normalizedFarmId,
@@ -578,13 +651,13 @@ export function registerNatureImpact(raw, { eventId, farmId, objectId, kind, now
         resolutionRef: null,
     };
     event.impacts.push(impact);
-    return { world, impact, created: true };
+    indexed?.set(impactId, impact);
+    return { impact, created: true };
 }
 
-export function resolveNatureImpact(raw, { eventId, impactId, resolutionKind, resolutionRef, now }) {
-    const world = normalizeNatureWorld(raw);
-    const event = requireCurrentEvent(world, String(eventId ?? "").trim());
-    const impact = event.impacts.find((entry) => entry.impactId === String(impactId ?? "").trim());
+function resolveImpact(event, { impactId, resolutionKind, resolutionRef, now }, indexed) {
+    const id = String(impactId ?? "").trim();
+    const impact = indexed ? indexed.get(id) : event.impacts.find(entry => entry.impactId === id);
     if (!impact)
         throw new NatureContractError("nature_impact_not_found", "the disaster impact does not exist");
     const normalizedKind = String(resolutionKind ?? "").trim();
@@ -594,12 +667,38 @@ export function resolveNatureImpact(raw, { eventId, impactId, resolutionKind, re
     if (impact.resolvedAtDay != null) {
         if (impact.resolutionKind !== normalizedKind || impact.resolutionRef !== normalizedRef)
             throw new NatureContractError("nature_resolution_conflict", "nature impact is already bound to another resolution fact");
-        return { world, impact };
+        return impact;
     }
     impact.resolvedAtDay = beijingDayIndex(now);
     impact.resolutionKind = normalizedKind;
     impact.resolutionRef = normalizedRef;
-    return { world, impact };
+    return impact;
+}
+
+export function registerNatureImpact(raw, request) {
+    const world = normalizeNatureWorld(raw);
+    const event = requireCurrentEvent(world, String(request.eventId ?? "").trim());
+    return { world, ...registerImpact(event, request) };
+}
+
+export function resolveNatureImpact(raw, request) {
+    const world = normalizeNatureWorld(raw);
+    const event = requireCurrentEvent(world, String(request.eventId ?? "").trim());
+    return { world, impact: resolveImpact(event, request) };
+}
+
+export function applyWinterImpactChanges(raw, eventId, registrations, resolutions) {
+    if (registrations.length === 0 && resolutions.length === 0) return raw;
+    const world = normalizeNatureWorld(raw);
+    const event = requireCurrentEvent(world, eventId);
+    const indexed = new Map();
+    for (const impact of event.impacts)
+        if (!indexed.has(impact.impactId)) indexed.set(impact.impactId, impact);
+    for (const request of registrations)
+        if (!registerImpact(event, request, indexed).created) throw new Error("winter_impact_episode_conflict");
+    for (const request of resolutions)
+        resolveImpact(event, request, indexed);
+    return world;
 }
 
 export function markNatureEventReadyForSettlement(raw, { eventId, now }) {
@@ -609,6 +708,21 @@ export function markNatureEventReadyForSettlement(raw, { eventId, now }) {
         throw new NatureContractError("nature_event_not_recovering", "only a recovering event can be marked ready for settlement");
     event.readyForSettlementAtDay ??= beijingDayIndex(now);
     return world;
+}
+
+// Scene reads use the already loaded authority and need only a single day.
+export function natureSceneWeather(world, now) {
+    if (world?.status !== "active")
+        return { season: null, weather: null };
+    const day = beijingDayIndex(now);
+    const season = ecologicalSeasonForDay(world, day);
+    if (!season)
+        return { season: null, weather: null };
+    if (world.lastAdvancedDay > day)
+        throw new NatureContractError("nature_clock_regressed", "nature authority cannot move backwards across Beijing day boundaries");
+    const weather = world.weatherPlan.findLast(entry => entry.dayIndex === day)
+        ?? plannedWeatherForDay(world, day);
+    return { season, weather };
 }
 
 export function natureSnapshot(raw, now) {

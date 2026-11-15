@@ -51,11 +51,11 @@ export function plantBatch(farm, spec, now) {
 }
 
 /** 浇所有生长中的地（主人或访客）。helped = 真正涨了浇水运气的地块数（已封顶的不算，给"帮浇水掉药水"判定用）*/
-export function waterAll(farm, by, isOwner, now = Date.now()) {
+export function waterAll(farm, by, isOwner, now = Date.now(), weatherRule) {
     let count = 0, helped = 0;
     for (const p of farm.plots) {
         if (p.crop && !p.crop.ripe) {
-            const r = water(farm, p.id, by, isOwner, now);
+            const r = water(farm, p.id, by, isOwner, now, weatherRule);
             count++;
             if (r.ok && !r.capped)
                 helped++;

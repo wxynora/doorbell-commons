@@ -87,7 +87,7 @@ function doRun(f, b, now, options = {}) {
         }
     }
     if (b.water) {
-        const w = waterAll(f, "主人", true, now);
+        const w = waterAll(f, "主人", true, now, options.weatherUpgrade?.plot?.moisture);
         if (w.ok) {
             if (options.captureMoments) momentActivities.push(waterActivity(w));
             parts.push(`【浇水】${w.count} 块`);
@@ -163,10 +163,10 @@ export function handleFieldAction(action, f, b, now, options = {}) {
         case "water": {
             const isOwner = !b.by;
             if (b.plotId != null) {
-                const r = water(f, Number(b.plotId), b.by ?? "主人", isOwner, now);
+                const r = water(f, Number(b.plotId), b.by ?? "主人", isOwner, now, options.weatherUpgrade?.plot?.moisture);
                 return { ok: r.ok, text: r.ok ? withFooter(f, now, waterText(r.isOwner, r.by) + (r.capped ? "（运气已封顶）" : "")) : r.error, ...(options.captureMoments && r.ok ? { momentActivities: [waterActivity({...r, count:1, helped:r.capped ? 0 : 1})] } : {}) };
             }
-            const r = waterAll(f, b.by ?? "主人", isOwner, now);
+            const r = waterAll(f, b.by ?? "主人", isOwner, now, options.weatherUpgrade?.plot?.moisture);
             return { ok: r.ok, text: r.ok ? withFooter(f, now, `${waterText(isOwner, b.by ?? "主人")}（浇了 ${r.count} 块地）`) : "没有可浇水的作物", ...(options.captureMoments && r.ok ? { momentActivities: [waterActivity(r)] } : {}) };
         }
         case "harvest": {

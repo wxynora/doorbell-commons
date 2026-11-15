@@ -3,6 +3,8 @@ import { animals, cooking, cookingIngredientById, cookingProductById, cookingRec
 import { createFarmWorldSqlitePersistence } from "../farm-world-sqlite-persistence.js";
 import { COOKING_PRICE_VERSION } from "../domain/kitchen/pricing.js";
 import { ensureKitchen } from "../domain/ranch/state.js";
+import { isNewWeatherRanch, prepareNewRanchWeather } from "../domain/nature/new-ranch.js";
+import { readNatureWorld } from "../store.js";
 import { resolveChefFarmForResident } from "../career/chef-farm-inventory-adapter.js";
 
 /** Uses the existing world SQLite and kitchen format. Publication is returned,
@@ -76,8 +78,16 @@ export function createLingyeNpcGiftAdapter({ database, economyCommands, getFarmF
                 // Receiving a meal does not discover its recipe or count as cooking.
             }
             else throw new Error("lingye_npc_gift_kind_invalid");
+            let previousNature = null, nextNature = null;
+            if (isNewWeatherRanch(working, { state: farm })) {
+                previousNature = readNatureWorld();
+                nextNature = prepareNewRanchWeather({ farm: working, before: { state: farm },
+                    nature: previousNature, now: createdAt }).nature;
+            }
             const committed = persistence.commitMutation({
-                farms: [{ id: farm.id, state: working, before: farm, receiptKeys: [] }], components: [],
+                farms: [{ id: farm.id, state: working, before: farm, receiptKeys: [] }],
+                components: nextNature && nextNature !== previousNature
+                    ? [{ key: "nature", value: nextNature, before: previousNature }] : [],
                 // The caller owns the outer COMMIT and delays live publication.
                 durableBoundary: true,
             });
@@ -94,9 +104,14 @@ export function createLingyeNpcGiftAdapter({ database, economyCommands, getFarmF
                         farm.silver = working.silver;
                         farm.doorbellMcpMigration.balanceProjection = working.doorbellMcpMigration.balanceProjection;
                     }
+                    else if (!farm.ranch) farm.ranch = structuredClone(working.ranch);
                     else ensureKitchen(farm) && (farm.ranch.kitchen = working.ranch.kitchen);
                     const scope=currentFarmMutationScope();
                     if (scope) scope.farms.set(farm.id,snapshotFarmMutation(farm,committed.farmPlans.get(farm.id)));
+                    if (nextNature && nextNature !== previousNature) {
+                        readNatureWorld().winterEvent = nextNature.winterEvent;
+                        if (scope) scope.components.set("nature", committed.componentPlans.get("nature"));
+                    }
                 },
             };
         },

@@ -1,3 +1,4 @@
+import { newPlotWeatherState } from "../nature/new-plot.js";
 import { LAND_UPGRADE_REQ } from "../../config.js";
 import { crops, landTiers } from "../../content.js";
 import { pushLog } from "../shared/notifications.js";
@@ -43,12 +44,13 @@ export function upgradeLand(farm, now) {
     const check = checkLandUpgrade(farm);
     if (!check.ok) return check;
     const {next,req} = check;
+    const weather = next.plots > farm.plots.length ? newPlotWeatherState(farm) : undefined;
     farm.coins -= req.coins;
     bumpDaily(farm, now, "coinSpend", req.coins);
     farm.landTier = next.tier;
     farm.lastLandExpandedAt = now;
     for (let id = farm.plots.length + 1; id <= next.plots; id++)
-        farm.plots.push({ id, crop: null });
+        farm.plots.push({ id, crop: null, ...(weather ? { lingyeWeatherUpgrade: { ...weather } } : {}) });
     pushLog(farm, `土地升级为 ${next.name}`);
     const unlocked = newVarietiesAtTier(next.tier);
     const gains = [unlocked > 0 ? `解锁 ${unlocked} 种新作物` : "", `地块增至 ${next.plots}`].filter(Boolean).join("；");

@@ -193,6 +193,12 @@ function projectShop(farm, now) {
     }),
   ];
 
+  if (ITEMS.snow_shovel) items.push(projectShopItem({
+    kind: "item", itemId: "snow_shovel", name: ITEMS.snow_shovel.name,
+    price: ITEMS.snow_shovel.price, currency: "gold", source: "permanent",
+    saleDescription: ITEMS.snow_shovel.desc,
+  }));
+
   const recipeId = typeof farm.shop.recipe === "string" ? farm.shop.recipe : null;
   if (recipeId) {
     const crop = cropDefinition(recipeId, new Map(allUgc().map((item) => [item.id, item])));
@@ -324,7 +330,12 @@ function projectBackpack(farm) {
   }
   for (const [id, quantity] of Object.entries(isObject(farm.items) ? farm.items : {})) {
     if (cleanInt(quantity) <= 0) continue;
-    items.push(projectInventoryItem("item", id, quantity, ITEMS[id]));
+    const item = projectInventoryItem("item", id, quantity, ITEMS[id]);
+    if (id === "snow_shovel" && ITEMS.snow_shovel) item.durability = {
+      remaining: farm.snowShovelRemaining ?? ITEMS.snow_shovel.durability,
+      maximum: ITEMS.snow_shovel.durability,
+    };
+    items.push(item);
   }
   return { status: "available", items };
 }

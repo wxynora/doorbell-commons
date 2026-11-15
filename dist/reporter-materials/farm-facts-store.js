@@ -95,6 +95,7 @@ export function readOrCreateReporterFarmFacts(database, issueDate, window, now =
     if (!Number.isSafeInteger(now) || now < 0)
         throw new TypeError("Invalid reporter farm snapshot time");
     const expectedWindow = issueWindow(issueDate, window);
+    pruneExpiredReporterFarmFacts(database, now);
     const existing = readSnapshot(database, issueDate, expectedWindow, now);
     if (existing !== undefined) return existing;
     if (now < expectedWindow.endMs || expectedWindow.expiresAt <= now) return null;
