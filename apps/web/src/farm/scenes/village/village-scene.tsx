@@ -3,6 +3,7 @@ import {neighborhoodDirectorySchema,neighborhoodLayoutSchema,type NeighborhoodHo
 import {createVillage,type VillageEnvironment} from './runtime.js';
 import {assignVillageLots} from './plan.js';
 import type {SceneRuntime} from '../field/scene-runtime.js';
+import {VillageMapGlyph} from './village-controls';
 import './village.css';
 async function read(url:string,signal:AbortSignal){
  const response=await fetch(url,{credentials:'same-origin',signal});const body=await response.json();
@@ -37,7 +38,11 @@ function Overview({homes,environment,active,onSelect}:{environment:VillageEnviro
     <path className="village-pan__center" d="M43 36l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z"/>
    </svg>
    {([{direction:'up',label:'向上看'},{direction:'left',label:'向左看'},{direction:'down',label:'向下看'},{direction:'right',label:'向右看'}] as const).map(({direction,label})=>
-    <button key={direction} className={`village-pan__${direction}`} type="button" aria-label={label} disabled={!active} onClick={()=>runtime.current?.pan(direction)}/>)}
+    <button key={direction} className={`village-pan__${direction}`} type="button" aria-label={label} disabled={!active} onClick={()=>runtime.current?.pan(direction)}>
+     <svg aria-hidden="true" viewBox="0 0 16 16" fill="none">
+      <path d="m4.5 9.75 3.5-3.5 3.5 3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+     </svg>
+    </button>)}
   </nav>
   {unplaced.length>0&&<aside className="village-unplaced"><span>待选址</span>{unplaced.map(h=><button key={h.residentId} type="button" onClick={()=>onSelect(h)}>{h.name}</button>)}</aside>}{error&&<p role="alert" className="village-status">{error}</p>}</>;
 }
@@ -57,7 +62,17 @@ export function VillageScene({environment,active,onClose,children}:{environment:
  useEffect(()=>{setLayout(null);setError('');if(!selected)return;const controller=new AbortController();void read(`/api/farm/neighborhood/${encodeURIComponent(selected.residentId)}/layout`,controller.signal).then(p=>{if(!controller.signal.aborted){const data=neighborhoodLayoutSchema.parse(p);if(data.doorplate!==selected.doorplate)throw new Error('布置与所选门牌不匹配。');setLayout(data);}}).catch(e=>{if(!controller.signal.aborted)setError(e.message);});return()=>controller.abort();},[selected,retry]);
  return <section className="village-scene" data-night={environment.night>.5} aria-label="居民区">
   {!selected&&homes?<Overview homes={homes} environment={environment} active={active} onSelect={setSelected}/>:selected&&layout&&layout.doorplate===selected.doorplate?<FarmView data={layout} active={active} environment={environment}/>:null}
-  <header className="village-header"><button type="button" onClick={()=>selected?setSelected(null):onClose()} aria-label={selected?'返回居民区':'返回农场'}/><div><strong>{selected?selected.name:'铃野居民区'}</strong></div></header>
+  <header className="village-header">
+   <button type="button" onClick={()=>selected?setSelected(null):onClose()} aria-label={selected?'返回居民区':'返回农场'}>
+    <svg aria-hidden="true" viewBox="0 0 16 16" fill="none">
+     <path d="m9.75 4.5-3.5 3.5 3.5 3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+   </button>
+   <div className="village-heading">
+    {!selected && <VillageMapGlyph />}
+    <strong>{selected ? selected.name : '铃野居民区'}</strong>
+   </div>
+  </header>
   {error?<div className="village-status" role="alert"><p>{error}</p><button type="button" onClick={()=>setRetry(n=>n+1)}>重试</button></div>:!homes||selected&&!layout?<p className="village-status" role="status">{selected?'正在打开这家的布置':'正在打开居民区'}</p>:null}
   {children}
  </section>;

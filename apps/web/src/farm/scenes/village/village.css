@@ -34,8 +34,8 @@
  --hud-edge:#96835e;
  --hud-leaf:#8a986f;
  --hud-shadow:#2d31242e;
- --hud-title:#493e2c;
- --hud-title-edge:#fff4d5;
+ --hud-title:#fff;
+ --hud-title-edge:#3a352a;
 }
 .village-scene[data-night=true] {
  --hud-paper:#d9cbae;
@@ -43,8 +43,6 @@
  --hud-edge:#938266;
  --hud-leaf:#75835f;
  --hud-shadow:#0c12164d;
- --hud-title:#f6e9c9;
- --hud-title-edge:#222c2c;
 }
 .village-header {
  position:absolute;
@@ -78,37 +76,38 @@
  font-size:0;
  pointer-events:auto;
 }
-.village-header>button::before {
- content:"";
- width:calc(7 * var(--village-unit));
- height:calc(7 * var(--village-unit));
- border-left:1.5px solid currentColor;
- border-bottom:1.5px solid currentColor;
- transform:translateX(1px) rotate(45deg);
+.village-header>button svg {
+ width:calc(19 * var(--village-unit));
+ height:calc(19 * var(--village-unit));
 }
-.village-header>div {
+.village-heading {
+ --map-pin:#a36445;
+ --map-pin-edge:#faf3dc;
  min-width:0;
  max-width:100%;
  justify-self:center;
- box-sizing:border-box;
- height:var(--hud-control);
  display:flex;
  align-items:center;
- padding:0 var(--hud-edge-space);
- border:1px solid var(--hud-edge);
- border-radius:calc(var(--hud-control) / 2);
- background:var(--hud-paper);
- color:var(--hud-ink);
- text-align:center;
+ gap:calc(4 * var(--village-unit));
+ color:var(--hud-title);
 }
-.village-header strong {
+.village-heading svg {
+ flex:none;
+ width:calc(21 * var(--village-unit));
+ height:calc(21 * var(--village-unit));
+ filter:drop-shadow(0 0 1px var(--hud-title-edge));
+}
+.village-heading strong {
  display:block;
  overflow:hidden;
  text-overflow:ellipsis;
  white-space:nowrap;
- font:600 var(--hud-font)/1.3 system-ui,sans-serif;
- letter-spacing:.06em;
+ font:650 calc(17 * var(--village-unit))/1.2 "Songti SC","Noto Serif CJK SC",serif;
+ letter-spacing:.08em;
+ -webkit-text-stroke:calc(2.6 * var(--village-unit)) var(--hud-title-edge);
+ paint-order:stroke fill;
 }
+.village-scene[data-night=true] .village-heading { --map-pin:#e9ae86; }
 .village-pan {
  position:absolute;
  right:max(var(--hud-edge-space),env(safe-area-inset-right));
@@ -139,21 +138,17 @@
  touch-action:manipulation;
  pointer-events:auto;
 }
-.village-pan button::before {
- content:"";
- width:calc(7 * var(--village-unit));
- height:calc(7 * var(--village-unit));
- border-top:1.5px solid currentColor;
- border-right:1.5px solid currentColor;
+.village-pan button svg {
+ width:calc(17 * var(--village-unit));
+ height:calc(17 * var(--village-unit));
 }
 .village-pan__up{grid-area:1/2}
 .village-pan__left{grid-area:2/1}
 .village-pan__down{grid-area:3/2}
 .village-pan__right{grid-area:2/3}
-.village-pan__up::before{transform:translateY(2px) rotate(-45deg)}
-.village-pan__left::before{transform:translateX(2px) rotate(-135deg)}
-.village-pan__down::before{transform:translateY(-2px) rotate(135deg)}
-.village-pan__right::before{transform:translateX(-2px) rotate(45deg)}
+.village-pan__left svg{transform:rotate(-90deg)}
+.village-pan__down svg{transform:rotate(180deg)}
+.village-pan__right svg{transform:rotate(90deg)}
 .preview-controls {
  position:absolute;
  left:max(var(--hud-edge-space),env(safe-area-inset-left));
@@ -187,4 +182,3 @@
 .village-status button{min-height:var(--hud-control);padding:0 var(--hud-edge-space);border:1px solid var(--hud-edge);border-radius:var(--hud-radius);background:transparent;color:inherit}
 .village-unplaced{position:absolute;left:var(--hud-edge-space);right:var(--hud-edge-space);top:calc(var(--hud-edge-space) + var(--hud-control) + var(--hud-space));display:flex;gap:var(--hud-space);flex-wrap:wrap;max-height:calc(144 * var(--village-unit));overflow:auto;padding:var(--hud-space);border-radius:var(--hud-radius);background:var(--hud-paper);font:var(--hud-font)/1.3 system-ui}
 .village-unplaced button{height:var(--hud-control);padding:0 var(--hud-space);border:0;border-radius:var(--hud-radius);background:#d4d8b8;color:var(--hud-ink)}
-.farm-village-open{position:absolute;left:16px;top:140px;z-index:16;border:1px solid #b1a27a;background:#fff5d9;color:#5b6346;border-radius:20px;padding:8px 14px;font:600 14px/1.3 system-ui}

@@ -391,6 +391,17 @@ export const FARM_ASSET_MANIFEST = {
     status: "production",
     usage: "wired",
   }),
+  "panel.tool.village-map": asset({
+    domain: "panel",
+    entityKind: "tool",
+    entityId: "village-map",
+    visualState: "icon",
+    url: "/farm/ui-icons/village-map.webp",
+    pixelWidth: 160,
+    pixelHeight: 160,
+    status: "production",
+    usage: "wired",
+  }),
   "panel.tool.settings": asset({
     domain: "panel",
     entityKind: "tool",

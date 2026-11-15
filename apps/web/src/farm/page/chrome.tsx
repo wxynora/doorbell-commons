@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import {
   DEFAULT_FARM_TOOL_EDITOR_LAYOUT,
   FARM_TOOL_EDITOR_BULLETIN_OPTION,
@@ -152,15 +153,38 @@ export function SceneBalance({
   );
 }
 
+export function FarmInterfaceToggle({ hidden, onToggle }: { hidden: boolean; onToggle: () => void }) {
+  const label = hidden ? "显示界面" : "隐藏界面";
+  const eye = hidden ? (
+    <path d="M3 9c2.4 4 5.4 6 9 6s6.6-2 9-6M5 12l-2 3m6-1-1 4m7-4 1 4m3-6 2 3" />
+  ) : (
+    <>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  );
+
+  return (
+    <button className="farm-interface-toggle" type="button" aria-pressed={hidden} aria-label={label} title={label} onClick={onToggle}>
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+        <g stroke="#3a352a" strokeWidth="3.8">{eye}</g>
+        <g stroke="#fff" strokeWidth="1.6">{eye}</g>
+      </svg>
+    </button>
+  );
+}
+
 export function FarmToolBar({
   activeScene,
   bulletinUnread,
   onOpenBulletin,
+  onOpenVillage,
   onSelect,
 }: {
   activeScene: FarmSceneId;
   bulletinUnread: boolean;
   onOpenBulletin: () => void;
+  onOpenVillage?: () => void;
   onSelect: (tool: FarmToolOption) => void;
 }) {
   const tools = FARM_TOOL_OPTIONS[activeScene];
@@ -194,16 +218,30 @@ export function FarmToolBar({
             const layout = FARM_TOOL_LAYOUTS[tool.id] ?? DEFAULT_FARM_TOOL_EDITOR_LAYOUT;
 
             return (
-              <button key={tool.id} onClick={() => onSelect(tool)} type="button">
-                <img
-                  alt=""
-                  aria-hidden="true"
-                  loading="lazy"
-                  src={getFarmAssetUrl(tool.iconKey)}
-                  style={getFarmToolIconStyle(layout)}
-                />
-                <span style={getFarmToolTextStyle(layout)}>{tool.label}</span>
-              </button>
+              <Fragment key={tool.id}>
+                <button onClick={() => onSelect(tool)} type="button">
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    loading="lazy"
+                    src={getFarmAssetUrl(tool.iconKey)}
+                    style={getFarmToolIconStyle(layout)}
+                  />
+                  <span style={getFarmToolTextStyle(layout)}>{tool.label}</span>
+                </button>
+                {tool.id === "settings" && onOpenVillage && (
+                  <button type="button" onClick={onOpenVillage} aria-label="打开居民区地图">
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      loading="lazy"
+                      src={getFarmAssetUrl("panel.tool.village-map")}
+                      style={getFarmToolIconStyle(layout)}
+                    />
+                    <span style={getFarmToolTextStyle(layout)}>居民区</span>
+                  </button>
+                )}
+              </Fragment>
             );
           })}
         </nav>
