@@ -39,8 +39,10 @@ const receiptSchema = z.object({ residentId: identifier, source: identifier, sou
   facts: z.array(z.object({ label: identifier, value: z.string() }).strict()),
   statusKeys: z.array(z.enum(activityStatusKeys)).optional(),
 }).strict();
-export const commentSchema = z.object({ requestId: identifier, text: z.string().refine(text => !!text.trim()) }).strict();
-const commentWithStickerSchema = z.object({ requestId: identifier, text: z.string() }).strict();
+export const commentWithStickerSchema = z.object({
+  requestId: identifier, text: z.string(), to: z.string().trim().min(1).optional(),
+}).strict();
+export const commentSchema = commentWithStickerSchema.extend({ text: z.string().refine(text => !!text.trim()) });
 export const giftItemSchema = z.discriminatedUnion("kind",[
   z.object({kind:z.literal("dish"),id:identifier,quantity:z.literal(1)}).strict(),
   z.object({kind:z.literal("bait"),id:identifier,quantity:z.number().int().positive().safe()}).strict(),
@@ -77,7 +79,8 @@ type ReceiptRow = HomeRecord & { receipt_id: string; resident_id: string; source
   kind: string; title: string; summary: string; occurred_at: number };
 type StoredActor = { actor_key: string; kind: "resident" | "human"; name: string; resident_id: string | null };
 type LikeRow = HomeRecord & { moment_id:string; actor_key:string; created_at:number };
-type CommentRow = HomeRecord & { comment_id:string; moment_id:string; actor_key:string; text:string; created_at:number };
+type CommentRow = HomeRecord & { comment_id:string; moment_id:string; actor_key:string; text:string; created_at:number;
+  reply_to_resident_id:string|null; reply_to_name:string|null };
 type GiftRow = HomeRecord & { gift_id:string; moment_id:string; actor_key:string; request_id:string;
   sender_resident_id:string; sender_doorplate:string; recipient_resident_id:string; recipient_doorplate:string;
   item_kind:GiftItem["kind"]; item_id:string; item_quantity:number; item_name:string|null; delivered_at:number|null; purchase_total:number|null };
@@ -314,8 +317,10 @@ export class MomentsStore {
         (likesOf.get(like.moment_id) ?? likesOf.set(like.moment_id, []).get(like.moment_id)!).push(like);
         actorKeys.add(like.actor_key);
       } else if (row.record_type === "comment") {
-        (commentsOf.get(row.moment_id) ?? commentsOf.set(row.moment_id, []).get(row.moment_id)!).push(row as CommentRow);
-        actorKeys.add((row as CommentRow).actor_key);
+        const comment = row as CommentRow;
+        (commentsOf.get(row.moment_id) ?? commentsOf.set(row.moment_id, []).get(row.moment_id)!).push(comment);
+        actorKeys.add(comment.actor_key);
+        if (comment.reply_to_resident_id) actorKeys.add(`resident:${comment.reply_to_resident_id}`);
       } else if (row.record_type === "gift") {
         const gift = row as GiftRow;
         (giftsOf.get(gift.moment_id) ?? giftsOf.set(gift.moment_id, []).get(gift.moment_id)!).push(gift);
@@ -382,7 +387,13 @@ export class MomentsStore {
           statusKeys: canonicalStatusKeys((statusKeysOf.get(receipt.receipt_id) ?? []).map(row => row.kind).filter(isActivityStatusKey)) } : null,
         visibility: { mode: row.visibility, ...(actor.kind === "resident" && actor.residentId === row.author_id ? { subjects: subjects.sort((a, b) => compare(a.id, b.id)) } : {}) },
         liked: likes.some(like => like.actor_key === key), likes: likes.map(like => actors.get(like.actor_key)!), stickers: stickers.post,
-        comments: comments.map(comment => ({ id: comment.comment_id, author: actors.get(comment.actor_key)!, text: comment.text, createdAt: comment.created_at, stickers: stickers.comments[comment.comment_id] ?? [] })),
+        comments: comments.map(comment => {
+          const replyTo = comment.reply_to_resident_id
+            ? actors.get(`resident:${comment.reply_to_resident_id}`)?.name : undefined;
+          return { id: comment.comment_id, author: actors.get(comment.actor_key)!, text: comment.text,
+            createdAt: comment.created_at, stickers: stickers.comments[comment.comment_id] ?? [],
+            ...(replyTo === undefined ? {} : { replyTo }) };
+        }),
         gifts: gifts.map(gift => this.giftView(gift, actors)) };
     });
   }
@@ -649,21 +660,33 @@ export class MomentsStore {
     if(frozen)this.raffleBarrier?.wake();
     return result;
   }
-  comment(actor:MomentActor,id:string,input:{requestId:string;text:string},now:number,stickers:readonly string[]=[]):MomentView {
+  private commentRecipient(postId: string, name: string): string {
+    const rows = this.records.all<Pick<CommentRow, "actor_key">>("comment", "moment_id=?", [postId]);
+    const actors = this.actorViews(rows.map(row => row.actor_key));
+    const matches = [...actors.values()].filter(actor => actor.kind === "resident" && actor.name === name);
+    const residentId = matches[0]?.residentId;
+    if (matches.length !== 1 || residentId === undefined) throw new MomentsError("reply_target_not_found");
+    return residentId;
+  }
+  comment(actor:MomentActor,id:string,input:z.input<typeof commentWithStickerSchema>,now:number,stickers:readonly string[]=[]):MomentView {
     this.residentOnly(actor);parse(timestamp,now);const comment=parse(stickers.length?commentWithStickerSchema:commentSchema,input);
     let frozen=false;
     const result=this.stickerAttachments.withStickers(actor,{kind:"comment",requestId:comment.requestId,ids:stickers},attach=>{
       const row=this.accessible(actor,id),current=this.saveActor(actor);
       frozen=(this.raffleBarrier?.freezeDue(now,id).length??0)>0;
-      const previous=this.records.all<CommentRow>("comment","actor_key=? AND request_id=?",[current.actor_key,comment.requestId])[0];
-      if(previous&&(previous.moment_id!==id||previous.text!==comment.text))throw new MomentsError("request_conflict");
+      const homeId=this.homeId(actor.residentId);
+      const previous=this.records.all<CommentRow>("comment","actor_key=? AND request_id=?",[current.actor_key,comment.requestId],homeId)[0];
+      if(previous&&(previous.moment_id!==id||previous.text!==comment.text||previous.reply_to_name!==(comment.to??null)))
+        throw new MomentsError("request_conflict");
       const commentId=previous?.comment_id??randomUUID();
       if(!previous){
-        const homeId=this.homeId(actor.residentId), external=homeId!==row.home_id;
+        const replyTo = comment.to === undefined ? null : this.commentRecipient(id, comment.to);
+        const external=homeId!==row.home_id;
         const first=!this.records.aggregate("comment","moment_id=?",[id],homeId).count;
         if(external)this.progression.ensure(homeId,now);
         this.records.insert(homeId,"comment",{
-          comment_id:commentId,moment_id:id,actor_key:current.actor_key,target_home_id:row.home_id,request_id:comment.requestId,text:comment.text,created_at:now},commentId);
+          comment_id:commentId,moment_id:id,actor_key:current.actor_key,target_home_id:row.home_id,request_id:comment.requestId,
+          text:comment.text,created_at:now,reply_to_resident_id:replyTo,reply_to_name:comment.to??null},commentId);
         if(external)this.progression.change(homeId,now,"comment",id,row.author_id,{comments:first?1:0});
       }
       attach({momentId:id,commentId});
@@ -684,7 +707,7 @@ export class MomentsStore {
     return {year,homeId,from,until,sent:{posts:this.records.aggregate("post",range,[from,until],homeId).count,
       comments:this.records.aggregate("comment",range,[from,until],homeId).count,likes:this.records.aggregate("like",range,[from,until],homeId).count,
       gifts:{times:sentGift.count,quantity:sentGift.quantity}},received:{
-      comments:this.records.aggregate("comment",`target_home_id=? AND ${range}`,[homeId,from,until]).count,
+      comments:this.records.aggregate("comment",`(target_home_id=? OR reply_to_resident_id=?) AND ${range}`,[homeId,actor.residentId,from,until]).count,
       likes:this.records.aggregate("like",`target_home_id=? AND ${range}`,[homeId,from,until]).count,
       gifts:{times:receivedGift.count,quantity:receivedGift.quantity}}};
   }

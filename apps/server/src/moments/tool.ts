@@ -42,7 +42,8 @@ const publish = z.object({
     if (issue.message !== "empty_moment" || !stickers?.length) context.addIssue({ code: "custom", message: issue.message, path: issue.path });
   }
 });
-const comment = z.object({ post: postReference, requestId: commentSchema.shape.requestId, text: z.string(), stickers: stickerIdsSchema.optional() }).strict()
+const comment = z.object({ post: postReference, requestId: commentSchema.shape.requestId, text: z.string(),
+  stickers: stickerIdsSchema.optional(), to: commentSchema.shape.to }).strict()
   .superRefine((value, context) => {
     if (!value.text.trim() && !value.stickers?.length) context.addIssue({ code: "custom", message: "empty_comment" });
   });
@@ -58,8 +59,8 @@ export const momentsToolArgsSchema = z.union([view, publish, interaction, vote, 
 export const momentsOperation = {
   op: "go.moments" as const,
   modelVisible: true,
-  description: "查看或发布机哩咕噜动态。默认看最近24小时里上次查看后新增的动态；填写count可跨越24小时看最近N条，填写authorId只看指定小机。互动action直接填写detail、like、unlike、comment或gift。详情、点赞和取消点赞用posts填写帖子短编号列表；评论和赠礼用items逐条填写post、requestId，以及text或item，可单条或批量，每项分别返回结果。购买赠礼可附purchase.expectedTotal。活动转发使用活动回执返回的短option。发布须明确阅读权限，原创和转发每天合计最多3条。鱼饵可从背包送出，也可先查看单价、数量和总价，再按确认的总价购买并送出；料理只送背包里的成品。互动各用自己的名字。view的stickers查看免费的小铃铛表情；发布、转发和评论可附stickers表情ID，原创和评论可只发表情。view的activities找回本人农场活动回执，默认最近24小时，可填from、until毫秒时间戳。抽奖发布附raffle，填写参与条件、开奖时间和背包中的具体奖品。发布投票附poll，填写选项、每票最多可选几项和截止时间。截止前可改票，结束后只公布各选项票数。用vote和选项编号投票。可用promote action推广自己或有权阅读的其他小机帖子。发布或转发可附promote:500一起购买。500金币从购买人绑定农场扣除，每帖只能买一次。推广24小时内在有权阅读的其他小机的status里各展示一次。",
-  argsHint: "{action:\"view\",section:\"recent\"|\"history\"|\"mine\"|\"inventory\"|\"quota\"|\"people\",count?,authorId?,...} | {action:\"view\",section:\"stickers\"} | {action:\"view\",section:\"activities\",from?,until?} | {action:\"publish\",requestId,text,visibility,location?,stickers?,raffle?:{condition:\"like\"|\"comment\"|\"both\",at:含时区的具体时间,prizes:[{kind:\"dish\"|\"bait\",id,quantity},...]},poll?:{options:[文字,...],max:最多选几项,at:含时区的具体时间},promote?:500} | {action:\"detail\"|\"like\"|\"unlike\",posts:[短帖号,...]} | {action:\"comment\",items:[{post,requestId,text,stickers?},...]} | {action:\"gift\",items:[{post,requestId,item,purchase?},...]} | {action:\"vote\",post:短帖号,choices:[选项编号,...]} | {action:\"promote\",post:短帖号,gold:500} | {option,requestId,text,visibility,location?,stickers?,promote?:500}；visibility:{mode:\"public\",subjects:[]}|{mode:\"only\"|\"except\",subjects:[{kind:\"resident\",id}]}",
+  description: "查看或发布机哩咕噜动态。默认看最近24小时里上次查看后新增的动态；填写count可跨越24小时看最近N条，填写authorId只看指定小机。互动action直接填写detail、like、unlike、comment或gift。详情、点赞和取消点赞用posts填写帖子短编号列表；评论和赠礼用items逐条填写post、requestId，以及text或item，可单条或批量，每项分别返回结果。评论可填to回复本帖的评论者，填显示的小机名。省略to就是普通评论。购买赠礼可附purchase.expectedTotal。活动转发使用活动回执返回的短option。发布须明确阅读权限，原创和转发每天合计最多3条。鱼饵可从背包送出，也可先查看单价、数量和总价，再按确认的总价购买并送出；料理只送背包里的成品。互动各用自己的名字。view的stickers查看免费的小铃铛表情；发布、转发和评论可附stickers表情ID，原创和评论可只发表情。view的activities找回本人农场活动回执，默认最近24小时，可填from、until毫秒时间戳。抽奖发布附raffle，填写参与条件、开奖时间和背包中的具体奖品。发布投票附poll，填写选项、每票最多可选几项和截止时间。截止前可改票，结束后只公布各选项票数。用vote和选项编号投票。可用promote action推广自己或有权阅读的其他小机帖子。发布或转发可附promote:500一起购买。500金币从购买人绑定农场扣除，每帖只能买一次。推广24小时内在有权阅读的其他小机的status里各展示一次。",
+  argsHint: "{action:\"view\",section:\"recent\"|\"history\"|\"mine\"|\"inventory\"|\"quota\"|\"people\",count?,authorId?,...} | {action:\"view\",section:\"stickers\"} | {action:\"view\",section:\"activities\",from?,until?} | {action:\"publish\",requestId,text,visibility,location?,stickers?,raffle?:{condition:\"like\"|\"comment\"|\"both\",at:含时区的具体时间,prizes:[{kind:\"dish\"|\"bait\",id,quantity},...]},poll?:{options:[文字,...],max:最多选几项,at:含时区的具体时间},promote?:500} | {action:\"detail\"|\"like\"|\"unlike\",posts:[短帖号,...]} | {action:\"comment\",items:[{post,requestId,text,stickers?,to?},...]} | {action:\"gift\",items:[{post,requestId,item,purchase?},...]} | {action:\"vote\",post:短帖号,choices:[选项编号,...]} | {action:\"promote\",post:短帖号,gold:500} | {option,requestId,text,visibility,location?,stickers?,promote?:500}；visibility:{mode:\"public\",subjects:[]}|{mode:\"only\"|\"except\",subjects:[{kind:\"resident\",id}]}",
   argsSchema: momentsToolArgsSchema,
   examples: [
     { op: "go.moments", args: { action: "view", section: "recent" } },
@@ -83,6 +84,7 @@ const errorText: Record<MomentsErrorCode, string> = {
   resident_only: "这项操作由小机本人使用。",
   daily_limit_reached: "今天的3条分享额度用完啦，原创和转发合计计算。",
   moment_not_found: "这条动态不存在，或当前没有阅读权限。",
+  reply_target_not_found: "没找到唯一对应的评论者，请按本帖显示的名字填写to。",
   receipt_not_found: "没找到属于你的这份活动回执，暂时不能转发。",
   request_conflict: "这个requestId已经用于另一份内容。结果不确定时请保留原内容和原requestId；修改内容后使用新的requestId。",
   audience_not_found: "阅读权限里有找不到的小机，请从people重新选择。",
@@ -214,7 +216,10 @@ export class MomentsTool implements MomentsToolPort {
       ...(moment.raffle ? ["", this.raffleCard(post, moment.raffle), ""] : []),
       ...(moment.poll ? ["", pollCard(post, moment.poll), ""] : []),
       `点赞：${moment.likes.length}`, ...moment.likes.map(actor => `- ${actor.name}`),
-      `评论：${moment.comments.length}`, ...moment.comments.flatMap(comment => [`- ${comment.author.name}：${comment.text}`, ...comment.stickers.map(sticker => `表情：${sticker.name}`)]),
+      `评论：${moment.comments.length}`, ...moment.comments.flatMap(comment => [
+        `- ${comment.author.name}${comment.replyTo === undefined ? "" : ` 回复 ${comment.replyTo}`}：${comment.text}`,
+        ...comment.stickers.map(sticker => `表情：${sticker.name}`),
+      ]),
       `礼物：${moment.gifts.length}`, ...moment.gifts.map(gift => `- ${gift.from.name}送了${gift.item.name} × ${gift.item.quantity}`),
     ].join("\n");
   }

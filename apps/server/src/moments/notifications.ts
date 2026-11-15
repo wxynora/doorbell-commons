@@ -11,6 +11,7 @@ export interface MomentNotification {
   read: boolean;
   stickers: MomentSticker[];
   comment?: string;
+  replyTo?: string;
   gift?: { name: string; quantity: number };
 }
 
@@ -39,15 +40,18 @@ export class MomentsNotifications {
   }
 
   private project(actor: MomentActor, identity: Identity, sourceId?: string): MomentNotification[] {
-    const where = `target_home_id=?${sourceId === undefined ? "" : " AND record_id=?"}`;
-    const params = sourceId === undefined ? [identity.homeId] : [identity.homeId, sourceId];
-    const sources = (["like", "comment", "gift"] as const).flatMap(kind =>
-      this.records.all<Interaction>(kind, kind === "gift" ? `${where} AND delivered_at IS NOT NULL` : where, params)
-        .map(row => ({ kind, row })));
+    const sources = (["like", "comment", "gift"] as const).flatMap(kind => {
+      const isComment = kind === "comment";
+      let where = isComment ? "(target_home_id=? OR reply_to_resident_id=?)" : "target_home_id=?";
+      const params = isComment ? [identity.homeId, actor.residentId] : [identity.homeId];
+      if (sourceId !== undefined) { where += " AND record_id=?"; params.push(sourceId); }
+      if (kind === "gift") where += " AND delivered_at IS NOT NULL";
+      return this.records.all<Interaction>(kind, where, params).map(row => ({ kind, row }));
+    });
     const read = new Set(this.records.all<ReadMarker>("notification_read", "actor_key=?", [identity.actorKey], identity.homeId)
       .map(marker => marker.notification_source_id));
     const moments = new Map<string, { id: string; text: string; stickers: MomentSticker[] } | null>();
-    const comments = new Map<string, Map<string, MomentSticker[]>>();
+    const comments = new Map<string, Map<string, MomentView["comments"][number]>>();
     const senders = new Map<string, ActorView>();
     return sources.flatMap(({ kind, row }): MomentNotification[] => {
       if (!moments.has(row.moment_id)) {
@@ -69,9 +73,11 @@ export class MomentsNotifications {
         base.comment = row.text!;
         if (!comments.has(row.moment_id)) {
           const view = this.moments.get(actor,row.moment_id);
-          comments.set(row.moment_id,new Map(view.comments.map(comment=>[comment.id,comment.stickers])));
+          comments.set(row.moment_id,new Map(view.comments.map(comment=>[comment.id,comment])));
         }
-        base.stickers = row.comment_id ? comments.get(row.moment_id)?.get(row.comment_id) ?? [] : [];
+        const comment = row.comment_id ? comments.get(row.moment_id)?.get(row.comment_id) : undefined;
+        base.stickers = comment?.stickers ?? [];
+        if (comment?.replyTo !== undefined) base.replyTo = comment.replyTo;
       }
       if (kind === "gift") base.gift = { name: row.item_name!, quantity: row.item_quantity! };
       return [base];

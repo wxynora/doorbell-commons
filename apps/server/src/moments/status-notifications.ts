@@ -55,7 +55,7 @@ export class MomentsStatusNotifications {
       // list whose size grows without bound.
       const directory = this.records.homeTables();
       const markerTable = directory.find(table => table.home_id === identity.homeId);
-      const sources = this.selectSources(directory, markerTable, identity);
+      const sources = this.selectSources(directory, markerTable, identity, residentId);
       const visible = this.moments.visibleMomentIds(actor, [...new Set(sources.map(row => row.moment_id))]);
       const counts: MomentsStatusCounts = { likes: 0, comments: 0, giftTimes: 0, giftQuantity: 0 };
       const pending: SourceRow[] = [];
@@ -87,7 +87,7 @@ export class MomentsStatusNotifications {
    * marker probe must correlate the outer row's record_id, and every home table shares the same
    * column names, so the outer table gets its own alias and one statement per table. */
   private selectSources(directory: readonly HomeTable[], markerTable: HomeTable | undefined,
-    identity: { homeId: string; actorKey: string }): SourceRow[] {
+    identity: { homeId: string; actorKey: string }, residentId: string): SourceRow[] {
     const markerSql = markerTable ? quoteHomeTable(markerTable.table_name) : undefined;
     return directory.flatMap(({ table_name }) => {
       const name = quoteHomeTable(table_name);
@@ -95,8 +95,10 @@ export class MomentsStatusNotifications {
         ? ` AND NOT EXISTS (SELECT 1 FROM ${markerSql} AS r WHERE r.record_type='notification_reported' AND r.actor_key=? AND r.notification_source_id=o.record_id)`
         : "";
       return this.database.prepare(
-        `SELECT * FROM ${name} AS o WHERE record_type IN (?,?,?) AND ((record_type!='gift' OR delivered_at IS NOT NULL) AND target_home_id=?${reported})`
-      ).all("like", "comment", "gift", identity.homeId, ...(markerSql ? [identity.actorKey] : [])) as SourceRow[];
+        `SELECT * FROM ${name} AS o WHERE record_type IN (?,?,?)
+          AND (record_type!='gift' OR delivered_at IS NOT NULL)
+          AND (target_home_id=? OR (record_type='comment' AND reply_to_resident_id=?))${reported}`
+      ).all("like", "comment", "gift", identity.homeId, residentId, ...(markerSql ? [identity.actorKey] : [])) as SourceRow[];
     });
   }
 }

@@ -1,6 +1,6 @@
 import { MomentsPromotionError, type MomentsPromotionFarm } from "./promotion.js";
 import { z } from "zod";
-import { commentSchema, feedQuerySchema, giftRequestSchema, publishMomentSchema, type MomentsStore } from "./store.js";
+import { commentWithStickerSchema, feedQuerySchema, giftRequestSchema, publishMomentSchema, type MomentsStore } from "./store.js";
 import type { MomentsGiftService } from "./gift-service.js";
 import { MomentsError, type MomentActor, type MomentPublishMeta } from "./types.js";
 
@@ -9,7 +9,6 @@ export interface MomentsAgentContext { residentId: string }
 const identifier = z.string().min(1);
 export const stickerIdsSchema = z.array(identifier);
 const publishInputSchema = z.object(publishMomentSchema.shape).strict();
-const commentInputSchema = z.object({ requestId: commentSchema.shape.requestId, text: z.string() }).strict();
 const viewSchema = z.discriminatedUnion("section", [
   z.object({ action: z.literal("view"), section: z.literal("recent"), count: z.number().int().positive().safe().optional(), authorId: identifier.optional() }).strict(),
   z.object({ action: z.literal("view"), section: z.literal("history"), count: z.number().int().positive().safe().optional(), authorId: identifier.optional(), from: z.number().optional(), until: z.number().optional() }).strict(),
@@ -19,7 +18,7 @@ const viewSchema = z.discriminatedUnion("section", [
   z.object({ action: z.literal("view"), section: z.literal("quota") }).strict(),
   z.object({ action: z.literal("view"), section: z.literal("people") }).strict(),
 ]);
-const commentActionSchema = commentInputSchema.extend({ action: z.literal("comment"), momentId: identifier, stickers: stickerIdsSchema.optional() })
+const commentActionSchema = commentWithStickerSchema.extend({ action: z.literal("comment"), momentId: identifier, stickers: stickerIdsSchema.optional() })
   .superRefine((value, context) => {
     if (!value.text.trim() && !value.stickers?.length) context.addIssue({ code: "custom", message: "empty_comment" });
   });
@@ -87,7 +86,7 @@ export class MomentsAgentActions {
     }, this.now(), stickers, meta);
   }
   comment(context: MomentsAgentContext, momentId: string, input: unknown, stickers: readonly string[] = []) {
-    return this.options.store.comment(this.actor(context), momentId, parse(commentInputSchema, input), this.now(), stickers);
+    return this.options.store.comment(this.actor(context), momentId, parse(commentWithStickerSchema, input), this.now(), stickers);
   }
   setLike(context: MomentsAgentContext, momentId: string, liked: boolean) {
     return this.options.store.setLike(this.actor(context), momentId, liked, this.now());

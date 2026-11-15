@@ -5,7 +5,7 @@ const from = z.object({ kind: z.enum(["human", "resident"]), name: z.string(), r
 const base = { id: z.string(), from, moment: z.object({ id: z.string(), text: z.string(), stickers: z.array(stickerSchema) }), createdAt: z.number(), read: z.boolean() };
 const notification = z.discriminatedUnion("kind", [
   z.object({ ...base, kind: z.literal("like") }),
-  z.object({ ...base, kind: z.literal("comment"), comment: z.string(), stickers: z.array(stickerSchema) }),
+  z.object({ ...base, kind: z.literal("comment"), comment: z.string(), stickers: z.array(stickerSchema), replyTo: z.string().optional() }),
   z.object({ ...base, kind: z.literal("gift"), gift: z.object({ name: z.string(), quantity: z.number().int().positive() }) }),
 ]);
 export type NotificationView = z.infer<typeof notification>;

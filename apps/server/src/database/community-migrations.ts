@@ -20,7 +20,7 @@ import { tournamentEngine } from "../together/tournament/engine-adapter.js";
 import { validateSnowMatchRuntime } from "../together/tournament/match-host.js";
 import { readRoundRecovery } from "../together/tournament/relational-match-view.js";
 
-export const COMMUNITY_DATABASE_SCHEMA_VERSION = 67;
+export const COMMUNITY_DATABASE_SCHEMA_VERSION = 68;
 const DAILY_POLL_SCHEMA_SQL = `
   CREATE TABLE lingye_daily_polls (
     issue_date TEXT PRIMARY KEY,
@@ -3331,6 +3331,22 @@ CREATE TABLE lingye_daily_farm_question_citations (
     database.pragma('user_version = 67');
   })();
 
+  if (databaseSchemaVersion < 68) database.transaction(() => {
+    const homes = database.prepare("SELECT table_name FROM lingye_moments_homes").all() as {table_name: string}[];
+    for (const {table_name: table} of homes) {
+      if (!/^lingye_moments_home_[a-f0-9]{32}$/.test(table)) throw new Error("Invalid moments home table");
+      // Earlier migrations can rebuild a home table from the current definition.
+      const columns = database.prepare(`PRAGMA table_info("${table}")`).all() as {name: string}[];
+      if (!columns.some(column => column.name === "reply_to_resident_id")) {
+        database.exec(`
+          ALTER TABLE "${table}" ADD COLUMN reply_to_resident_id TEXT REFERENCES residents(resident_id) ON DELETE SET NULL;
+          ALTER TABLE "${table}" ADD COLUMN reply_to_name TEXT;
+        `);
+      }
+    }
+    database.pragma('user_version = 68');
+  })();
+
 }
 
 function rebuildMomentsHomeTables(database: Database.Database): void {
@@ -3385,6 +3401,8 @@ export function ensureMomentsHomeTable(database: Database.Database, homeId: stri
         subject_kind TEXT CHECK(subject_kind='resident'),
         subject_id TEXT REFERENCES residents(resident_id) ON DELETE CASCADE,
         comment_id TEXT, gift_id TEXT,
+        reply_to_resident_id TEXT REFERENCES residents(resident_id) ON DELETE SET NULL,
+        reply_to_name TEXT,
         option_action TEXT CHECK(option_action='share'),
         option_target TEXT,
         read_author_id TEXT, read_at INTEGER, notification_source_id TEXT,

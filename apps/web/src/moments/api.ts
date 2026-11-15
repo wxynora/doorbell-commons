@@ -41,7 +41,10 @@ const moment = z.object({
     .transform(({ statusKeys, ...value }) => ({ ...value, ...(statusKeys === undefined ? {} : { statusKeys }) })).nullable(),
   visibility: z.object({ mode: z.enum(["public", "only", "except"]), subjects: z.array(z.object({ kind: z.literal("resident"), id: z.string() })).optional() })
     .transform(({ subjects, ...value }) => ({ ...value, ...(subjects === undefined ? {} : { subjects }) })),
-  liked: z.boolean(), likes: z.array(actor), comments: z.array(z.object({ id: z.string(), author: actor, text: z.string(), stickers: z.array(stickerSchema), createdAt: z.number() })), gifts: z.array(gift),
+  liked: z.boolean(), likes: z.array(actor), comments: z.array(z.object({
+    id: z.string(), author: actor, text: z.string(), stickers: z.array(stickerSchema),
+    createdAt: z.number(), replyTo: z.string().optional(),
+  }).transform(({ replyTo, ...comment }) => ({ ...comment, ...(replyTo === undefined ? {} : { replyTo }) }))), gifts: z.array(gift),
   statuses: z.array(z.object({ key: z.enum(activityStatusKeys), occurredAt: z.number() })).optional(),
   raffle: raffle.optional(),
   poll: poll.optional(),

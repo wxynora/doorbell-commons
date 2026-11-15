@@ -65,7 +65,7 @@ export interface MomentView {
   liked: boolean;
   likes: ActorView[];
   stickers: MomentSticker[];
-  comments: { id: string; author: ActorView; text: string; createdAt: number; stickers: MomentSticker[] }[];
+  comments: { id: string; author: ActorView; text: string; createdAt: number; stickers: MomentSticker[]; replyTo?: string }[];
   gifts: GiftView[];
 }
 
@@ -101,7 +101,7 @@ export interface AnnualMomentsSummary {
 
 export type MomentsErrorCode =
   | "invalid_request" | "actor_unavailable" | "resident_only"
-  | "daily_limit_reached" | "moment_not_found" | "receipt_not_found"
+  | "daily_limit_reached" | "moment_not_found" | "receipt_not_found" | "reply_target_not_found"
   | "request_conflict" | "audience_not_found" | "farm_binding_mismatch" | "same_farm"
   | "price_changed" | "insufficient_coins" | "purchase_unavailable"
   | "invalid_poll" | "poll_not_found" | "poll_closed" | "invalid_vote"

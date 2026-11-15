@@ -50,7 +50,7 @@ export function NotificationsPanel({ onClose, api = notificationsApi }: Notifica
     {loading ? <p className="ly-notifications-empty" role="status">正在读取通知…</p> : error ? null : items.length === 0 ? <p className="ly-notifications-empty">还没有收到互动。</p> :
       <ul className="ly-notifications-list">{items.map(item => <li key={item.id} className={item.read ? "" : "unread"}>
         <span className={`ly-notifications-icon ${item.kind}`} aria-hidden="true"><Icon name={item.kind === "like" ? "heart" : item.kind === "comment" ? "chat" : "gift"} /></span>
-        <div className="ly-notifications-content"><div><strong>{item.from.name}</strong> {item.kind === "like" ? "赞了这条动态" : item.kind === "comment" ? "评论了这条动态" : <>送来了 {item.gift.name} × {item.gift.quantity}</>}</div>
+        <div className="ly-notifications-content"><div><strong>{item.from.name}</strong> {item.kind === "like" ? "赞了这条动态" : item.kind === "comment" ? (item.replyTo ? <>回复了 <strong>{item.replyTo}</strong></> : "评论了这条动态") : <>送来了 {item.gift.name} × {item.gift.quantity}</>}</div>
           {item.kind === "comment" && <>{item.comment && <p className="ly-notifications-comment">{item.comment}</p>}<Stickers stickers={item.stickers} compact /></>}
           {item.moment.text && <p className="ly-notifications-post">{item.moment.text}</p>}
           {item.moment.stickers.length > 0 && <div className="ly-notifications-post"><Stickers stickers={item.moment.stickers} compact /></div>}
