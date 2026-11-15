@@ -165,7 +165,7 @@ export function createFieldRuntime(host, options) {
     world.decorations.splice(0,world.decorations.length,...next);
     world.houseBlockedRects=houseExtensionRects(housePosition,data.house?.classic_level??data.house?.level??1);
     const nextPlacementKey=JSON.stringify([data.grid,housePosition,world.houseBlockedRects,fieldLayout]);
-    if(placementKey!==nextPlacementKey){
+    if(!options.readOnly&&placementKey!==nextPlacementKey){
       const oldGrid=world.root.getObjectByName("placement-grid");
       if(oldGrid)disposeDecoration(oldGrid);
       placement=data.grid ? createPlacement(world,data.grid) : null;
@@ -177,7 +177,7 @@ export function createFieldRuntime(host, options) {
   }
   function setDecorations(value) {
     if (value === data || value === pendingData) return;
-    value=withoutExpiredLeaseData(value);
+    if(!options.readOnly)value=withoutExpiredLeaseData(value);
     if(editing){pendingData=value;return;}
     data=value;committed=structuredClone(value.layout);applyLayout(committed);
   }
@@ -341,7 +341,7 @@ export function createFieldRuntime(host, options) {
   listen("pointerup",e=>{
     if(saving||importing){down=null;return;}
     if(currentPlacement()?.active){move(e);down=null;return;}
-    if(!down||moved){down=null;return;}down=null;pointerRay(e);
+    if(!down||moved){down=null;return;}down=null;if(options.readOnly)return;pointerRay(e);
     const hit=ray.intersectObject(world.root,true).find(h=>h.object.isMesh&&(h.object.userData.nativeTree===undefined||world.nativeTrees[h.object.userData.nativeTree].visible)&&(!h.object.userData.stall||world.root.getObjectByName("market-stall").visible));
     if(hit?.object.userData.winterSnowman&&!editing)emit(SNOWMAN_MESSAGE);
     else if(hit?.object.userData.nativeTree!==undefined&&!editing)requestEdit(()=>startNativeTreeMove(hit.object.userData.nativeTree));
@@ -384,7 +384,7 @@ export function createFieldRuntime(host, options) {
     nature=value;const nextSeason=value.season??"summer";setSeason(nextSeason);setHouseSeason(nextSeason);
     if(nextSeason!==season){if(editing)pendingSeason=nextSeason;else{season=nextSeason;updateDecorationSeason(world.decorations,season);}}
     natureEffects.setEvent(value.disaster,value.flood);
-    environment.setWeather(["light_snow","blizzard"].includes(value.weather)?"snow":["light_rain","heavy_rain","thunderstorm"].includes(value.weather)?"rain":"clear");
+    environment.setWeather(["light_snow","blizzard"].includes(value.weather)?"snow":["light_rain","heavy_rain","thunderstorm","freezing_rain"].includes(value.weather)?"rain":"clear");
     if(!editing)refreshSnowman();
     modelOutline?.refresh();
     if(fogWeather!==value.weather){scene.fog=value.weather==="fog"?new T.FogExp2("#b8c9c8",.025):null;fogWeather=value.weather;}
@@ -407,6 +407,7 @@ export function createFieldRuntime(host, options) {
   const visibilityChanged=()=>{down=null;syncActivity();};
   document.addEventListener("visibilitychange",visibilityChanged);
   function expireLeases(){
+    if(options.readOnly)return;
     const expired=new Set(expiredDecorationIds(data));if(!expired.size)return;
     const current=currentPlacement();if(expired.has(current?.object?.userData.itemId))current.cancel();
     data=withoutExpiredLeaseData(data);
@@ -421,7 +422,7 @@ export function createFieldRuntime(host, options) {
     expireLeases();
     const dt=Math.min((now-last)/1000,.08);last=now;if(!reduce.matches)time+=dt;
     light=T.MathUtils.damp(light,nature.night,3,dt);
-    const overcast=["cloudy","fog","heavy_rain","thunderstorm","blizzard"].includes(nature.weather);
+    const overcast=["cloudy","fog","heavy_rain","thunderstorm","blizzard","freezing_rain"].includes(nature.weather);
     sun.color.set(nature.weather==="hot"?"#ffedc0":"#fff0cc").lerp(nightSun,light);
     sun.intensity=T.MathUtils.lerp(1.85,.12,light)*(nature.weather==="light_rain"?.78:overcast?.62:1);
     sun.position.set(-7-light*7,14-light*8,7);

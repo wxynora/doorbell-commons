@@ -1,3 +1,4 @@
+import { renderServiceProposalReceipt } from "./service-proposal-notification.js";
 import type { MomentsPromotions } from "./moments/promotion.js";
 import type { MomentsToolPort } from "./moments/tool.js";
 import { renderMomentsStatusCounts, type MomentsStatusNotifications } from "./moments/status-notifications.js";
@@ -371,7 +372,6 @@ export interface DoorbellMcpRuntimeOptions {
   momentsTools?: MomentsToolPort;
   statusNotifications?: Pick<MomentsStatusNotifications, "report" | "dailySummary">;
   momentsPromotions?: Pick<MomentsPromotions, "report" | "reportSponsored">;
-  momentsExhibitionStatus?: (now: number) => string | undefined;
   momentsProgression?: {sync(residentId:string):Promise<void>;takeNotices(residentId:string):string[]};
   mainActivity?: Pick<MainActivitySource, "dailyRead">;
   snowTools?: SnowTournamentToolPort;
@@ -496,7 +496,6 @@ export class DoorbellMcpRuntime {
   readonly #momentsTools: MomentsToolPort | undefined;
   readonly #statusNotifications: DoorbellMcpRuntimeOptions["statusNotifications"];
   readonly #momentsPromotions: DoorbellMcpRuntimeOptions["momentsPromotions"];
-  readonly #momentsExhibitionStatus: DoorbellMcpRuntimeOptions["momentsExhibitionStatus"];
   readonly #momentsProgression: DoorbellMcpRuntimeOptions["momentsProgression"];
   readonly #mainActivity: DoorbellMcpRuntimeOptions["mainActivity"];
   readonly #database: CommunityDatabase;
@@ -533,7 +532,6 @@ export class DoorbellMcpRuntime {
     this.#momentsTools = options.momentsTools;
     this.#statusNotifications = options.statusNotifications;
     this.#momentsPromotions = options.momentsPromotions;
-    this.#momentsExhibitionStatus = options.momentsExhibitionStatus;
     this.#momentsProgression = options.momentsProgression;
     this.#mainActivity = options.mainActivity;
     this.#faultReports = options.faultReports;
@@ -915,13 +913,13 @@ export class DoorbellMcpRuntime {
           const receipt = reviewDailySubmissions(this.#database.lingyeDailyStore, context.residentId, parsed.data, this.#now());
           if (receipt !== undefined) return { isError: false, content: textContent(receipt) };
         }
-        const result = await this.#lingyeActions.execute({
+        const result = renderServiceProposalReceipt(this.#database, await this.#lingyeActions.execute({
           residentId: context.residentId,
           farmDoorplate: context.farmDoorplate,
           farmHumanKey: context.farmHumanKey,
           op: registered.operation.op,
           args: parsed.data,
-        });
+        }));
         if (result.ok && result.notifications && this.#onLingyeNotification) {
           for (const notification of result.notifications) {
             try {
@@ -1003,6 +1001,8 @@ export class DoorbellMcpRuntime {
     const operation = registered.operation;
     const { detail, businessArgs } = stripDetail(parsed.data);
     const plan = operation.adapt(businessArgs);
+    const weatherOption = (op === "farm.visit" || op === "farm.status") &&
+      typeof businessArgs.option === "string";
     if (plan.kind === "help") {
       let text = renderFarmHelp(plan.operation,this.#snowTools!==undefined);
       if (shouldAppendStatus) {
@@ -1037,7 +1037,7 @@ export class DoorbellMcpRuntime {
       }
       if (op === "farm.together.choose" && businessArgs.action === "chat")
         return doorbellToolError("INTERNAL_ERROR", { op });
-      await this.#momentsProgression?.sync(context.residentId);
+      if (!weatherOption) await this.#momentsProgression?.sync(context.residentId);
       const result = await this.#farmActions.execute({
         farmDoorplate: context.farmDoorplate,
         farmHumanKey: context.farmHumanKey,
@@ -1046,11 +1046,11 @@ export class DoorbellMcpRuntime {
         params: plan.params,
         detail,
       });
-      recordResidentFarmAction(this.#database.residentSocialStore, context.residentId, op, result.ok, this.#now());
+      if (!weatherOption) recordResidentFarmAction(this.#database.residentSocialStore, context.residentId, op, result.ok, this.#now());
       let text = result.text;
       const halloweenCandyEat = op === "farm.together.choose" &&
         isHalloweenCandyEatOption(businessArgs.option);
-      if (shouldAppendStatus && op !== "farm.status" && !halloweenCandyEat) {
+      if (shouldAppendStatus && op !== "farm.status" && !halloweenCandyEat && !weatherOption) {
         text = await this.#appendStatusWhenAvailable(text, context);
       }
       if (result.ok && result.moment_activities?.length && this.#farmMomentActivities) {
@@ -1139,8 +1139,7 @@ export class DoorbellMcpRuntime {
     const summary = this.#statusSection(() => this.#statusNotifications?.dailySummary(residentId, now));
     const notice = this.#statusSection(() => this.#statusNotifications?.report(residentId, renderMomentsStatusCounts));
     const promotion = this.#statusSection(() => this.#momentsPromotions?.report(residentId, now));
-    const exhibition = this.#statusSection(() => this.#momentsExhibitionStatus?.(now));
-    const moments = [exhibition, sponsored, summary, notice, promotion].filter(Boolean).join("\n");
+    const moments = [sponsored, summary, notice, promotion].filter(Boolean).join("\n");
     return [daily, moments, status].filter(Boolean).join("\n\n");
   }
 

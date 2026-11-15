@@ -1,3 +1,4 @@
+import { deliverServiceProposalOffer } from "./service-proposal-notification.js";
 import { randomUUID } from "node:crypto";
 import type { LingyeActionResult, MailboxCategory } from "@doorbell/protocol";
 import type {
@@ -233,6 +234,10 @@ export class LingyeNotificationDeliveryService {
   }
 
   deliver(notification: LingyeNotification, sourceResidentId: string): void {
+    if (notification.kind === "service_proposal_offer") {
+      deliverServiceProposalOffer(this.#database, this.#mailbox, this.#bell, notification, sourceResidentId);
+      return;
+    }
     const copy = COMMISSION_NOTIFICATION_COPY[notification.kind];
     const call = COMMISSION_CALL_BY_CAREER[notification.career];
     const body = copy.body(

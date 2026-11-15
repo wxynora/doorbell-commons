@@ -194,6 +194,7 @@ export const farmFieldCropIdentitySchema = z
 
 export const farmFieldPlotSchema = z
   .object({
+    snow_level: z.number().int().min(0).max(3).optional(),
     plot_id: z.number().int().positive(),
     state: z.enum(["empty", "growing", "ripe"]),
     growth_effect: z.enum(["normal", "half", "paused"]).optional(),
@@ -360,6 +361,8 @@ export const farmWeatherConditionSchema = z.enum([
   "dry_wind",
   "light_snow",
   "blizzard",
+  "cold_snap",
+  "freezing_rain",
 ]);
 
 export const farmFieldLandUpgradeSchema = z
@@ -3216,3 +3219,5 @@ export * from "./farm-decoration.js";
 export * from "./snow-live.js";
 
 export * from "./snow-tournament.js";
+
+export * from "./farm-neighborhood.js";

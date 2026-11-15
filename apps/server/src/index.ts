@@ -1,3 +1,5 @@
+import {registerFarmNeighborhoodRoutes} from "./farm-neighborhood/routes.js";
+import {FarmNeighborhoodClient} from "./farm-neighborhood/client.js";
 import { MomentsPromotionClient } from "./moments/promotion-client.js";
 import { MomentsProgressionClient } from "./moments/progression-client.js";
 import { MomentsProgressionService } from "./moments/progression-service.js";
@@ -750,6 +752,7 @@ const app = buildApp({
   sharedMemeService,
   secureCookies: process.env.NODE_ENV === "production",
 });
+registerFarmNeighborhoodRoutes(app,{auth:registrationAuth,database,client:new FarmNeighborhoodClient({apiBaseUrl:serverConfig.farmApiBaseUrl,serviceToken:serverConfig.farmServiceToken,requestTimeoutMs:serverConfig.upstreamRequestTimeoutMs})});
 registerGlimmerEditorRoutes(app, { auth: registrationAuth, ownerAccountId: process.env.DOORBELL_GLIMMER_EDITOR_ACCOUNT_ID ?? "", farm: { apiBaseUrl: serverConfig.farmApiBaseUrl, serviceToken: serverConfig.farmServiceToken, requestTimeoutMs: serverConfig.upstreamRequestTimeoutMs } });
 registerLoungeGachaRoutes(app, {
   registrationAuth,

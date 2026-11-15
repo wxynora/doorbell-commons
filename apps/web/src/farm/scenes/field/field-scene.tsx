@@ -367,6 +367,9 @@ export function FieldScene({
               <dt>状态</dt>
               <dd>{farmPlotStateLabel(selectedPlot)}</dd>
             </div>
+            {selectedPlot.snow_level !== undefined ? (
+              <div><dt>积雪</dt><dd>{["无积雪", "薄雪", "积雪", "厚雪"][selectedPlot.snow_level]}</dd></div>
+            ) : null}
             <div>
               <dt>浇水</dt>
               <dd>{selectedPlot.watered} 次</dd>

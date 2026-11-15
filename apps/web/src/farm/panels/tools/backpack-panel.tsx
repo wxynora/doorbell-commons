@@ -70,7 +70,7 @@ function CatalogInventoryRows({
       {items.map((item) => (
         <li key={`${item.kind}:${item.item_id}`}>
           <span>{item.identity_state === "known" && item.name ? item.name : "身份不可用"}</span>
-          <small>{item.quantity}</small>
+          <small>{item.quantity}{item.durability ? ` · 耐久 ${item.durability.remaining}/${item.durability.maximum}` : ""}</small>
         </li>
       ))}
     </ul>

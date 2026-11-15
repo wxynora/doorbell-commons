@@ -47,7 +47,7 @@ export const farmCatalogCurrencySchema = z.enum(["gold", "silver"]);
 
 export const farmCatalogShopItemSchema = z
   .object({
-    kind: z.enum(["seed", "potion", "potion_set", "recipe", "decoration"]),
+    kind: z.enum(["seed", "potion", "potion_set", "recipe", "decoration", "item"]),
     item_id: z.string().min(1),
     identity_state: farmCatalogItemIdentityStateSchema,
     name: z.string().min(1).nullable(),
@@ -104,6 +104,10 @@ export const farmCatalogInventoryItemSchema = z
     name: z.string().min(1).nullable(),
     rarity: farmCatalogRaritySchema.nullable(),
     quantity: z.number().int().nonnegative(),
+    durability: z.object({
+      remaining: z.number().int().min(0).max(10),
+      maximum: z.literal(10),
+    }).strict().optional(),
   })
   .strict()
   .superRefine((item, context) => {

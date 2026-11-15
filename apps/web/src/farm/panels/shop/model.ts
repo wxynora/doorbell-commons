@@ -40,7 +40,7 @@ export interface CookingMethod {
 
 export interface FarmShopPreviewItem {
   id: string;
-  kind: "seed" | "potion" | "potion_set" | "recipe" | "decoration";
+  kind: "seed" | "potion" | "potion_set" | "recipe" | "decoration" | "item";
   iconKey?: FarmAssetKey | undefined;
   name: string;
   note: string;
@@ -99,7 +99,7 @@ export type ShopCartVisual =
   | {
       kind: "farm";
       entityId: string;
-      catalogKind: "seed" | "potion" | "potion_set" | "recipe" | "decoration";
+      catalogKind: "seed" | "potion" | "potion_set" | "recipe" | "decoration" | "item";
       iconKey?: FarmAssetKey | undefined;
     }
   | {
@@ -153,7 +153,7 @@ export interface FarmShopLiveResources {
 }
 
 export type LiveFarmShopItem = FarmShopPreviewItem & {
-  kind: "seed" | "potion" | "potion_set" | "recipe" | "decoration";
+  kind: "seed" | "potion" | "potion_set" | "recipe" | "decoration" | "item";
   source: "permanent" | "persisted";
 };
 
@@ -193,7 +193,7 @@ export const FARM_FIELD_SHOP_SECTIONS: readonly {
   id: FarmFieldShopSectionId;
   label: string;
 }[] = [
-  { id: "seeds-and-potions", label: "种子与药水" },
+  { id: "seeds-and-potions", label: "种子与用品" },
   { id: "today", label: "今日商店" },
   { id: "decorations", label: "装饰" },
 ];
@@ -305,6 +305,7 @@ const FARM_SHOP_ICON_KEYS: Readonly<
   },
   recipe: {},
   decoration: {},
+  item: {},
 };
 
 function getFarmShopIconKey(

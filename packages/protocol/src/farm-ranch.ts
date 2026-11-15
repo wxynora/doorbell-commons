@@ -315,6 +315,11 @@ export const farmRanchShopDecorationsSchema = z
 
 export const farmRanchDataSchema = z
   .object({
+    winter_conditions: z.object({
+      trough_frozen: z.boolean(),
+      ground_icy: z.boolean(),
+      bedding_wet: z.boolean(),
+    }).strict().optional(),
     farm: z
       .object({
         farm_doorplate: z

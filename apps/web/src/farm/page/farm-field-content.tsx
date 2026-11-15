@@ -136,6 +136,7 @@ import {
   RanchResidentDetail,
 } from "./ranch-resident-detail";
 
+const VillageScene = lazy(async () => ({default:(await import("../scenes/village/village-scene")).VillageScene}));
 const FieldScene = lazy(async () => {
   const module = await import("../scenes/field/field-scene");
   return { default: module.FieldScene };
@@ -318,6 +319,7 @@ export function FarmFieldContent({
   >();
   const [layoutPreviewRequest,setLayoutPreviewRequest] = useState<{layout:SceneDecorationLayout;requestKey:string}>();
   const [decorationEditing, setDecorationEditing] = useState(false);
+  const [villageOpen,setVillageOpen]=useState(false);
   const [interfaceHidden, setInterfaceHidden] = useState(false);
   const kitchen = resources.kitchen.stage === "ready" ? resources.kitchen.data : null;
   const ranch = resources.ranch.stage === "ready" ? resources.ranch.data : null;
@@ -708,7 +710,7 @@ export function FarmFieldContent({
       const attempt =
         retryAttempt ??
         ({
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createFarmReceiptKey(),
           shop: sceneId,
           shopRevision,
           items: items.map((item) => ({ ...item })),
@@ -1027,13 +1029,15 @@ export function FarmFieldContent({
           </svg>
         </button>
       ) : null}
+      {activeScene==="field"&&!decorationEditing&&!preview&&!villageOpen?<button className="farm-village-open" type="button" onClick={()=>setVillageOpen(true)}>居民区</button>:null}
+      {villageOpen?<Suspense fallback={<FarmLazyLoading label="正在打开居民区" mode="surface"/>}><VillageScene active={active&&activeScene==="field"} environment={{season:farmScene?.environment?.season?.id??field.season.id,weather:farmScene?.environment?.weather?.condition??field.weather?.condition??null,night:farmScene?.environment?.night??0}} onClose={()=>setVillageOpen(false)}/></Suspense>:null}
       {SCENE_OPTIONS.map((scene) =>
         visitedScenes.has(scene.id) ? (
           <div className="farm-scene-state" hidden={scene.id !== activeScene} key={scene.id}>
             <Suspense
               fallback={<FarmLazyLoading label={`正在打开${scene.label}`} mode="surface" />}
             >
-              {scene.id === "field" ? (!preview && onLoadDecorationEditor && !farmScene ? (
+              {scene.id === "field" && !villageOpen ? (!preview && onLoadDecorationEditor && !farmScene ? (
                 resources.farmScene?.stage === "error" ? null : <FarmLazyLoading label="正在读取农场布置" mode="surface" />
               ) : (
                 <FieldScene
@@ -1153,6 +1157,9 @@ export function FarmFieldContent({
         <div className="farm-ranch-status-stack">
           <div aria-live="polite" className="farm-ranch-presence">
             在场动物 {ranchSceneResidentCount ?? "—"} 只 · 来客 {ranchSceneVisitorCount ?? "—"} 只
+            {ranch?.data.winter_conditions?.trough_frozen ? <span>水槽结冰了。</span> : null}
+            {ranch?.data.winter_conditions?.ground_icy ? <span>活动区覆着薄冰。</span> : null}
+            {ranch?.data.winter_conditions?.bedding_wet ? <span>垫料潮湿了。</span> : null}
           </div>
           {!activeSceneUiState.selectedTool &&
           !activeSceneUiState.bulletinOpen &&

@@ -1,6 +1,7 @@
 import type { LayoutShareSkip } from "./layout-sharing-plan.js";
 import type { FarmPlot } from "../../farm-overview";
 import type { SceneDecorationData, SceneDecorationLayout, SceneEditState, SceneEnvironment } from "./scene-types";
+export type SceneViewData = Pick<SceneDecorationData,"layout"|"grid"> & {house?:Pick<NonNullable<SceneDecorationData["house"]>,"level"|"classic_level"|"style">;catalog:readonly Pick<SceneDecorationData["catalog"][number],"item_id"|"model_id"|"name"|"cells"|"layer">[]};
 export interface SceneRuntime {
   previewLayout(layout: SceneDecorationLayout): LayoutShareSkip[];
   setActive(active: boolean): void;
@@ -10,7 +11,7 @@ export interface SceneRuntime {
   changeCanopy(key: "plain" | "floral"): void;
   changeBoundary(id: string | null): boolean;
   setEnvironment(value: SceneEnvironment): void;
-  setDecorations(value: SceneDecorationData): void;
+  setDecorations(value: SceneDecorationData | SceneViewData): void;
   selectPlot(id: number | null): void;
   startPlacement(id: string): void;
   startHouseMove(): void;
@@ -39,7 +40,8 @@ export const roofChoices: readonly {id:string;label:string;color:string}[];
 export const SNOWMAN_MESSAGE: string;
 export function createFieldRuntime(host: HTMLElement, options: {
   active?: boolean;
-  plots: readonly FarmPlot[];
+  readOnly?: boolean;
+  plots: readonly Pick<FarmPlot,"plot_id"|"state"|"seed_type">[];
   houseLevel?: 1 | 2 | 3 | 4;
   houseStyle?: "classic"|"pumpkin"|"stump"|"mushroom"|"rose_cottage"|"witch_pumpkin";
   classicHouseLevel?: 1|2|3;

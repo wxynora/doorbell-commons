@@ -45,7 +45,7 @@ export const LINGYE_ACTION_ERROR_MESSAGES = Object.freeze({
   OP_REJECTED: "本次操作被铃野规则拒绝，没有产生业务结果。",
 });
 
-export const lingyeActionNotificationSchema = z
+const existingLingyeActionNotificationSchema = z
   .object({
     notification_id: z.string().trim().min(1),
     kind: z.enum([
@@ -82,6 +82,33 @@ export const lingyeActionNotificationSchema = z
       });
     }
   });
+
+const serviceProposalNotificationSchema = z.strictObject({
+  notification_id: z.string().trim().min(1),
+  kind: z.literal("service_proposal_offer"),
+  recipient_resident_id: z.uuid(),
+  career: z.enum(["agronomist", "veterinarian"]),
+  subject_text: z.string().trim().min(1),
+  observation_text: z.string().trim().min(1),
+  amount: z.number().int().positive(),
+  currency: z.enum(["gold", "silver"]),
+  decision_options: z.strictObject({
+    accept: z.string().regex(/^opt_[A-Za-z0-9_-]{12}$/u),
+    reject: z.string().regex(/^opt_[A-Za-z0-9_-]{12}$/u),
+  }),
+}).superRefine((notification, context) => {
+  if ((notification.career === "agronomist" &&
+       (notification.currency !== "silver" || !/^[1-9]\d*$/u.test(notification.subject_text))) ||
+      (notification.career === "veterinarian" && notification.currency !== "gold") ||
+      notification.decision_options.accept === notification.decision_options.reject) {
+    context.addIssue({ code: "custom", message: "Invalid service proposal facts" });
+  }
+});
+
+export const lingyeActionNotificationSchema = z.union([
+  existingLingyeActionNotificationSchema,
+  serviceProposalNotificationSchema,
+]);
 
 export const lingyeActionSuccessSchema = z
   .object({

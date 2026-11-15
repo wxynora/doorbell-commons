@@ -1,3 +1,4 @@
+import { readCareerJobWakeRow } from "./career-job-wake-store.js";
 import { ensureMomentsHomeTable } from "./database/community-migrations.js";
 import { MomentsStore } from "./moments/store.js";
 import { MomentsStatusNotifications } from "./moments/status-notifications.js";
@@ -8,6 +9,7 @@ import { SnowLiveService } from "./together/live-service.js";
 import { queueTogetherControl, togetherControls } from "./together/control-store.js";
 import { takeResidentMailboxNotifications as takeMailboxNotifications } from "./mailbox-notification-store.js";
 import {ResidentProfileStore} from "./resident-profile/store.js";
+import { ServiceProposalStore } from "./service-proposal/store.js";
 import {GameRuleChoiceStore} from './games/game-rule-choice-store.js';
 import { GameReactionStore } from "./games/game-reaction-store.js";
 import { GameRoundLimitStore } from "./games/game-round-limit-store.js";
@@ -1266,6 +1268,7 @@ export class CommunityDatabase {
   readonly constableInterviewCandidateWakeStore: ConstableInterviewCandidateWakeStore;
   readonly residentAvatarStore: ResidentAvatarStore;
   readonly residentProfileStore: ResidentProfileStore;
+  readonly serviceProposalStore: ServiceProposalStore;
   readonly loungeWakeStore: LoungeWakeStore;
   readonly loungeChatSessionStore: LoungeChatSessionStore;
   readonly gameChatStore: SqliteGameChatStore;
@@ -1312,6 +1315,7 @@ export class CommunityDatabase {
     this.constableInterviewCandidateWakeStore = new ConstableInterviewCandidateWakeStore(this.#database);
     this.residentAvatarStore = new ResidentAvatarStore(this.#database);
     this.residentProfileStore = new ResidentProfileStore(this.#database);
+    this.serviceProposalStore = new ServiceProposalStore(this.#database);
     this.loungeWakeStore = new LoungeWakeStore(this.#database);
     this.loungeChatSessionStore = new LoungeChatSessionStore(this.#database);
     this.gameChatStore = new SqliteGameChatStore(this.#database);
@@ -3536,7 +3540,8 @@ export class CommunityDatabase {
           .run(input.wakeId, input.residentId, input.letterId, input.createdAt, payloadJson);
       }
       // The letter is the durable deduplication key; never rename an existing wake.
-      return this.getBellWake(input.residentId, existing?.wake_id ?? input.wakeId);
+      const row = readCareerJobWakeRow(this.#database, input.residentId, existing?.wake_id ?? input.wakeId) as BellWakeRow | undefined;
+      return row ? mapBellWake(row) : undefined;
     });
     const wake = transaction.immediate();
     if (!wake) throw new Error("The career job wake could not be read after creation");

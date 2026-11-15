@@ -923,7 +923,9 @@ export type FarmWeatherCondition =
   | "hot"
   | "dry_wind"
   | "light_snow"
-  | "blizzard";
+  | "blizzard"
+  | "cold_snap"
+  | "freezing_rain";
 
 const FARM_ENVIRONMENT_ASSET_KEYS = {
   field: {
@@ -955,7 +957,8 @@ export function getFarmEnvironmentAssetUrl(
   const visualState =
     weatherCondition === "light_rain" ||
     weatherCondition === "heavy_rain" ||
-    weatherCondition === "thunderstorm"
+    weatherCondition === "thunderstorm" ||
+    weatherCondition === "freezing_rain"
       ? "rain"
       : weatherCondition === "light_snow" || weatherCondition === "blizzard"
         ? "snow"
