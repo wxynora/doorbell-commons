@@ -66,7 +66,7 @@ import { constableExamTheftEligibility, farmActionTouchesLockedCareerObject, loc
 import { startConstableInterviewScheduler } from "./career/constable-interview-scheduler.js";
 import { startRanchRaidScheduler } from "./server/ranch-raid-scheduler.js";
 import { loadConstableInterviewBank } from "./career/constable-interview-bank.js";
-import { applyDroughtWatering, collectFloodFishForFarm, commitNatureFarmReconciliation, commitNatureRemovedPlot, preflightNatureWeatherActivation, prepareP3ForNewBinding, startNatureRuntimeScheduler } from "./nature-runtime.js";
+import { advanceNatureGameplay, applyDroughtWatering, collectFloodFishForFarm, commitNatureFarmReconciliation, commitNatureRemovedPlot, preflightNatureWeatherActivation, prepareP3ForNewBinding, startNatureRuntimeScheduler } from "./nature-runtime.js";
 import { bindP3NatureDayGate } from "./domain/nature/p3-day-gate.js";
 import { setNewRanchWeatherPolicy } from "./domain/nature/new-ranch.js";
 import { appendOwnWeatherOptions, appendVisitWeatherOptions, executeWeatherOption, isWeatherOptionAction, isWeatherOptionRequest } from "./domain/nature/weather-options.js";
@@ -1191,7 +1191,13 @@ export function startServer(port, host = "127.0.0.1", options = {}) {
             syncLedgerProjection();
         });
         const storyStartup = withWorldCommitContext({balanceAuthority:"farm",actor:"system"},()=>
-            applyTogetherSeason3StartupSelection(togetherStorySelection,{now:Date.now()}));
+            applyTogetherSeason3StartupSelection(togetherStorySelection, {
+                now: Date.now(),
+                ...(options.weatherUpgrade ? { synchronizeNature: at => advanceNatureGameplay(at, {
+                    config: options.natureScheduler?.config,
+                    weatherUpgrade: options.weatherUpgrade,
+                }) } : {}),
+            }));
         if (storyStartup.status === "not_ready")
             console.warn("[together]", storyStartup.status, storyStartup.code);
     }
